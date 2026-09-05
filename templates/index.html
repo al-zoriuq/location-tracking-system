@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+
+<html lang="es">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Monitor de ubicación</title>
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 30px;
+        }
+
+        .dato {
+            margin: 15px 0;
+            font-size: 20px;
+        }
+
+        .valor {
+            font-weight: bold;
+        }
+
+        #estado {
+            margin-top: 30px;
+            font-size: 14px;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+    <h1>Última ubicación recibida</h1>
+
+
+    <div class="dato">
+
+        IP:
+
+        <span
+            id="ip"
+            class="valor">
+            ---
+        </span>
+
+    </div>
+
+
+    <div class="dato">
+
+        Latitud:
+
+        <span
+            id="latitud"
+            class="valor">
+            ---
+        </span>
+
+    </div>
+
+
+    <div class="dato">
+
+        Longitud:
+
+        <span
+            id="longitud"
+            class="valor">
+            ---
+        </span>
+
+    </div>
+
+
+    <div class="dato">
+
+        Timestamp GPS:
+
+        <span
+            id="gps"
+            class="valor">
+            ---
+        </span>
+
+    </div>
+
+
+    <div class="dato">
+
+        Timestamp recepción:
+
+        <span
+            id="recepcion"
+            class="valor">
+            ---
+        </span>
+
+    </div>
+
+
+    <div id="estado">
+
+        Esperando datos...
+
+    </div>
+
+
+    <script>
+
+        async function actualizarUbicacion() {
+
+            try {
+
+                const respuesta =
+                    await fetch("/api/ultima-ubicacion");
+
+
+                if (!respuesta.ok) {
+
+                    throw new Error(
+                        "No hay datos"
+                    );
+
+                }
+
+
+                const datos =
+                    await respuesta.json();
+
+
+                // Actualizar solamente los valores
+
+                document.getElementById("ip")
+                    .textContent =
+                    datos.ip_origen;
+
+
+                document.getElementById("latitud")
+                    .textContent =
+                    datos.latitud;
+
+
+                document.getElementById("longitud")
+                    .textContent =
+                    datos.longitud;
+
+
+                document.getElementById("gps")
+                    .textContent =
+                    datos.timestamp_gps;
+
+
+                document.getElementById("recepcion")
+                    .textContent =
+                    datos.timestamp_recepcion;
+
+
+                document.getElementById("estado")
+                    .textContent =
+                    "Última actualización: " +
+                    new Date().toLocaleTimeString();
+
+
+            } catch (error) {
+
+                document.getElementById("estado")
+                    .textContent =
+                    "Esperando ubicación...";
+
+            }
+
+        }
+
+
+        // Obtener inmediatamente
+
+        actualizarUbicacion();
+
+
+        // Actualizar cada 2 segundos
+
+        setInterval(
+            actualizarUbicacion,
+            10000
+        );
+
+    </script>
+
+
+</body>
+
+</html>
