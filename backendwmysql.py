@@ -1,26 +1,46 @@
 import socket
 from datetime import datetime
-import mysql.connector
 import re
+import psycopg2
+import boto3
+
+import os
+from dotenv import load_dotenv
+
+# Cargar variables del archivo .env
+load_dotenv()
 
 HOST = "0.0.0.0"
 PORT = 5000
 
 LOG_FILE = "ubicaciones_recibidas.log"
 
-# CONEXIÓN A MYSQL
 
-conexion = mysql.connector.connect(
-    host="localhost",
-    port=3306,
-    user="root",
-    password="example",
-    database="p1dbdiseno"
-)
+# CONEXION A RDS
+password = os.getenv("rdspass")
+print("la contrasena es",password)
 
-cursor = conexion.cursor()
-
-print("✓ Conectado a MySQL")
+conn = None
+try:
+    conn = psycopg2.connect(
+        host='database-diseno.censc0mwgvn8.us-east-1.rds.amazonaws.com',
+        port=5432,
+        database='dbdisenopostgres',
+        user='postgres',
+        password=password,
+        sslmode='verify-full',
+    sslrootcert='./global-bundle.pem'
+    )
+    cur = conn.cursor()
+    cur.execute('SELECT version();')
+    print(cur.fetchone()[0])
+    cur.close()
+except Exception as e:
+    print(f"Database error: {e}")
+    raise
+finally:
+    if conn:
+        conn.close()
 
 
 # SERVIDOR UDP
@@ -121,12 +141,12 @@ try:
             )
 
 
-            cursor.execute(
+            cur.execute(
                 sql,
                 valores
             )
 
-            conexion.commit()
+            conn.commit()
 
 
             print("Ubicación guardada en base de datos")
@@ -162,8 +182,8 @@ finally:
 
     servidor.close()
 
-    cursor.close()
+    cur.close()
 
-    conexion.close()
+    conn.close()
 
     print("Conexión terminada.")
