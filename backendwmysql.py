@@ -32,13 +32,9 @@ try:
     cur = conn.cursor()
     cur.execute('SELECT version();')
     print(cur.fetchone()[0])
-    cur.close()
 except Exception as e:
     print(f"Database error: {e}")
     raise
-finally:
-    if conn:
-        conn.close()
 
 
 # SERVIDOR UDP
@@ -115,7 +111,7 @@ try:
             print(f"GPS: {timestamp_gps}")
 
 
-            # INSERTAR EN MYSQL
+            # INSERTAR EN POSTGRESQL
 
             sql = """
                 INSERT INTO ubicaciones
