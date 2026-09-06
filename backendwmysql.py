@@ -2,7 +2,6 @@ import socket
 from datetime import datetime
 import re
 import psycopg2
-import boto3
 
 import os
 from dotenv import load_dotenv
@@ -18,14 +17,13 @@ LOG_FILE = "ubicaciones_recibidas.log"
 
 # CONEXION A RDS
 password = os.getenv("rdspass")
-print("la contrasena es",password)
 
 conn = None
 try:
     conn = psycopg2.connect(
-        host='database-diseno.censc0mwgvn8.us-east-1.rds.amazonaws.com',
+        host='dbdisenop2.censc0mwgvn8.us-east-1.rds.amazonaws.com',
         port=5432,
-        database='dbdisenopostgres',
+        database='p2database',
         user='postgres',
         password=password,
         sslmode='verify-full',
