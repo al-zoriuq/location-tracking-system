@@ -17,14 +17,18 @@ LOG_FILE = "ubicaciones_recibidas.log"
 
 # CONEXION A RDS
 password = os.getenv("rdspass")
+host = os.getenv("rdshost")
+database = os.getenv("rdsdbname")
+user = os.getenv("rdsuser")
+
 
 conn = None
 try:
     conn = psycopg2.connect(
-        host='dbdisenop2.censc0mwgvn8.us-east-1.rds.amazonaws.com',
+        host=host,
         port=5432,
-        database='p2database',
-        user='postgres',
+        database=database,
+        user=user,
         password=password,
         sslmode='verify-full',
     sslrootcert='./global-bundle.pem'
