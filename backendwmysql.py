@@ -2,7 +2,6 @@ import socket
 from datetime import datetime
 import re
 import psycopg2
-import boto3
 
 import os
 from dotenv import load_dotenv
@@ -18,15 +17,18 @@ LOG_FILE = "ubicaciones_recibidas.log"
 
 # CONEXION A RDS
 password = os.getenv("rdspass")
-print("la contrasena es",password)
+host = os.getenv("rdshost")
+database = os.getenv("rdsdbname")
+user = os.getenv("rdsuser")
+
 
 conn = None
 try:
     conn = psycopg2.connect(
-        host='database-diseno.censc0mwgvn8.us-east-1.rds.amazonaws.com',
+        host=host,
         port=5432,
-        database='dbdisenopostgres',
-        user='postgres',
+        database=database,
+        user=user,
         password=password,
         sslmode='verify-full',
     sslrootcert='./global-bundle.pem'
@@ -34,13 +36,9 @@ try:
     cur = conn.cursor()
     cur.execute('SELECT version();')
     print(cur.fetchone()[0])
-    cur.close()
 except Exception as e:
     print(f"Database error: {e}")
     raise
-finally:
-    if conn:
-        conn.close()
 
 
 # SERVIDOR UDP
@@ -117,7 +115,7 @@ try:
             print(f"GPS: {timestamp_gps}")
 
 
-            # INSERTAR EN MYSQL
+            # INSERTAR EN POSTGRESQL
 
             sql = """
                 INSERT INTO ubicaciones
