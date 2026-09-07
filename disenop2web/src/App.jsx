@@ -25,9 +25,7 @@ function App() {
   useEffect(() => {
     const obtenerUbicacion = async () => {
       try {
-        const response = await fetch(
-          "http://192.168.20.19:80/api/ultima-ubicacion",
-        );
+        const response = await fetch("/api/ultima-ubicacion");
 
         const data = await response.json();
 
