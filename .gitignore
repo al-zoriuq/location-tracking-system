@@ -1,5 +1,2 @@
+ubicaciones_recibidas.log
 .env
-venv/
-*.pem
-__pycache__/
-*.log
