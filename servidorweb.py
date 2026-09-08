@@ -1,50 +1,29 @@
-from flask import Flask, jsonify, send_from_directory
-from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from flask import Flask, jsonify, render_template
+import mysql.connector
 
 app = Flask(__name__)
-CORS(app)
 
 
-password = os.getenv("rdspass")
-host = os.getenv("rdshost")
-database = os.getenv("rdsdbname")
-user = os.getenv("rdsuser")
 
-BUILD_FOLDER = os.path.join(
-    os.path.dirname(__file__),
-    "disenop2web",
-    "dist"
-)
+# CONEXIÓN A MYSQL
+
+def obtener_conexion():
+
+    return mysql.connector.connect(
+        host="localhost",
+        port=3306,
+        user="root",
+        password="example",
+        database="p1dbdiseno"
+    )
+
+
+# PÁGINA PRINCIPAL
 
 @app.route("/")
 def inicio():
 
-    return send_from_directory(BUILD_FOLDER, "index.html")
-
-@app.route("/<path:path>")
-def archivos_react(path):
-    return send_from_directory(BUILD_FOLDER, path)
-
-# CONEXIÓN A POSTGRESQL
-
-def obtener_conexion():
-
-    return psycopg2.connect(
-        host=host,
-        port=5432,
-        database=database,
-        user=user,
-        password=password,
-        sslmode='verify-full',
-    sslrootcert='./global-bundle.pem'
-    )
-
+    return render_template("index.html")
 
 
 # API - ÚLTIMA UBICACIÓN
@@ -54,7 +33,7 @@ def ultima_ubicacion():
 
     conexion = obtener_conexion()
 
-    cursor = conexion.cursor(cursor_factory=RealDictCursor)
+    cursor = conexion.cursor(dictionary=True)
 
     cursor.execute("""
         SELECT
@@ -99,7 +78,7 @@ def ultima_ubicacion():
 if __name__ == "__main__":
 
     app.run(
-        host="127.0.0.1",
-        port=5001,
+        host="0.0.0.0",
+        port=80,
         debug=True
     )

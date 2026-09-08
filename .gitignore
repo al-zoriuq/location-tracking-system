@@ -1,6 +1,2 @@
 ubicaciones_recibidas.log
 .env
-node_modules
-global-bundle.pem
-__pycache__/
-venv/
