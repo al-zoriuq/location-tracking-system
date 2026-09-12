@@ -19,8 +19,12 @@ jobs:
             git fetch origin
             git checkout ci-cd-deploy
             git pull origin ci-cd-deploy
+            source venv/bin/activate
+            pip install -r requirements.txt
             cd disenop2web
             npm install
             npm run build
-            sudo systemctl restart vite-preview
+            cd ..
+            sudo systemctl restart sniffer
             sudo systemctl restart gunicorn
+            sudo systemctl restart vite-preview
