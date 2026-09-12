@@ -1,0 +1,46 @@
+name: Deploy to /test/
+
+on:
+  push:
+    branches: [sthefany-test]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/location-tracking-system-test
+            git fetch origin
+            git checkout sthefany-test
+            git pull origin sthefany-test
+            source venv/bin/activate
+            pip install -r requirements.txt
+            cd disenop2web
+            npm install
+            npm run build
+            cd ..
+            sudo systemctl restart gunicorn-location-test
