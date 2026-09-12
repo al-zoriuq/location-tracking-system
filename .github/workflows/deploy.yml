@@ -30,8 +30,8 @@ jobs:
             sudo cp deploy/gunicorn.service /etc/systemd/system/gunicorn.service
             sudo cp deploy/vite-preview.service /etc/systemd/system/vite-preview.service
             sudo cp deploy/sniffer.service /etc/systemd/system/sniffer.service
-            sudo cp deploy/nginx.conf /etc/nginx/sites-enabled/default
-            sudo sed -i "s/server_name _;/server_name ${{ secrets.EC2_DOMAIN }};/" /etc/nginx/sites-enabled/default
+            sudo cp deploy/nginx.conf /etc/nginx/sites-available/location-tracker
+            sudo sed -i "s/server_name _;/server_name ${{ secrets.EC2_DOMAIN }};/" /etc/nginx/sites-available/location-tracker
             sudo nginx -t
             sudo systemctl daemon-reload
             sudo systemctl restart sniffer
