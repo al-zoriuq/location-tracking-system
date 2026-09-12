@@ -23,4 +23,5 @@ jobs:
             npm install
             npm run build
             pkill -f "vite preview" || true
-            nohup npm run preview -- --host > /home/ubuntu/preview.log 2>&1 &
+            setsid nohup npm run preview -- --host > /home/ubuntu/preview.log 2>&1 < /dev/null &
+            disown
