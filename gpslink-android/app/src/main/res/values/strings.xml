@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">GPSLink</string>
+    <string name="servidor_no_definido">IP(s) predeterminada(s): no definida(s)</string>
+    <string name="hint_servidor">Ej: 181.52.34.10;190.60.10.20</string>
+    <string name="guardar_servidor">Guardar como predeterminado</string>
+    <string name="enviar_ubicacion">Enviar ubicación ahora</string>
+</resources>
