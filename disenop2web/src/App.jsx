@@ -28,6 +28,7 @@ function App() {
       "marcelamgps.duckdns.org": "Marcela",
       "tauficgps.duckdns.org": "Taufic",
       "sthefanygps.duckdns.org": "Sthefany",
+      "albagps.dusckdns.org": "Alba",
     };
     const host = window.location.hostname;
     document.title = `GPSLink - ${nombresPorDominio[host] || "GPSLink"}`;
