@@ -1,0 +1,14 @@
+[Unit]
+Description=Vite Preview Server - GPSLink
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/location-tracking-system/disenop2web
+ExecStart=/usr/bin/npm run preview -- --host
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
