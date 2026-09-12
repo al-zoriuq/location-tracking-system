@@ -1,27 +1,9 @@
-name: Deploy to EC2
-
-on:
-  push:
-    branches: [ci-cd-deploy]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /home/ubuntu/location-tracking-system
-            git fetch origin
-            git checkout ci-cd-deploy
-            git pull origin ci-cd-deploy
-            cd disenop2web
-            npm install
-            npm run build
-            pkill -f "vite preview" || true
-            setsid nohup npm run preview -- --host > /home/ubuntu/preview.log 2>&1 < /dev/null &
-            disown
+script: |
+  cd /home/ubuntu/location-tracking-system
+  git fetch origin
+  git checkout ci-cd-deploy
+  git pull origin ci-cd-deploy
+  cd disenop2web
+  npm install
+  npm run build
+  sudo systemctl restart vite-preview
