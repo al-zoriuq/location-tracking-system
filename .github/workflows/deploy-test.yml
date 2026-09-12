@@ -22,7 +22,7 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
 
-   deploy:
+  deploy:
     needs: test
     runs-on: ubuntu-latest
     steps:
