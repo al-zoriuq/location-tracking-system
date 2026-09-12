@@ -23,16 +23,10 @@ function App() {
   const [location, setLocation] = useState(null);
   const fechaGPS = location ? new Date(location.timestamp_gps) : null;
 
-  useEffect(() => {
-    const nombresPorDominio = {
-      "marcelamgps.duckdns.org": "Marcela",
-      "tauficgps.duckdns.org": "Taufic",
-      "sthefanygps.duckdns.org": "Sthefany",
-      "albagps.dusckdns.org": "Alba",
-    };
-    const host = window.location.hostname;
-    document.title = `GPSLink - ${nombresPorDominio[host] || "GPSLink"}`;
-  }, []);
+useEffect(() => {
+  const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+  document.title = `GPSLink - ${nombre}`;
+}, []);
 
   useEffect(() => {
     const obtenerUbicacion = async () => {
