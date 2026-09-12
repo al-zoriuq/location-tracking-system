@@ -23,9 +23,31 @@ jobs:
         run: pytest tests/ -v
 
   deploy:
-    needs: test
+    needs: test  # Solo corre si el job "test" pasó
     runs-on: ubuntu-latest
     steps:
+      # Le da a este job permiso temporal para hablar con la API de AWS
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1  # <- confirmar región real de la EC2
+
+      # Detecta la IP pública del runner de GitHub que está corriendo ahora mismo
+      - name: Get runner public IP
+        id: ip
+        run: echo "ip=$(curl -s https://checkip.amazonaws.com)/32" >> "$GITHUB_OUTPUT"
+
+      # Abre el puerto 22 (SSH) SOLO para esa IP, únicamente por la duración de este job
+      - name: Open SSH port for this runner
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id sg-040f40fef53b4b9f5 \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
+
+      # Se conecta por SSH a la EC2 y actualiza + reinicia el entorno de /test/
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -33,13 +55,6 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "=== DIAGNOSTICO ==="
-            whoami
-            hostname
-            echo "HOME=$HOME"
-            pwd
-            ls -la "$HOME"
-            echo "=== FIN DIAGNOSTICO ==="
             cd /home/ubuntu/location-tracking-system-test
             git fetch origin
             git checkout sthefany-test
@@ -51,3 +66,12 @@ jobs:
             npm run build
             cd ..
             sudo systemctl restart gunicorn-location-test
+
+      # Cierra el puerto 22 otra vez, pase lo que pase (incluso si el deploy falló arriba)
+      - name: Close SSH port for this runner
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id sg-040f40fef53b4b9f5 \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
