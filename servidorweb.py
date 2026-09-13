@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -92,6 +92,38 @@ def ultima_ubicacion():
 
 
     return jsonify(ubicacion)
+
+
+# API - HISTORIAL DE UBICACIONES (para dibujar la ruta)
+
+@app.route("/api/historial-ubicaciones")
+def historial_ubicaciones():
+
+    horas = request.args.get("horas", default=24, type=int)
+
+    conexion = obtener_conexion()
+
+    cursor = conexion.cursor(cursor_factory=RealDictCursor)
+
+    cursor.execute("""
+        SELECT
+            latitud,
+            longitud,
+            timestamp_gps
+        FROM ubicaciones
+        WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
+        ORDER BY timestamp_gps ASC
+    """, (horas,))
+
+    ubicaciones = cursor.fetchall()
+
+    cursor.close()
+    conexion.close()
+
+    for u in ubicaciones:
+        u["timestamp_gps"] = str(u["timestamp_gps"])
+
+    return jsonify(ubicaciones)
 
 
 # INICIAR SERVIDOR
