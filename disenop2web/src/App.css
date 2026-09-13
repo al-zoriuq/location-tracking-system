@@ -19,11 +19,12 @@
   box-sizing: border-box;
 }
 
-/* Force html/body/root to take the full viewport height.
-   Without this, percentage heights (100%) and vh units below the root
-   can collapse and the page can appear "cut off" in fullscreen mode. */
+/* Force html/body/root to fill the full viewport, both height and width.
+   Height alone isn't enough: without width:100%, the browser can leave
+   blank space on the right when the window is wider than the content. */
 html, body, #root {
   height: 100%;
+  width: 100%;
   margin: 0;
 }
 
@@ -36,6 +37,7 @@ body {
 /* Root app container: fills the screen and stacks topbar + main vertically */
 .app {
   height: 100%;
+  width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
