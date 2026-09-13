@@ -1,16 +1,16 @@
 /* ============ Design tokens (colors, fonts) ============ */
 :root {
-  --bg: #150e24;          /* page background: deep purple/navy */
-  --panel: #1e1533;       /* floating card background */
+  --bg: #150e24;           /* page background: deep purple/navy */
+  --panel: #1e1533;        /* floating card and sidebar item background */
   --panel-2: #241a3d;      /* alternate panel shade, currently unused but kept for future use */
-  --border: #3a2a5c;      /* border color used on cards and dividers */
-  --text: #f3eefb;        /* primary text color */
-  --text-dim: #a897c9;    /* secondary/muted text color (labels, meta info) */
-  --accent: #b37feb;      /* primary accent: current-position marker, route line */
-  --accent-2: #FA8FF3;    /* secondary accent: start-of-route marker */
-  --status-fresh: #4ade80;  /* status dot: data received within the last 2 minutes */
-  --status-medium: #fbbf24; /* status dot: data is somewhat recent (under 1 hour) */
-  --status-old: #6b6280;    /* status dot: data is stale (over 1 hour, or none) */
+  --border: #3a2a5c;       /* border color used on cards, dividers, sidebar rows */
+  --text: #f3eefb;         /* primary text color */
+  --text-dim: #a897c9;     /* secondary/muted text color (labels, meta info) */
+  --accent: #b37feb;       /* primary accent: current-position marker, route line */
+  --accent-2: #D0BBFC;     /* secondary accent: start-of-route marker */
+  --status-fresh: #4ade80;   /* status dot: data received within the last 2 minutes */
+  --status-medium: #fbbf24;  /* status dot: data is somewhat recent (under 1 hour) */
+  --status-old: #6b6280;     /* status dot: data is stale (over 1 hour, or none) */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
   --font-mono: "IBM Plex Mono", monospace;      /* numeric data: coordinates, dates, times */
 }
@@ -94,7 +94,7 @@ body {
   box-shadow: 0 0 0 4px rgba(107, 98, 128, 0.18);
 }
 
-/* ============ Main area (holds the map + floating panels) ============ */
+/* ============ Main area: map (flexible width) + sidebar (fixed width) ============ */
 .main {
   position: relative;
   flex: 1;       /* take all remaining vertical space after the topbar */
@@ -103,7 +103,7 @@ body {
 }
 
 .map {
-  width: 100%;
+  flex: 1; /* map takes all remaining horizontal space next to the sidebar */
   height: 100%;
   min-height: 480px;
   z-index: 0;
@@ -115,7 +115,7 @@ body {
   filter: invert(92%) hue-rotate(225deg) brightness(0.85) contrast(0.9) saturate(0.6);
 }
 
-/* ============ Floating info panel (top-left) ============ */
+/* ============ Floating info panel (top-left, over the map) ============ */
 .panel {
   position: absolute;
   top: 20px;
@@ -139,7 +139,8 @@ body {
   margin: 0 0 14px;
 }
 
-/* Each coordinate row: small label ("Lat"/"Lon") + the actual number */
+/* Each coordinate row: small label ("Lat"/"Lon") + the actual number.
+   Reused both in the floating panel (normal size) and the sidebar list (small size). */
 .coord-row {
   display: flex;
   align-items: baseline;
@@ -147,6 +148,12 @@ body {
   font-family: var(--font-mono);
   font-size: 20px;
   color: var(--accent);
+}
+
+/* Smaller variant used inside each sidebar list item, since space there is tighter */
+.coord-row.small {
+  font-size: 14px;
+  margin-bottom: 2px;
 }
 
 .coord-label {
@@ -174,7 +181,7 @@ body {
   opacity: 0.7;
 }
 
-/* ============ Legend (bottom-left, explains marker colors) ============ */
+/* ============ Legend (bottom-left, over the map) ============ */
 .legend {
   position: absolute;
   bottom: 24px;
@@ -196,10 +203,15 @@ body {
   gap: 6px;
 }
 
+/* Base dot used both in the legend and in each sidebar item's header.
+   Defaults to a neutral border color for "middle" points that are neither
+   the start nor the current position. */
 .legend-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border);
 }
 
 .legend-dot.start {
@@ -250,7 +262,73 @@ body {
   font-size: 15px;
 }
 
-/* ============ Mobile adjustments ============ */
+/* ============ Sidebar: point-by-point history list (right side) ============ */
+.sidebar {
+  width: 320px;
+  flex-shrink: 0; /* never let the map's flex:1 squeeze the sidebar out */
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 5; /* below the floating panel/legend, but that's fine, they don't overlap */
+}
+
+.sidebar-title {
+  margin: 0;
+  padding: 16px 20px;
+  font-size: 13px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; /* title stays fixed while the list below scrolls */
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto; /* scroll independently if there are many points */
+  padding: 8px 0;
+}
+
+.sidebar-item {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sidebar-item-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.sidebar-item-ip {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* ============ Mobile / narrow-screen adjustments ============ */
+@media (max-width: 900px) {
+  /* Stack the sidebar below the map instead of beside it */
+  .main {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    max-height: 240px; /* cap its height so the map keeps most of the screen */
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
 @media (max-width: 640px) {
   .panel {
     left: 12px;
