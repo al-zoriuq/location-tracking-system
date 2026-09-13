@@ -1,0 +1,97 @@
+name: Deploy to Production (all servers)
+
+# Triggers automatically whenever someone pushes to the main branch
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast: false ensures that if one person's deployment fails,
+      # it does NOT cancel the deployments for the others
+      fail-fast: false
+      matrix:
+        include:
+          # --- Sthefany's server ---
+          - persona: sthefany
+            host_secret: EC2_HOST_STHEFANY
+            user_secret: EC2_USER_STHEFANY
+            key_secret: EC2_SSH_KEY_STHEFANY
+            aws_key_secret: AWS_ACCESS_KEY_ID
+            aws_secret_secret: AWS_SECRET_ACCESS_KEY
+            sg_id: sg-040f40fef53b4b9f5
+
+          # --- Taufic's server ---
+          - persona: taufic
+            host_secret: EC2_HOST_TAUFIC
+            user_secret: EC2_USER_TAUFIC
+            key_secret: EC2_SSH_KEY_TAUFIC
+            aws_key_secret: AWS_ACCESS_KEY_ID_TAUFIC
+            aws_secret_secret: AWS_SECRET_ACCESS_KEY_TAUFIC
+            sg_id: sg-0c4e91a324e3145e0
+
+          # To add a new person later, just add another block here
+          # following the same pattern (persona, host_secret, user_secret,
+          # key_secret, aws_key_secret, aws_secret_secret, sg_id)
+
+    steps:
+      # Step 1: Authenticate to AWS using this person's IAM credentials
+      - name: Configure AWS credentials (${{ matrix.persona }})
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets[matrix.aws_key_secret] }}
+          aws-secret-access-key: ${{ secrets[matrix.aws_secret_secret] }}
+          aws-region: us-east-1
+
+      # Step 2: Get the public IP of this GitHub Actions runner
+      # (this IP changes every run, so it must be fetched dynamically)
+      - name: Get runner public IP
+        id: ip
+        run: echo "ip=$(curl -s https://checkip.amazonaws.com)/32" >> "$GITHUB_OUTPUT"
+
+      # Step 3: Temporarily open port 22 (SSH) on this person's Security Group,
+      # allowing traffic only from this runner's IP
+      - name: Open SSH port for this runner
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ matrix.sg_id }} \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
+
+      # Step 4: Give AWS a few seconds to propagate the new firewall rule
+      # before attempting to connect (otherwise SSH may fail with a timeout)
+      - name: Wait for security group propagation
+        run: sleep 5
+
+      # Step 5: Connect via SSH and deploy the latest code from main
+      - name: Deploy to ${{ matrix.persona }}'s EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets[matrix.host_secret] }}
+          username: ${{ secrets[matrix.user_secret] }}
+          key: ${{ secrets[matrix.key_secret] }}
+          timeout: 60s
+          script: |
+            cd /home/ubuntu/location-tracking-system
+            git fetch origin
+            git checkout main
+            git pull origin main
+            source venv/bin/activate
+            pip install -r requirements.txt
+            cd disenop2web
+            npm install
+            npm run build
+            cd ..
+            sudo systemctl restart gunicorn-location
+
+      # Step 6: Close the SSH port again, regardless of whether the
+      # deployment succeeded or failed (if: always() guarantees this runs)
+      - name: Close SSH port for this runner
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ matrix.sg_id }} \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
