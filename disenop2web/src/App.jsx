@@ -46,8 +46,19 @@ function AjustarVista({ puntos }) {
   return null; // this component renders nothing visible, it only controls the map
 }
 
+// The backend stores timestamps in UTC (the EC2 server's system clock is UTC),
+// but they come back as plain strings with no timezone marker, e.g.
+// "2026-09-13 19:23:18.866782". JavaScript would otherwise assume that string
+// is already in the browser's local time, which would be wrong.
+// This explicitly marks it as UTC ("Z" suffix, ISO format), so toLocaleString/
+// toLocaleDateString/toLocaleTimeString later convert it correctly to
+// Colombia time (UTC-5). Shared by both the floating panel and the sidebar list.
+function parsearFechaUTC(timestampTexto) {
+  return new Date(timestampTexto.replace(" ", "T") + "Z");
+}
+
 // Given the timestamp of the last GPS reading, returns:
-// - a human-readable relative time string in Spanish ("hace 5 minutos", etc.)
+// - a human-readable relative time string in Spanish ("hace 5 min", etc.)
 // - a status tier ("fresh" | "medium" | "old") used to pick the status dot color
 function calcularEstado(fechaGPS) {
   if (!fechaGPS) {
@@ -81,20 +92,19 @@ function calcularEstado(fechaGPS) {
 
 function App() {
   const [location, setLocation] = useState(null); // latest GPS position from the API
-  const [ruta, setRuta] = useState([]); // full route history as an array of [lat, lng] pairs
+  const [historial, setHistorial] = useState([]); // full history: raw objects (lat, lon, ip, timestamp)
 
-  // The backend stores timestamps in UTC (the EC2 server's system clock is UTC),
-  // but they come back as plain strings with no timezone marker, e.g.
-  // "2026-09-13 19:23:18.866782". JavaScript would otherwise assume that string
-  // is already in the browser's local time, which would be wrong.
-  // We explicitly mark it as UTC ("Z" suffix, ISO format) so the Date object
-  // is correct, and toLocaleString/toLocaleDateString/toLocaleTimeString below
-  // then convert it properly to Colombia time (UTC-5) for display.
-  const fechaGPS = location
-    ? new Date(location.timestamp_gps.replace(" ", "T") + "Z")
-    : null;
-
+  // Parse the latest location's timestamp once, reused for the panel and the status dot
+  const fechaGPS = location ? parsearFechaUTC(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS); // { texto, tier } for the status indicator
+
+  // Derive just the [lat, lng] pairs from the raw history, for the Polyline/markers.
+  // Kept separate from `historial` because the sidebar list needs the full
+  // objects (ip_origen, timestamp), while the map only needs coordinate pairs.
+  const ruta = historial.map((punto) => [
+    Number(punto.latitud),
+    Number(punto.longitud),
+  ]);
 
   // Set the browser tab title once, using the person's name from the build-time env var
   useEffect(() => {
@@ -115,17 +125,12 @@ function App() {
       }
     };
 
-    // Fetch the recent history of points to draw the route line
+    // Fetch the recent history of points, used both for the route line and the sidebar list
     const obtenerHistorial = async () => {
       try {
         const response = await fetch(import.meta.env.BASE_URL + "api/historial-ubicaciones");
         const data = await response.json();
-        // Convert API objects into [lat, lng] pairs, the format react-leaflet expects
-        const puntos = data.map((punto) => [
-          Number(punto.latitud),
-          Number(punto.longitud),
-        ]);
-        setRuta(puntos);
+        setHistorial(data); // keep the raw objects; we need ip_origen and timestamp per point
       } catch (error) {
         console.error("Error obteniendo historial:", error);
       }
@@ -135,8 +140,7 @@ function App() {
     obtenerUbicacion();
     obtenerHistorial();
 
-    // Then repeat every 10 seconds. This also keeps the "hace X" text
-    // reasonably up to date, since it recalculates on every refresh.
+    // Then repeat every 10 seconds
     const intervalo = setInterval(() => {
       obtenerUbicacion();
       obtenerHistorial();
@@ -147,6 +151,10 @@ function App() {
   }, []);
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+
+  // Sidebar list: most recent point first (reverse of the chronological
+  // order used for the route line, which goes oldest -> newest)
+  const historialReciente = [...historial].reverse();
 
   return (
     <div className="app">
@@ -227,6 +235,45 @@ function App() {
                 icon={iconoActual}
               />
             </MapContainer>
+
+            {/* Sidebar: scrollable list of every recorded point, most recent first.
+                Shows the same fields as the floating panel (lat, lon, date, time, IP)
+                but as a running log instead of just the latest point. */}
+            <aside className="sidebar">
+              <p className="sidebar-title">Historial de puntos ({historialReciente.length})</p>
+              <div className="sidebar-list">
+                {historialReciente.map((punto, index) => {
+                  const fecha = parsearFechaUTC(punto.timestamp_gps);
+                  // In the reversed list: last item = oldest = start of route,
+                  // first item = newest = current position
+                  const esInicio = index === historialReciente.length - 1;
+                  const esActual = index === 0;
+                  return (
+                    <div className="sidebar-item" key={index}>
+                      <div className="sidebar-item-header">
+                        {/* Colored dot matches the marker color on the map:
+                            gold for start, purple for current, neutral for the rest */}
+                        <span
+                          className={`legend-dot ${esInicio ? "start" : esActual ? "current" : ""}`}
+                        ></span>
+                        <span className="sidebar-item-time">
+                          {fecha.toLocaleDateString("es-CO")} · {fecha.toLocaleTimeString("es-CO")}
+                        </span>
+                      </div>
+                      <div className="coord-row small">
+                        <span className="coord-label">Lat</span>
+                        <span>{Number(punto.latitud).toFixed(4)}</span>
+                      </div>
+                      <div className="coord-row small">
+                        <span className="coord-label">Lon</span>
+                        <span>{Number(punto.longitud).toFixed(4)}</span>
+                      </div>
+                      <p className="sidebar-item-ip">IP: {punto.ip_origen}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </aside>
           </>
         ) : (
           <p className="empty-state">Cargando ubicación...</p>
