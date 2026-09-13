@@ -46,10 +46,44 @@ function AjustarVista({ puntos }) {
   return null; // this component renders nothing visible, it only controls the map
 }
 
+// Given the timestamp of the last GPS reading, returns:
+// - a human-readable relative time string in Spanish ("hace 5 minutos", etc.)
+// - a status tier ("fresh" | "stale" | "old") used to pick the status dot color
+function calcularEstado(fechaGPS) {
+  if (!fechaGPS) {
+    return { texto: "sin datos", tier: "old" };
+  }
+
+  const ahora = new Date();
+  const diffMs = ahora - fechaGPS;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHoras = Math.floor(diffMin / 60);
+  const diffDias = Math.floor(diffHoras / 24);
+
+  // Fresh: 2 minutes or less -> show as "en línea"
+  if (diffMin <= 2) {
+    return { texto: "en línea", tier: "fresh" };
+  }
+
+  // Medium: under an hour -> show exact minutes
+  if (diffMin < 60) {
+    return { texto: `hace ${diffMin} min`, tier: "medium" };
+  }
+
+  // Stale: under a day -> show exact hours
+  if (diffHoras < 24) {
+    return { texto: `hace ${diffHoras} h`, tier: "old" };
+  }
+
+  // Very stale: show days
+  return { texto: `hace ${diffDias} d`, tier: "old" };
+}
+
 function App() {
   const [location, setLocation] = useState(null); // latest GPS position from the API
   const [ruta, setRuta] = useState([]); // full route history as an array of [lat, lng] pairs
   const fechaGPS = location ? new Date(location.timestamp_gps) : null;
+  const estado = calcularEstado(fechaGPS); // { texto, tier } for the status indicator
 
   // Set the browser tab title once, using the person's name from the build-time env var
   useEffect(() => {
@@ -90,7 +124,8 @@ function App() {
     obtenerUbicacion();
     obtenerHistorial();
 
-    // Then repeat every 10 seconds
+    // Then repeat every 10 seconds. This also keeps the "hace X" text
+    // reasonably up to date, since it recalculates on every refresh.
     const intervalo = setInterval(() => {
       obtenerUbicacion();
       obtenerHistorial();
@@ -104,14 +139,14 @@ function App() {
 
   return (
     <div className="app">
-      {/* Top bar: app name + person's name + online status indicator */}
+      {/* Top bar: app name + person's name + status indicator (dot + relative time) */}
       <div className="topbar">
         <div className="brand">
           GPSLink <span>· {nombre}</span>
         </div>
         <div className="status">
-          <span className="dot"></span>
-          {location ? "en línea" : "sin datos"}
+          <span className={`dot dot-${estado.tier}`}></span>
+          {estado.texto}
         </div>
       </div>
 
