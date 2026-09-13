@@ -1,39 +1,51 @@
+/* ============ Design tokens (colors, fonts) ============ */
 :root {
-  --bg: #150e24;
-  --panel: #1e1533;
-  --panel-2: #241a3d;
-  --border: #3a2a5c;
-  --text: #f3eefb;
-  --text-dim: #a897c9;
-  --accent: #b37feb;
-  --accent-2: #f0a6e0;
-  --font-display: "Space Grotesk", sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  --bg: #150e24;          /* page background: deep purple/navy */
+  --panel: #1e1533;       /* floating card background */
+  --panel-2: #241a3d;      /* alternate panel shade, currently unused but kept for future use */
+  --border: #3a2a5c;      /* border color used on cards and dividers */
+  --text: #f3eefb;        /* primary text color */
+  --text-dim: #a897c9;    /* secondary/muted text color (labels, meta info) */
+  --accent: #b37feb;      /* primary accent: current-position marker, route line, status dot */
+  --accent-2: #ffd166;    /* secondary accent: start-of-route marker, chosen for high contrast */
+  --font-display: "Space Grotesk", sans-serif; /* headings and general text */
+  --font-mono: "IBM Plex Mono", monospace;      /* numeric data: coordinates, dates, times */
 }
 
 * {
   box-sizing: border-box;
 }
 
-body {
+/* Force html/body/root to take the full viewport height.
+   Without this, percentage heights (100%) and vh units below the root
+   can collapse and the page can appear "cut off" in fullscreen mode. */
+html, body, #root {
+  height: 100%;
   margin: 0;
+}
+
+body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-display);
 }
 
+/* Root app container: fills the screen and stacks topbar + main vertically */
 .app {
+  height: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
+/* ============ Top bar ============ */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 18px 24px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0; /* never shrink the topbar, even if content below is tall */
 }
 
 .topbar .brand {
@@ -55,18 +67,21 @@ body {
   color: var(--text-dim);
 }
 
+/* Small glowing dot next to "en línea" / "sin datos" */
 .status .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent-2);
-  box-shadow: 0 0 0 4px rgba(240, 166, 224, 0.15);
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(179, 127, 235, 0.15);
 }
 
+/* ============ Main area (holds the map + floating panels) ============ */
 .main {
   position: relative;
-  flex: 1;
+  flex: 1;       /* take all remaining vertical space after the topbar */
   display: flex;
+  min-height: 0; /* IMPORTANT: allows flex children to shrink properly instead of overflowing */
 }
 
 .map {
@@ -76,15 +91,18 @@ body {
   z-index: 0;
 }
 
+/* CSS trick to recolor the free OpenStreetMap tiles into a dark/purple theme,
+   without needing a paid map provider or API key. */
 .map .leaflet-tile-pane {
   filter: invert(92%) hue-rotate(225deg) brightness(0.85) contrast(0.9) saturate(0.6);
 }
 
+/* ============ Floating info panel (top-left) ============ */
 .panel {
   position: absolute;
   top: 20px;
   left: 20px;
-  z-index: 10;
+  z-index: 10; /* sit above the map tiles */
   width: 260px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -99,12 +117,25 @@ body {
   margin: 0 0 10px;
 }
 
-.panel .coords {
+.coords {
+  margin: 0 0 14px;
+}
+
+/* Each coordinate row: small label ("Lat"/"Lon") + the actual number */
+.coord-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-family: var(--font-mono);
   font-size: 20px;
-  line-height: 1.4;
-  margin: 0 0 14px;
   color: var(--accent);
+}
+
+.coord-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 24px;     /* fixed width so "Lat" and "Lon" line up vertically */
+  flex-shrink: 0;
 }
 
 .panel .meta {
@@ -125,6 +156,7 @@ body {
   opacity: 0.7;
 }
 
+/* ============ Legend (bottom-left, explains marker colors) ============ */
 .legend {
   position: absolute;
   bottom: 24px;
@@ -153,13 +185,16 @@ body {
 }
 
 .legend-dot.start {
-  background: var(--accent-2);
+  background: var(--accent-2); /* gold, matches the start marker */
 }
 
 .legend-dot.current {
-  background: var(--accent);
+  background: var(--accent); /* purple, matches the current-position marker */
 }
 
+/* ============ Map markers ============ */
+
+/* Current position: purple circle with a soft pulsing glow animation */
 .marker-current {
   width: 18px;
   height: 18px;
@@ -170,6 +205,7 @@ body {
   animation: pulse 2s ease-in-out infinite;
 }
 
+/* Start of route: gold circle, static (no animation), for contrast against the current marker */
 .marker-start {
   width: 12px;
   height: 12px;
@@ -178,6 +214,7 @@ body {
   border: 2px solid var(--bg);
 }
 
+/* Pulsing glow animation used by the current-position marker */
 @keyframes pulse {
   0%, 100% {
     box-shadow: 0 0 0 6px rgba(179, 127, 235, 0.3);
@@ -187,6 +224,7 @@ body {
   }
 }
 
+/* Shown while the first API call hasn't returned data yet */
 .empty-state {
   margin: auto;
   text-align: center;
@@ -194,12 +232,13 @@ body {
   font-size: 15px;
 }
 
+/* ============ Mobile adjustments ============ */
 @media (max-width: 640px) {
   .panel {
     left: 12px;
     right: 12px;
     top: 12px;
-    width: auto;
+    width: auto; /* let the panel stretch full width on small screens */
   }
 
   .legend {
