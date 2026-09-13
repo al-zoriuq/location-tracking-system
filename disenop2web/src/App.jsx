@@ -46,6 +46,8 @@ function App() {
 
   return (
     <div className="centrado">
+      <p>test 13-sep</p>
+
       {location && (
         <>
           <p>IP: {location.ip_origen}</p>
