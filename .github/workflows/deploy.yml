@@ -8,7 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
+      - name: Deploy to Marcela's EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -31,10 +31,42 @@ jobs:
             sudo cp deploy/vite-preview.service /etc/systemd/system/vite-preview.service
             sudo cp deploy/sniffer.service /etc/systemd/system/sniffer.service
             sudo cp deploy/nginx.conf /etc/nginx/sites-enabled/default
-            sudo sed -i "s/DOMAIN_PLACEHOLDER/${{ secrets.EC2_DOMAIN_MARCELA }}/g; s/server_name _;/server_name ${{ secrets.EC2_DOMAIN_MARCELA }};/g" /etc/nginx/sites-enabled/default
+            sudo sed -i "s/DOMAIN_PLACEHOLDER/${{ secrets.EC2_DOMAIN }}/g; s/server_name _;/server_name ${{ secrets.EC2_DOMAIN }};/g" /etc/nginx/sites-enabled/default
             sudo nginx -t
             sudo systemctl daemon-reload
             sudo systemctl restart sniffer
             sudo systemctl restart gunicorn
             sudo systemctl restart vite-preview
             sudo systemctl reload nginx
+
+      - name: Deploy to Alba's EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST_ALBA }}
+          username: ${{ secrets.EC2_USER_ALBA }}
+          key: ${{ secrets.EC2_SSH_KEY_ALBA }}
+          script: |
+            cd /home/ubuntu/location-tracking-system
+            git fetch origin
+            git checkout ci-cd-deploy
+            git pull origin ci-cd-deploy
+            source venv/bin/activate
+            pip install -r requirements.txt
+            cd disenop2web
+            npm install
+            npm run build
+            cd ..
+            sudo mkdir -p /var/www/certbot
+            sudo apt-get install -y certbot python3-certbot-nginx
+            sudo cp deploy/gunicorn.service /etc/systemd/system/gunicorn.service
+            sudo cp deploy/vite-preview.service /etc/systemd/system/vite-preview.service
+            sudo cp deploy/sniffer.service /etc/systemd/system/sniffer.service
+            sudo cp deploy/nginx.conf /etc/nginx/sites-enabled/default
+            sudo sed -i "s/DOMAIN_PLACEHOLDER/${{ secrets.EC2_DOMAIN_ALBA }}/g; s/server_name _;/server_name ${{ secrets.EC2_DOMAIN_ALBA }};/g" /etc/nginx/sites-enabled/default
+            sudo nginx -t
+            sudo systemctl daemon-reload
+            sudo systemctl restart sniffer
+            sudo systemctl restart gunicorn
+            sudo systemctl restart vite-preview
+            sudo systemctl reload nginx
+       
