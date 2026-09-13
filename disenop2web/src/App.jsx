@@ -48,7 +48,7 @@ function AjustarVista({ puntos }) {
 
 // Given the timestamp of the last GPS reading, returns:
 // - a human-readable relative time string in Spanish ("hace 5 minutos", etc.)
-// - a status tier ("fresh" | "stale" | "old") used to pick the status dot color
+// - a status tier ("fresh" | "medium" | "old") used to pick the status dot color
 function calcularEstado(fechaGPS) {
   if (!fechaGPS) {
     return { texto: "sin datos", tier: "old" };
@@ -82,7 +82,18 @@ function calcularEstado(fechaGPS) {
 function App() {
   const [location, setLocation] = useState(null); // latest GPS position from the API
   const [ruta, setRuta] = useState([]); // full route history as an array of [lat, lng] pairs
-  const fechaGPS = location ? new Date(location.timestamp_gps) : null;
+
+  // The backend stores timestamps in UTC (the EC2 server's system clock is UTC),
+  // but they come back as plain strings with no timezone marker, e.g.
+  // "2026-09-13 19:23:18.866782". JavaScript would otherwise assume that string
+  // is already in the browser's local time, which would be wrong.
+  // We explicitly mark it as UTC ("Z" suffix, ISO format) so the Date object
+  // is correct, and toLocaleString/toLocaleDateString/toLocaleTimeString below
+  // then convert it properly to Colombia time (UTC-5) for display.
+  const fechaGPS = location
+    ? new Date(location.timestamp_gps.replace(" ", "T") + "Z")
+    : null;
+
   const estado = calcularEstado(fechaGPS); // { texto, tier } for the status indicator
 
   // Set the browser tab title once, using the person's name from the build-time env var
