@@ -22,6 +22,12 @@ const iconoMarcador = new L.Icon({
 function App() {
   const [location, setLocation] = useState(null);
   const fechaGPS = location ? new Date(location.timestamp_gps) : null;
+
+  useEffect(() => {
+    const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+    document.title = `GPSLink - ${nombre}`;
+  }, []);
+
   useEffect(() => {
     const obtenerUbicacion = async () => {
       try {
