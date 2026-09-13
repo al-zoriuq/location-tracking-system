@@ -31,7 +31,7 @@ function App() {
   useEffect(() => {
     const obtenerUbicacion = async () => {
       try {
-        const response = await fetch("/api/ultima-ubicacion");
+        const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
 
         const data = await response.json();
 
