@@ -1,6 +1,6 @@
 import "./App.css";
 import { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline } from "react-leaflet";
 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -21,6 +21,7 @@ const iconoMarcador = new L.Icon({
 
 function App() {
   const [location, setLocation] = useState(null);
+  const [ruta, setRuta] = useState([]);
   const fechaGPS = location ? new Date(location.timestamp_gps) : null;
 
   useEffect(() => {
@@ -43,9 +44,30 @@ function App() {
       }
     };
 
-    obtenerUbicacion();
+    const obtenerHistorial = async () => {
+      try {
+        const response = await fetch(import.meta.env.BASE_URL + "api/historial-ubicaciones");
 
-    const intervalo = setInterval(obtenerUbicacion, 10000);
+        const data = await response.json();
+
+        const puntos = data.map((punto) => [
+          Number(punto.latitud),
+          Number(punto.longitud),
+        ]);
+
+        setRuta(puntos);
+      } catch (error) {
+        console.error("Error obteniendo historial:", error);
+      }
+    };
+
+    obtenerUbicacion();
+    obtenerHistorial();
+
+    const intervalo = setInterval(() => {
+      obtenerUbicacion();
+      obtenerHistorial();
+    }, 10000);
 
     return () => clearInterval(intervalo);
   }, []);
@@ -71,18 +93,14 @@ function App() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
+            {ruta.length > 1 && (
+              <Polyline positions={ruta} color="#2563eb" weight={4} opacity={0.8} />
+            )}
+
             <Marker
               position={[Number(location.latitud), Number(location.longitud)]}
               icon={iconoMarcador}
-            >
-              {/*<Popup>
-                Ubicación actual
-                <br />
-                Latitud: {location.latitud}
-                <br />
-                Longitud: {location.longitud}
-              </Popup>*/}
-            </Marker>
+            />
           </MapContainer>
         </>
       )}
