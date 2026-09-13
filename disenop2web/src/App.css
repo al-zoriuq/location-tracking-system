@@ -76,6 +76,10 @@ body {
   z-index: 0;
 }
 
+.map .leaflet-tile-pane {
+  filter: invert(92%) hue-rotate(225deg) brightness(0.85) contrast(0.9) saturate(0.6);
+}
+
 .panel {
   position: absolute;
   top: 20px;
@@ -118,3 +122,88 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-dim);
+  opacity: 0.7;
+}
+
+.legend {
+  position: absolute;
+  bottom: 24px;
+  left: 20px;
+  z-index: 10;
+  display: flex;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.legend-dot.start {
+  background: var(--accent-2);
+}
+
+.legend-dot.current {
+  background: var(--accent);
+}
+
+.marker-current {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 6px rgba(179, 127, 235, 0.3);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.marker-start {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  border: 2px solid var(--bg);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 6px rgba(179, 127, 235, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(179, 127, 235, 0.15);
+  }
+}
+
+.empty-state {
+  margin: auto;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+@media (max-width: 640px) {
+  .panel {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    width: auto;
+  }
+
+  .legend {
+    left: 12px;
+    bottom: 12px;
+  }
+}
