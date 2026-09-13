@@ -46,7 +46,7 @@ function App() {
 
   return (
     <div className="centrado">
-      <p>test 13-sep</p>
+      <p>test2 13-sep</p>
 
       {location && (
         <>
