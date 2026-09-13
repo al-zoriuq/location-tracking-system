@@ -51,6 +51,12 @@ jobs:
           username: ${{ secrets.EC2_USER_STHEFANY }}
           key: ${{ secrets.EC2_SSH_KEY_STHEFANY }}
           script: |
+            echo "=== DIAGNOSTICO ==="
+            whoami
+            hostname
+            echo "HOME=$HOME"
+            ls -la "$HOME"
+            echo "=== FIN DIAGNOSTICO ==="
             cd /home/ubuntu/location-tracking-system-test
             git fetch origin
             git checkout sthefany-test
