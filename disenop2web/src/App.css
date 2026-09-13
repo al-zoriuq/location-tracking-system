@@ -6,8 +6,11 @@
   --border: #3a2a5c;      /* border color used on cards and dividers */
   --text: #f3eefb;        /* primary text color */
   --text-dim: #a897c9;    /* secondary/muted text color (labels, meta info) */
-  --accent: #b37feb;      /* primary accent: current-position marker, route line, status dot */
-  --accent-2: #ffd166;    /* secondary accent: start-of-route marker, chosen for high contrast */
+  --accent: #b37feb;      /* primary accent: current-position marker, route line */
+  --accent-2: #ffd166;    /* secondary accent: start-of-route marker */
+  --status-fresh: #4ade80;  /* status dot: data received within the last 2 minutes */
+  --status-medium: #fbbf24; /* status dot: data is somewhat recent (under 1 hour) */
+  --status-old: #6b6280;    /* status dot: data is stale (over 1 hour, or none) */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
   --font-mono: "IBM Plex Mono", monospace;      /* numeric data: coordinates, dates, times */
 }
@@ -65,15 +68,30 @@ body {
   gap: 8px;
   font-size: 13px;
   color: var(--text-dim);
+  font-family: var(--font-mono); /* relative time reads like a data value, not a label */
 }
 
-/* Small glowing dot next to "en línea" / "sin datos" */
+/* Base dot style; color is set by the dot-fresh / dot-medium / dot-old modifier below */
 .status .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px rgba(179, 127, 235, 0.15);
+  transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+.dot-fresh {
+  background: var(--status-fresh);
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.18);
+}
+
+.dot-medium {
+  background: var(--status-medium);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.18);
+}
+
+.dot-old {
+  background: var(--status-old);
+  box-shadow: 0 0 0 4px rgba(107, 98, 128, 0.18);
 }
 
 /* ============ Main area (holds the map + floating panels) ============ */
