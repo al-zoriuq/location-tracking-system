@@ -31,7 +31,8 @@ jobs:
             sudo cp deploy/vite-preview.service /etc/systemd/system/vite-preview.service
             sudo cp deploy/sniffer.service /etc/systemd/system/sniffer.service
             sudo cp deploy/nginx.conf /etc/nginx/sites-enabled/default
-            sudo sed -i "s#DOMAIN_PLACEHOLDER#${{ secrets.EC2_DOMAIN_MARCELA }}#g; s#server_name _;#server_name ${{ secrets.EC2_DOMAIN_MARCELA }};#g" /etc/nginx/sites-enabled/default
+            DOMAIN=$(echo "${{ secrets.EC2_DOMAIN_MARCELA }}" | tr -d '\r\n ')
+            sudo sed -i "s#DOMAIN_PLACEHOLDER#$DOMAIN#g; s#server_name _;#server_name $DOMAIN;#g" /etc/nginx/sites-enabled/default
             sudo nginx -t
             sudo systemctl daemon-reload
             sudo systemctl restart sniffer
@@ -62,11 +63,11 @@ jobs:
             sudo cp deploy/vite-preview.service /etc/systemd/system/vite-preview.service
             sudo cp deploy/sniffer.service /etc/systemd/system/sniffer.service
             sudo cp deploy/nginx.conf /etc/nginx/sites-enabled/default
-            sudo sed -i "s#DOMAIN_PLACEHOLDER#${{ secrets.EC2_DOMAIN_ALBA }}#g; s#server_name _;#server_name ${{ secrets.EC2_DOMAIN_ALBA }};#g" /etc/nginx/sites-enabled/default
+            DOMAIN=$(echo "${{ secrets.EC2_DOMAIN_ALBA }}" | tr -d '\r\n ')
+            sudo sed -i "s#DOMAIN_PLACEHOLDER#$DOMAIN#g; s#server_name _;#server_name $DOMAIN;#g" /etc/nginx/sites-enabled/default
             sudo nginx -t
             sudo systemctl daemon-reload
             sudo systemctl restart sniffer
             sudo systemctl restart gunicorn
             sudo systemctl restart vite-preview
             sudo systemctl reload nginx
-       
