@@ -32,6 +32,15 @@ jobs:
             aws_secret_secret: AWS_SECRET_ACCESS_KEY_TAUFIC
             sg_id: sg-0c4e91a324e3145e0
 
+                      # --- Alba's server ---
+          - persona: alba
+            host_secret: EC2_HOST_ALBA
+            user_secret: EC2_USER_ALBA
+            key_secret: EC2_SSH_KEY_ALBA
+            aws_key_secret: AWS_ACCESS_KEY_ID_ALBA
+            aws_secret_secret: AWS_SECRET_ACCESS_KEY_ALBA
+            sg_id: sg-000664e76aea40f3e
+
           # To add a new person later, just add another block here
           # following the same pattern (persona, host_secret, user_secret,
           # key_secret, aws_key_secret, aws_secret_secret, sg_id)
