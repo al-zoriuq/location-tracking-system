@@ -44,19 +44,17 @@ jobs:
             --protocol tcp --port 22 \
             --cidr ${{ steps.ip.outputs.ip }}
 
+      - name: Wait for security group propagation
+        run: sleep 5
+
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST_STHEFANY }}
           username: ${{ secrets.EC2_USER_STHEFANY }}
           key: ${{ secrets.EC2_SSH_KEY_STHEFANY }}
+          timeout: 60s
           script: |
-            echo "=== DIAGNOSTICO ==="
-            whoami
-            hostname
-            echo "HOME=$HOME"
-            ls -la "$HOME"
-            echo "=== FIN DIAGNOSTICO ==="
             cd /home/ubuntu/location-tracking-system-test
             git fetch origin
             git checkout sthefany-test
