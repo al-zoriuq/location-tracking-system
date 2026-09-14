@@ -1,89 +1,231 @@
 import "./App.css";
-import { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
-
+import { useState, useEffect, useRef } from "react";
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
-
-const iconoMarcador = new L.Icon({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
+const iconoActual = L.divIcon({
+  className: "",
+  html: '<div class="marker-current"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 });
+
+const iconoInicio = L.divIcon({
+  className: "",
+  html: '<div class="marker-start"></div>',
+  iconSize: [12, 12],
+  iconAnchor: [6, 6],
+});
+
+function AjustarVista({ puntos }) {
+  const map = useMap();
+  const yaAjustado = useRef(false);
+
+  useEffect(() => {
+    if (yaAjustado.current) return;
+
+    if (puntos.length > 1) {
+      map.fitBounds(puntos, { padding: [60, 60] });
+      yaAjustado.current = true;
+    } else if (puntos.length === 1) {
+      map.setView(puntos[0], 13);
+      yaAjustado.current = true;
+    }
+  }, [puntos, map]);
+
+  return null;
+}
+
+function parsearFechaUTC(timestampTexto) {
+  return new Date(timestampTexto.replace(" ", "T") + "Z");
+}
+
+function calcularEstado(fechaGPS) {
+  if (!fechaGPS) {
+    return { texto: "sin datos", tier: "old" };
+  }
+
+  const ahora = new Date();
+  const diffMs = ahora - fechaGPS;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHoras = Math.floor(diffMin / 60);
+  const diffDias = Math.floor(diffHoras / 24);
+
+  if (diffMin <= 2) {
+    return { texto: "en línea", tier: "fresh" };
+  }
+
+  if (diffMin < 60) {
+    return { texto: `hace ${diffMin} min`, tier: "medium" };
+  }
+
+  if (diffHoras < 24) {
+    return { texto: `hace ${diffHoras} h`, tier: "old" };
+  }
+
+  return { texto: `hace ${diffDias} d`, tier: "old" };
+}
 
 function App() {
   const [location, setLocation] = useState(null);
-  const fechaGPS = location ? new Date(location.timestamp_gps) : null;
+  const [historial, setHistorial] = useState([]);
+
+  const fechaGPS = location ? parsearFechaUTC(location.timestamp_gps) : null;
+  const estado = calcularEstado(fechaGPS);
+
+  const ruta = historial.map((punto) => [
+    Number(punto.latitud),
+    Number(punto.longitud),
+  ]);
+
+  useEffect(() => {
+    const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+    document.title = `GPSLink - ${nombre}`;
+  }, []);
+
   useEffect(() => {
     const obtenerUbicacion = async () => {
       try {
-        const response = await fetch("/api/ultima-ubicacion");
-
+        const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
         const data = await response.json();
-
-        console.log(data);
-
         setLocation(data);
       } catch (error) {
         console.error("Error obteniendo ubicación:", error);
       }
     };
 
-    obtenerUbicacion();
+    const obtenerHistorial = async () => {
+      try {
+        const response = await fetch(import.meta.env.BASE_URL + "api/historial-ubicaciones");
+        const data = await response.json();
+        setHistorial(data);
+      } catch (error) {
+        console.error("Error obteniendo historial:", error);
+      }
+    };
 
-    const intervalo = setInterval(obtenerUbicacion, 10000);
+    obtenerUbicacion();
+    obtenerHistorial();
+
+    const intervalo = setInterval(() => {
+      obtenerUbicacion();
+      obtenerHistorial();
+    }, 10000);
 
     return () => clearInterval(intervalo);
   }, []);
 
+  const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+
+  const historialReciente = [...historial].reverse();
+
   return (
-    <div className="centrado">
-      <p>prueba de test3 con marcela 13-sep</p>
+    <div className="app">
+      <div className="topbar">
+        <div className="brand">
+          GPSLink <span>· {nombre}</span>
+        </div>
+        <div className="status">
+          <span className={`dot dot-${estado.tier}`}></span>
+          {estado.texto}
+        </div>
+      </div>
 
-      {location && (
-        <>
-          <p>IP: {location.ip_origen}</p>
-          <p>Latitud: {location.latitud}</p>
-          <p>Longitud: {location.longitud}</p>
-          <p>Fecha: {fechaGPS.toLocaleDateString("es-CO")}</p>
-          <p>Hora: {fechaGPS.toLocaleTimeString("es-CO")}</p>
+      <div className="main">
+        {location ? (
+          <>
+            <div className="panel">
+              <p className="label">Última posición</p>
+              <div className="coords">
+                <div className="coord-row">
+                  <span className="coord-label">Lat</span>
+                  <span>{Number(location.latitud).toFixed(4)}</span>
+                </div>
+                <div className="coord-row">
+                  <span className="coord-label">Lon</span>
+                  <span>{Number(location.longitud).toFixed(4)}</span>
+                </div>
+              </div>
+              <div className="meta">
+                <span>{fechaGPS.toLocaleDateString("es-CO")}</span>
+                <span>{fechaGPS.toLocaleTimeString("es-CO")}</span>
+              </div>
+              <p className="ip">IP: {location.ip_origen}</p>
+            </div>
 
-          <MapContainer
-            center={[Number(location.latitud), Number(location.longitud)]}
-            zoom={13}
-            scrollWheelZoom={true}
-            className="map"
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            {ruta.length > 1 && (
+              <div className="legend">
+                <div className="legend-item">
+                  <span className="legend-dot start"></span> Inicio
+                </div>
+                <div className="legend-item">
+                  <span className="legend-dot current"></span> Actual
+                </div>
+              </div>
+            )}
 
-            <Marker
-              position={[Number(location.latitud), Number(location.longitud)]}
-              icon={iconoMarcador}
+            <MapContainer
+              center={[Number(location.latitud), Number(location.longitud)]}
+              zoom={13}
+              scrollWheelZoom={true}
+              className="map"
             >
-              {/*<Popup>
-                Ubicación actual
-                <br />
-                Latitud: {location.latitud}
-                <br />
-                Longitud: {location.longitud}
-              </Popup>*/}
-            </Marker>
-          </MapContainer>
-        </>
-      )}
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
 
-      {!location && <p>Cargando ubicación...</p>}
+              <AjustarVista puntos={ruta} />
+
+              {ruta.length > 1 && (
+                <Polyline positions={ruta} color="#b37feb" weight={3} opacity={0.75} />
+              )}
+
+              {ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
+
+              <Marker
+                position={[Number(location.latitud), Number(location.longitud)]}
+                icon={iconoActual}
+              />
+            </MapContainer>
+
+            <aside className="sidebar">
+              <p className="sidebar-title">Historial de puntos ({historialReciente.length})</p>
+              <div className="sidebar-list">
+                {historialReciente.map((punto, index) => {
+                  const fecha = parsearFechaUTC(punto.timestamp_gps);
+                  const esInicio = index === historialReciente.length - 1;
+                  const esActual = index === 0;
+                  return (
+                    <div className="sidebar-item" key={index}>
+                      <div className="sidebar-item-header">
+                        <span
+                          className={`legend-dot ${esInicio ? "start" : esActual ? "current" : ""}`}
+                        ></span>
+                        <span className="sidebar-item-time">
+                          {fecha.toLocaleDateString("es-CO")} · {fecha.toLocaleTimeString("es-CO")}
+                        </span>
+                      </div>
+                      <div className="coord-row small">
+                        <span className="coord-label">Lat</span>
+                        <span>{Number(punto.latitud).toFixed(4)}</span>
+                      </div>
+                      <div className="coord-row small">
+                        <span className="coord-label">Lon</span>
+                        <span>{Number(punto.longitud).toFixed(4)}</span>
+                      </div>
+                      <p className="sidebar-item-ip">IP: {punto.ip_origen}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </aside>
+          </>
+        ) : (
+          <p className="empty-state">Cargando ubicación...</p>
+        )}
+      </div>
     </div>
   );
 }
