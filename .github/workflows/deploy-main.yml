@@ -22,6 +22,7 @@ jobs:
             aws_key_secret: AWS_ACCESS_KEY_ID
             aws_secret_secret: AWS_SECRET_ACCESS_KEY
             sg_id: sg-040f40fef53b4b9f5
+            service: gunicorn-location
 
           # --- Taufic's server ---
           - persona: taufic
@@ -31,8 +32,9 @@ jobs:
             aws_key_secret: AWS_ACCESS_KEY_ID_TAUFIC
             aws_secret_secret: AWS_SECRET_ACCESS_KEY_TAUFIC
             sg_id: sg-0c4e91a324e3145e0
+            service: gunicorn-location
 
-                      # --- Alba's server ---
+          # --- Alba's server ---
           - persona: alba
             host_secret: EC2_HOST_ALBA
             user_secret: EC2_USER_ALBA
@@ -40,10 +42,21 @@ jobs:
             aws_key_secret: AWS_ACCESS_KEY_ID_ALBA
             aws_secret_secret: AWS_SECRET_ACCESS_KEY_ALBA
             sg_id: sg-000664e76aea40f3e
+            service: gunicorn
+
+          # --- Marcela's server ---
+          - persona: marcela
+            host_secret: EC2_HOST
+            user_secret: EC2_USER
+            key_secret: EC2_SSH_KEY
+            aws_key_secret: AWS_ACCESS_KEY_ID_MARCELA
+            aws_secret_secret: AWS_SECRET_ACCESS_KEY_MARCELA
+            sg_id: sg-0e524eabd8e6036a2
+            service: gunicorn
 
           # To add a new person later, just add another block here
           # following the same pattern (persona, host_secret, user_secret,
-          # key_secret, aws_key_secret, aws_secret_secret, sg_id)
+          # key_secret, aws_key_secret, aws_secret_secret, sg_id, service)
 
     steps:
       # Step 1: Authenticate to AWS using this person's IAM credentials
@@ -93,7 +106,7 @@ jobs:
             npm install
             npm run build
             cd ..
-            sudo systemctl restart gunicorn-location
+            sudo systemctl restart ${{ matrix.service }}
 
       # Step 6: Close the SSH port again, regardless of whether the
       # deployment succeeded or failed (if: always() guarantees this runs)
