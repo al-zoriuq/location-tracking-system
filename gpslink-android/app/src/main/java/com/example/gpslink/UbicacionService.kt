@@ -19,6 +19,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 
 // Runs independently of the Activity: keeps sending the location every 10
 // seconds even with the app closed or the screen off, as long as Android
@@ -35,11 +36,17 @@ class UbicacionService : Service() {
 
     private val PREFS_NAME = "LocationSmsPrefs"
     private val KEY_SERVIDOR = "servidor_predeterminado"
+    private val KEY_DEVICE_ID = "device_id"
     private val PUERTO_FIJO = 5000
     private val INTERVALO_AUTOMATICO_MS = 10_000L
 
     private lateinit var locationManager: LocationManager
     private var cicloEnCurso = false
+
+    // Generated once per install and reused forever after — lets the backend
+    // tell apart this device's updates from any other device's, and lets the
+    // 4 receiving EC2 instances deduplicate the same packet.
+    private val deviceId: String by lazy { obtenerOCrearDeviceId() }
 
     private val handler = Handler(Looper.getMainLooper())
     private val loopRunnable = object : Runnable {
@@ -107,6 +114,18 @@ class UbicacionService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIF_ID, construirNotificacion(texto))
     }
 
+    // Reads the device_id from SharedPreferences, or generates and stores a
+    // new UUID the very first time the service ever runs on this install.
+    private fun obtenerOCrearDeviceId(): String {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val existente = prefs.getString(KEY_DEVICE_ID, null)
+        if (existente != null) return existente
+
+        val nuevo = UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_DEVICE_ID, nuevo).apply()
+        return nuevo
+    }
+
     private fun intentarEnvio() {
         if (cicloEnCurso) return
 
@@ -146,7 +165,7 @@ class UbicacionService : Service() {
         formato.timeZone = TimeZone.getTimeZone("America/Bogota")
         val timestamp = formato.format(Date(location.time))
 
-        val mensaje = "Lat: ${location.latitude}, Lon: ${location.longitude}, " +
+        val mensaje = "Device: $deviceId, Lat: ${location.latitude}, Lon: ${location.longitude}, " +
                 "Timestamp GPS: $timestamp\n"
 
         Thread {
