@@ -31,7 +31,7 @@ try:
         user=user,
         password=password,
         sslmode='verify-full',
-    sslrootcert='./global-bundle.pem'
+        sslrootcert='./global-bundle.pem'
     )
     cur = conn.cursor()
     cur.execute('SELECT version();')
@@ -80,57 +80,40 @@ try:
         print(f"Mensaje: {mensaje}")
         print("--------------------------------------")
 
-
-        # EXTRAER LATITUD, LONGITUD Y TIMESTAMP
-
+        # EXTRAER DEVICE_ID, LATITUD, LONGITUD Y TIMESTAMP
         patron = (
+            r"Device:\s*([\w-]+),\s*"
             r"Lat:\s*([-+]?\d+(?:\.\d+)?),\s*"
             r"Lon:\s*([-+]?\d+(?:\.\d+)?),\s*"
             r"Timestamp GPS:\s*(.+)"
         )
-
-        resultado = re.search(
-            patron,
-            mensaje
-        )
-
+        resultado = re.search(patron, mensaje)
 
         if resultado:
-
-            latitud = float(resultado.group(1))
-
-            longitud = float(resultado.group(2))
-
-            timestamp_gps = resultado.group(3).strip()
-
+            device_id = resultado.group(1)
+            latitud = float(resultado.group(2))
+            longitud = float(resultado.group(3))
+            timestamp_gps = resultado.group(4).strip()
 
             # Convertir timestamp
             timestamp_gps = datetime.strptime(timestamp_gps, "%Y-%m-%d %H:%M:%S.%f %z")
-            timestamp_gps = timestamp_gps.replace(tzinfo=None) 
+            timestamp_gps = timestamp_gps.replace(tzinfo=None)
 
-
-
+            print(f"Device: {device_id}")
             print(f"Latitud: {latitud}")
             print(f"Longitud: {longitud}")
             print(f"GPS: {timestamp_gps}")
 
-
-            # INSERTAR EN POSTGRESQL
-
+            # INSERTAR EN POSTGRESQL (ignora duplicados del mismo dispositivo+timestamp)
             sql = """
                 INSERT INTO ubicaciones
-                (
-                    ip_origen,
-                    latitud,
-                    longitud,
-                    timestamp_gps,
-                    timestamp_recepcion
-                )
-                VALUES (%s, %s, %s, %s, %s)
+                (device_id, ip_origen, latitud, longitud, timestamp_gps, timestamp_recepcion)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (device_id, timestamp_gps) DO NOTHING
             """
 
-
             valores = (
+                device_id,
                 ip_origen,
                 latitud,
                 longitud,
@@ -138,25 +121,16 @@ try:
                 hora_recepcion
             )
 
-
-            cur.execute(
-                sql,
-                valores
-            )
-
+            cur.execute(sql, valores)
             conn.commit()
 
-
             print("Ubicación guardada en base de datos")
-
 
         else:
 
             print("Formato de mensaje no reconocido")
 
-
         # GUARDAR LOG
-
         linea = (
             f"[{hora_recepcion}] "
             f"Desde {ip_origen}: {mensaje}"
