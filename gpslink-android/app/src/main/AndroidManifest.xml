@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" /> <!-- GPS access -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" /> <!-- GPS while app isn't visible -->
+    <uses-permission android:name="android.permission.INTERNET" /> <!-- UDP packets to your PCs -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /> <!-- required to run a foreground service at all -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" /> <!-- required specifically because this service uses location -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" /> <!-- required on Android 13+ to show the persistent notification -->
+
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="true" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LocationSMS" >
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- foregroundServiceType="location" is mandatory since Android 10 for
+             any foreground service that accesses the device's location. -->
+        <service
+            android:name=".UbicacionService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
+    </application>
+
+</manifest>

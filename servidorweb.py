@@ -48,7 +48,7 @@ def obtener_conexion():
         user=user,
         password=password,
         sslmode='verify-full',
-    sslrootcert='./global-bundle.pem'
+        sslrootcert='./global-bundle.pem'
     )
 
 
@@ -66,6 +66,7 @@ def ultima_ubicacion():
 
     cursor.execute("""
         SELECT
+            device_id,
             ip_origen,
             latitud,
             longitud,
