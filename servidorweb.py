@@ -112,23 +112,40 @@ def ultima_ubicacion():
 @app.route("/api/historial-ubicaciones")
 def historial_ubicaciones():
 
-    # Optional query param, e.g. /api/historial-ubicaciones?horas=48
+    # Optional query params, e.g. /api/historial-ubicaciones?horas=48&device_id=xyz
     horas = request.args.get("horas", default=24, type=int)
+    device_id = request.args.get("device_id", default=None, type=str)
 
     conexion = obtener_conexion()
 
     cursor = conexion.cursor(cursor_factory=RealDictCursor)
 
-    cursor.execute("""
-        SELECT
-            ip_origen,
-            latitud,
-            longitud,
-            timestamp_gps
-        FROM ubicaciones
-        WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
-        ORDER BY timestamp_gps ASC
-    """, (horas,))
+    if device_id:
+        cursor.execute("""
+            SELECT
+                ip_origen,
+                latitud,
+                longitud,
+                timestamp_gps
+            FROM ubicaciones
+            WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
+              AND device_id = %s
+            ORDER BY timestamp_gps ASC
+        """, (horas, device_id))
+    else:
+        cursor.execute("""
+            SELECT
+                ip_origen,
+                latitud,
+                longitud,
+                timestamp_gps
+            FROM ubicaciones
+            WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
+              AND device_id = (
+                  SELECT device_id FROM ubicaciones ORDER BY id DESC LIMIT 1
+              )
+            ORDER BY timestamp_gps ASC
+        """, (horas,))
 
     ubicaciones = cursor.fetchall()
 

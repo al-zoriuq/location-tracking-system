@@ -21,6 +21,21 @@ const iconoInicio = L.divIcon({
 // A "trip" is considered finished if this much time passes with no new GPS
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
+const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
+const RADIO_TIERRA_M = 6371000;
+
+// Haversine formula: straight-line distance in meters between two GPS
+// coordinates, accounting for the Earth's curvature.
+function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
+  const toRad = (grados) => (grados * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return RADIO_TIERRA_M * c;
+}
 
 function AjustarVista({ puntos, resetKey }) {
   const map = useMap();
@@ -87,15 +102,25 @@ function dividirEnRutas(historial) {
   let rutaActual = [historial[0]];
 
   for (let i = 1; i < historial.length; i++) {
-    const fechaAnterior = parsearFechaUTC(historial[i - 1].timestamp_gps);
-    const fechaActual = parsearFechaUTC(historial[i].timestamp_gps);
+    const anterior = historial[i - 1];
+    const actual = historial[i];
+
+    const fechaAnterior = parsearFechaUTC(anterior.timestamp_gps);
+    const fechaActual = parsearFechaUTC(actual.timestamp_gps);
     const diffMs = fechaActual - fechaAnterior;
 
-    if (diffMs > UMBRAL_NUEVA_RUTA_MS) {
+    const distanciaM = calcularDistanciaMetros(
+      Number(anterior.latitud),
+      Number(anterior.longitud),
+      Number(actual.latitud),
+      Number(actual.longitud)
+    );
+
+    if (diffMs > UMBRAL_NUEVA_RUTA_MS || distanciaM > UMBRAL_NUEVA_RUTA_METROS) {
       rutas.push(rutaActual);
-      rutaActual = [historial[i]];
+      rutaActual = [actual];
     } else {
-      rutaActual.push(historial[i]);
+      rutaActual.push(actual);
     }
   }
 
@@ -166,20 +191,30 @@ function App() {
     const obtenerUbicacion = async () => {
       try {
         const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
+        if (!response.ok) {
+          setLocation(null);
+          return;
+        }
         const data = await response.json();
         setLocation(data);
       } catch (error) {
         console.error("Error obteniendo ubicación:", error);
+        setLocation(null);
       }
     };
 
     const obtenerHistorial = async () => {
       try {
         const response = await fetch(import.meta.env.BASE_URL + "api/historial-ubicaciones");
+        if (!response.ok) {
+          setHistorial([]);
+          return;
+        }
         const data = await response.json();
-        setHistorial(data);
+        setHistorial(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Error obteniendo historial:", error);
+        setHistorial([]);
       }
     };
 
