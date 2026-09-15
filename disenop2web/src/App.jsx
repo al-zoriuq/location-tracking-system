@@ -88,20 +88,30 @@ function App() {
     const obtenerUbicacion = async () => {
       try {
         const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
+        if (!response.ok) {
+          setLocation(null);
+          return;
+        }
         const data = await response.json();
         setLocation(data);
       } catch (error) {
         console.error("Error obteniendo ubicación:", error);
+        setLocation(null);
       }
     };
 
     const obtenerHistorial = async () => {
       try {
         const response = await fetch(import.meta.env.BASE_URL + "api/historial-ubicaciones");
+        if (!response.ok) {
+          setHistorial([]);
+          return;
+        }
         const data = await response.json();
-        setHistorial(data);
+        setHistorial(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Error obteniendo historial:", error);
+        setHistorial([]);
       }
     };
 
