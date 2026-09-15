@@ -8,7 +8,7 @@
   --text-dim: #a897c9;     /* secondary/muted text color (labels, meta info) */
   --accent: #b37feb;       /* primary accent: current-position marker, route line */
   --accent-2: #D0BBFC;     /* secondary accent: start-of-route marker */
-  --status-fresh: #4ade80;   /* status dot: data received within the last 2 minutes */
+  --status-fresh: #ffee00;   /* status dot: data received within the last 2 minutes */
   --status-medium: #fbbf24;  /* status dot: data is somewhat recent (under 1 hour) */
   --status-old: #6b6280;     /* status dot: data is stale (over 1 hour, or none) */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
