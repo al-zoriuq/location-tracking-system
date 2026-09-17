@@ -120,17 +120,19 @@ body {
 }
 
 /* Leaflet puts its zoom buttons at the top-left by default, exactly where
-   the floating panel sits. Pushing them down keeps both usable. */
+   the floating panel sits. Pushing them below it keeps both usable. */
 .map .leaflet-top.leaflet-left {
-  top: 200px;
+  top: 300px;
 }
 
-/* ============ Map toggles (top-right, over the map) ============ */
-/* Offset from the right edge of .main, which includes the 320px sidebar,
-   so the buttons land on the right edge of the map itself. */
+/* ============ Map toggles (bottom-right, over the map) ============ */
+/* The top of the map is taken by the route navigation bar and the filter,
+   so these sit at the opposite corner from the legend. Offset from the
+   right edge of .main, which includes the 320px sidebar, and lifted above
+   Leaflet's attribution strip. */
 .controles-mapa {
   position: absolute;
-  top: 20px;
+  bottom: 48px;
   right: 340px;
   z-index: 10;
   display: flex;
@@ -405,10 +407,9 @@ body {
     width: auto; /* let the panel stretch full width on small screens */
   }
 
-  /* Panel spans the full width here, so the toggles drop below it */
+  /* Legend moves up here, so the toggles stack above it */
   .controles-mapa {
-    top: auto;
-    bottom: 64px;
+    bottom: 12px;
     right: 12px;
     flex-direction: column;
     align-items: flex-end;
