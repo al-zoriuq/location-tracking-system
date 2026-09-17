@@ -8,7 +8,7 @@
   --text-dim: #a897c9;     /* secondary/muted text color (labels, meta info) */
   --accent: #b37feb;       /* primary accent: current-position marker, route line */
   --accent-2: #D0BBFC;     /* secondary accent: start-of-route marker */
-  --status-fresh: #4ade80;   /* status dot: data received within the last 2 minutes */
+  --status-fresh: #ffee00;   /* status dot: data received within the last 2 minutes */
   --status-medium: #fbbf24;  /* status dot: data is somewhat recent (under 1 hour) */
   --status-old: #6b6280;     /* status dot: data is stale (over 1 hour, or none) */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
@@ -343,4 +343,215 @@ body {
     left: 12px;
     bottom: 12px;
   }
+}
+
+/* ============ Date/time range filter ============ */
+.filtro-fecha {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: rgba(20, 16, 32, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 300px;
+}
+
+.filtro-toggle {
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.filtro-toggle:hover {
+  background: rgba(179, 127, 235, 0.15);
+}
+
+.filtro-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filtro-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.filtro-fecha input[type="date"] {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color-scheme: dark;
+}
+
+.filtro-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filtro-slider-row span {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 26px;
+}
+
+.filtro-slider-row .valor {
+  color: var(--text);
+  min-width: 30px;
+  text-align: right;
+}
+
+.filtro-fecha input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.filtro-fecha input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.filtro-fecha input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.filtro-acciones {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.filtro-acciones button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.filtro-acciones .aplicar {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.2);
+}
+
+.filtro-acciones button:hover {
+  background: rgba(179, 127, 235, 0.25);
+}
+/* ============ Wheel-style time picker ============ */
+.rueda-grupo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  position: relative;
+  padding: 4px 0;
+}
+
+/* Highlighted band marking the selected row at the center */
+.rueda-grupo::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 34px;
+  transform: translateY(-50%);
+  background: rgba(179, 127, 235, 0.14);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.rueda {
+  height: 102px;           /* exactly 3 rows of 34px */
+  width: 52px;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* old Edge */
+}
+
+.rueda::-webkit-scrollbar {
+  display: none;                  /* Chrome/Safari */
+}
+
+.rueda-item {
+  height: 34px;
+  line-height: 34px;
+  text-align: center;
+  scroll-snap-align: center;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  color: var(--text-dim);
+  opacity: 0.45;
+  transition: opacity 0.15s, color 0.15s;
+  user-select: none;
+}
+
+.rueda-item.activo {
+  color: var(--text);
+  opacity: 1;
+  font-size: 19px;
+}
+
+/* Blank spacers so the first and last real values can reach the center */
+.rueda-espaciador {
+  height: 34px;
+}
+
+.rueda-separador {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text-dim);
+  padding-bottom: 2px;
+}
+
+.rueda-texto {
+  width: 48px;
+}
+
+.rueda:focus {
+  outline: none;
+}
+
+.rueda:focus-visible {
+  outline: 1px solid var(--accent);
+  border-radius: 6px;
 }

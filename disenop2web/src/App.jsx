@@ -21,7 +21,21 @@ const iconoInicio = L.divIcon({
 // A "trip" is considered finished if this much time passes with no new GPS
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
-const VELOCIDAD_MAXIMA_KMH = 180; // saltos que impliquen mas que esto se consideran error de GPS, no un viaje real
+const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
+const RADIO_TIERRA_M = 6371000;
+
+// Haversine formula: straight-line distance in meters between two GPS
+// coordinates, accounting for the Earth's curvature.
+function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
+  const toRad = (grados) => (grados * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return RADIO_TIERRA_M * c;
+}
 
 function AjustarVista({ puntos, resetKey }) {
   const map = useMap();
@@ -81,27 +95,6 @@ function calcularEstado(fechaGPS) {
 // Splits the full (chronological, oldest -> newest) history into separate
 // "trips". A new trip starts whenever the gap between two consecutive
 // readings exceeds UMBRAL_NUEVA_RUTA_MS.
-function distanciaKm(punto1, punto2) {
-  const R = 6371; // radio de la Tierra en km
-  const lat1 = Number(punto1.latitud);
-  const lon1 = Number(punto1.longitud);
-  const lat2 = Number(punto2.latitud);
-  const lon2 = Number(punto2.longitud);
-
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
 function dividirEnRutas(historial) {
   if (historial.length === 0) return [];
 
@@ -109,33 +102,161 @@ function dividirEnRutas(historial) {
   let rutaActual = [historial[0]];
 
   for (let i = 1; i < historial.length; i++) {
-    const puntoAnterior = rutaActual[rutaActual.length - 1];
-    const puntoActual = historial[i];
+    const anterior = historial[i - 1];
+    const actual = historial[i];
 
-    const fechaAnterior = parsearFechaUTC(puntoAnterior.timestamp_gps);
-    const fechaActual = parsearFechaUTC(puntoActual.timestamp_gps);
+    const fechaAnterior = parsearFechaUTC(anterior.timestamp_gps);
+    const fechaActual = parsearFechaUTC(actual.timestamp_gps);
     const diffMs = fechaActual - fechaAnterior;
-    const diffHoras = diffMs / (1000 * 60 * 60);
 
-    const distancia = distanciaKm(puntoAnterior, puntoActual);
-    const velocidadImplicita = diffHoras > 0 ? distancia / diffHoras : Infinity;
+    const distanciaM = calcularDistanciaMetros(
+      Number(anterior.latitud),
+      Number(anterior.longitud),
+      Number(actual.latitud),
+      Number(actual.longitud)
+    );
 
-    if (velocidadImplicita > VELOCIDAD_MAXIMA_KMH) {
-      // Salto fisicamente imposible (error de GPS): se descarta de la
-      // ruta dibujada, pero el punto sigue existiendo en la base de datos.
-      continue;
-    }
-
-    if (diffMs > UMBRAL_NUEVA_RUTA_MS) {
+    if (diffMs > UMBRAL_NUEVA_RUTA_MS || distanciaM > UMBRAL_NUEVA_RUTA_METROS) {
       rutas.push(rutaActual);
-      rutaActual = [puntoActual];
+      rutaActual = [actual];
     } else {
-      rutaActual.push(puntoActual);
+      rutaActual.push(actual);
     }
   }
 
   rutas.push(rutaActual);
   return rutas;
+}
+
+// Shared scroll/keyboard/drag behaviour for the wheel pickers below.
+const ALTO_ITEM = 34;
+
+function useRueda(indice, total, onIndice) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = indice * ALTO_ITEM;
+  }, [indice]);
+
+  const alHacerScroll = () => {
+    if (!ref.current) return;
+    clearTimeout(ref.current._timer);
+    ref.current._timer = setTimeout(() => {
+      if (!ref.current) return;
+      const i = Math.round(ref.current.scrollTop / ALTO_ITEM);
+      const acotado = Math.max(0, Math.min(total - 1, i));
+      if (acotado !== indice) onIndice(acotado);
+    }, 120);
+  };
+
+  // Arrow keys move one row at a time when the wheel has focus
+  const alPresionarTecla = (e) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (indice > 0) onIndice(indice - 1);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (indice < total - 1) onIndice(indice + 1);
+    }
+  };
+
+  // Click-and-drag to scroll, matching the touch behaviour on mobile
+  const alPresionarMouse = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    e.preventDefault();
+    const yInicial = e.clientY;
+    const scrollInicial = el.scrollTop;
+    el.style.scrollSnapType = "none";
+
+    const mover = (ev) => {
+      el.scrollTop = scrollInicial - (ev.clientY - yInicial);
+    };
+
+    const soltar = () => {
+      el.style.scrollSnapType = "y mandatory";
+      const i = Math.round(el.scrollTop / ALTO_ITEM);
+      const acotado = Math.max(0, Math.min(total - 1, i));
+      onIndice(acotado);
+      el.scrollTop = acotado * ALTO_ITEM;
+      window.removeEventListener("mousemove", mover);
+      window.removeEventListener("mouseup", soltar);
+    };
+
+    window.addEventListener("mousemove", mover);
+    window.addEventListener("mouseup", soltar);
+  };
+
+  return { ref, alHacerScroll, alPresionarTecla, alPresionarMouse };
+}
+
+// Numeric wheel: min..max inclusive (e.g. 1-12 for hours, 0-59 for minutes)
+function RuedaNumeros({ min = 0, max, valor, onChange }) {
+  const valores = [];
+  for (let i = min; i <= max; i++) valores.push(i);
+
+  const indice = valor - min;
+  const { ref, alHacerScroll, alPresionarTecla, alPresionarMouse } = useRueda(
+    indice,
+    valores.length,
+    (i) => onChange(valores[i])
+  );
+
+  return (
+    <div
+      className="rueda"
+      ref={ref}
+      tabIndex={0}
+      onScroll={alHacerScroll}
+      onKeyDown={alPresionarTecla}
+      onMouseDown={alPresionarMouse}
+    >
+      <div className="rueda-espaciador" />
+      {valores.map((n) => (
+        <div
+          key={n}
+          className={`rueda-item ${n === valor ? "activo" : ""}`}
+          onClick={() => onChange(n)}
+        >
+          {String(n).padStart(2, "0")}
+        </div>
+      ))}
+      <div className="rueda-espaciador" />
+    </div>
+  );
+}
+
+// Text wheel: same behaviour, arbitrary string options (AM / PM)
+function RuedaOpciones({ opciones, valor, onChange }) {
+  const indice = opciones.indexOf(valor);
+  const { ref, alHacerScroll, alPresionarTecla, alPresionarMouse } = useRueda(
+    indice,
+    opciones.length,
+    (i) => onChange(opciones[i])
+  );
+
+  return (
+    <div
+      className="rueda rueda-texto"
+      ref={ref}
+      tabIndex={0}
+      onScroll={alHacerScroll}
+      onKeyDown={alPresionarTecla}
+      onMouseDown={alPresionarMouse}
+    >
+      <div className="rueda-espaciador" />
+      {opciones.map((o) => (
+        <div
+          key={o}
+          className={`rueda-item ${o === valor ? "activo" : ""}`}
+          onClick={() => onChange(o)}
+        >
+          {o}
+        </div>
+      ))}
+      <div className="rueda-espaciador" />
+    </div>
+  );
 }
 
 function App() {
@@ -145,6 +266,20 @@ function App() {
   // null = "follow the most recent trip live". A number = pinned to that
   // specific trip index, regardless of new data arriving later.
   const [indiceRuta, setIndiceRuta] = useState(null);
+
+  // Date/time range filter state
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [filtroAbierto, setFiltroAbierto] = useState(false);
+  const [fechaDesde, setFechaDesde] = useState(hoy);
+  const [horaDesde, setHoraDesde] = useState(12);
+  const [minDesde, setMinDesde] = useState(0);
+  const [meridianoDesde, setMeridianoDesde] = useState("AM");
+  const [fechaHasta, setFechaHasta] = useState(hoy);
+  const [horaHasta, setHoraHasta] = useState(11);
+  const [minHasta, setMinHasta] = useState(59);
+  const [meridianoHasta, setMeridianoHasta] = useState("PM");
+  // null = live mode (last 24h). {desde, hasta} = explicit range applied.
+  const [rangoActivo, setRangoActivo] = useState(null);
 
   const fechaGPS = location ? parsearFechaUTC(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
@@ -192,6 +327,31 @@ function App() {
     setIndiceRuta(null);
   };
 
+  const dosDigitos = (n) => String(n).padStart(2, "0");
+
+  // Convert 12-hour + AM/PM into the 24-hour format PostgreSQL expects
+  const a24Horas = (hora12, meridiano) => {
+    if (meridiano === "AM") return hora12 === 12 ? 0 : hora12;
+    return hora12 === 12 ? 12 : hora12 + 12;
+  };
+
+  const aplicarFiltro = () => {
+    const h1 = a24Horas(horaDesde, meridianoDesde);
+    const h2 = a24Horas(horaHasta, meridianoHasta);
+    setRangoActivo({
+      desde: `${fechaDesde} ${dosDigitos(h1)}:${dosDigitos(minDesde)}:00`,
+      hasta: `${fechaHasta} ${dosDigitos(h2)}:${dosDigitos(minHasta)}:59`,
+    });
+    setIndiceRuta(null);
+    setFiltroAbierto(false);
+  };
+
+  const quitarFiltro = () => {
+    setRangoActivo(null);
+    setIndiceRuta(null);
+    setFiltroAbierto(false);
+  };
+
   useEffect(() => {
     const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
     document.title = `GPSLink - ${nombre}`;
@@ -201,33 +361,52 @@ function App() {
     const obtenerUbicacion = async () => {
       try {
         const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
+        if (!response.ok) {
+          setLocation(null);
+          return;
+        }
         const data = await response.json();
         setLocation(data);
       } catch (error) {
         console.error("Error obteniendo ubicación:", error);
+        setLocation(null);
       }
     };
 
     const obtenerHistorial = async () => {
       try {
-        const response = await fetch(import.meta.env.BASE_URL + "api/historial-ubicaciones");
+        let url = import.meta.env.BASE_URL + "api/historial-ubicaciones";
+        if (rangoActivo) {
+          url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
+        }
+        const response = await fetch(url);
+        if (!response.ok) {
+          setHistorial([]);
+          return;
+        }
         const data = await response.json();
-        setHistorial(data);
+        setHistorial(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Error obteniendo historial:", error);
+        setHistorial([]);
       }
     };
 
     obtenerUbicacion();
     obtenerHistorial();
 
+    // A fully past range can't receive new points, so stop polling the
+    // history for it (the live marker keeps updating regardless).
+    const rangoEsPasado =
+      rangoActivo && new Date(rangoActivo.hasta.replace(" ", "T")) < new Date();
+
     const intervalo = setInterval(() => {
       obtenerUbicacion();
-      obtenerHistorial();
+      if (!rangoEsPasado) obtenerHistorial();
     }, 10000);
 
     return () => clearInterval(intervalo);
-  }, []);
+  }, [rangoActivo]);
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
 
@@ -264,6 +443,70 @@ function App() {
               </div>
               <p className="ip">IP: {location.ip_origen}</p>
             </div>
+
+            {filtroAbierto ? (
+              <div className="filtro-fecha">
+                <div className="filtro-grupo">
+                  <span className="filtro-label">Desde</span>
+                  <input
+                    type="date"
+                    value={fechaDesde}
+                    onChange={(e) => setFechaDesde(e.target.value)}
+                  />
+                  <div className="rueda-grupo">
+                    <RuedaNumeros min={1} max={12} valor={horaDesde} onChange={setHoraDesde} />
+                    <span className="rueda-separador">:</span>
+                    <RuedaNumeros min={0} max={59} valor={minDesde} onChange={setMinDesde} />
+                    <RuedaOpciones
+                      opciones={["AM", "PM"]}
+                      valor={meridianoDesde}
+                      onChange={setMeridianoDesde}
+                    />
+                  </div>
+                </div>
+
+                <div className="filtro-grupo">
+                  <span className="filtro-label">Hasta</span>
+                  <input
+                    type="date"
+                    value={fechaHasta}
+                    onChange={(e) => setFechaHasta(e.target.value)}
+                  />
+                  <div className="rueda-grupo">
+                    <RuedaNumeros min={1} max={12} valor={horaHasta} onChange={setHoraHasta} />
+                    <span className="rueda-separador">:</span>
+                    <RuedaNumeros min={0} max={59} valor={minHasta} onChange={setMinHasta} />
+                    <RuedaOpciones
+                      opciones={["AM", "PM"]}
+                      valor={meridianoHasta}
+                      onChange={setMeridianoHasta}
+                    />
+                  </div>
+                </div>
+
+                <div className="filtro-acciones">
+                  <button onClick={() => setFiltroAbierto(false)}>Cancelar</button>
+                  {rangoActivo && <button onClick={quitarFiltro}>Ver en vivo</button>}
+                  <button className="aplicar" onClick={aplicarFiltro}>
+                    Aplicar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "60px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 1000,
+                }}
+              >
+                <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
+                  {rangoActivo ? "Rango: personalizado" : "Filtrar por fecha"}
+                </button>
+              </div>
+            )}
 
             {rutas.length > 0 && (
               <div
