@@ -11,34 +11,27 @@ const DESFASE_ZONA = "-05:00";
 const OPCIONES_ZONA = { timeZone: ZONA };
 const OPCIONES_HORA_CORTA = { timeZone: ZONA, hour: "2-digit", minute: "2-digit" };
 
-const COLOR_INICIO = "#22c55e";
-const COLOR_ACTUAL = "#38bdf8";
-const COLOR_FIN = "#f43f5e";
-
-// Filled dot with a white ring, so start / end stay readable on any tile.
-function marcadorHtml(color, tamano) {
-  return `<div style="width:${tamano}px;height:${tamano}px;border-radius:50%;background:${color};border:3px solid #ffffff;box-shadow:0 0 0 2px ${color}80, 0 2px 6px rgba(0,0,0,0.55);"></div>`;
-}
+const iconoActual = L.divIcon({
+  className: "",
+  html: '<div class="marker-current"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
 
 const iconoInicio = L.divIcon({
   className: "",
-  html: marcadorHtml(COLOR_INICIO, 16),
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
+  html: '<div class="marker-start"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
 });
 
-const iconoActual = L.divIcon({
-  className: "",
-  html: marcadorHtml(COLOR_ACTUAL, 18),
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
-});
-
+// End of a past route: same size as the start marker, different color, so a
+// finished trip reads start -> end at a glance.
 const iconoFin = L.divIcon({
   className: "",
-  html: marcadorHtml(COLOR_FIN, 16),
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
+  html: '<div class="marker-end"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
 });
 
 // A "trip" is considered finished if this much time passes with no new GPS
@@ -46,7 +39,7 @@ const iconoFin = L.divIcon({
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
 const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
 const RADIO_TIERRA_M = 6371000;
-// Saltos que impliquen mas que esto se consideran error de GPS, no un viaje real
+// Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
 
 // OSRM rejects very long coordinate lists, so the trip is matched in chunks.
@@ -180,8 +173,8 @@ function dividirEnRutas(historial) {
   let rutaActual = [historial[0]];
 
   for (let i = 1; i < historial.length; i++) {
-    // Se compara contra el ultimo punto aceptado, no contra historial[i - 1],
-    // para que un punto descartado no arrastre la siguiente comparacion.
+    // Compared against the last accepted point, not historial[i - 1], so a
+    // discarded point doesn't drag the next comparison with it.
     const anterior = rutaActual[rutaActual.length - 1];
     const actual = historial[i];
 
@@ -200,8 +193,8 @@ function dividirEnRutas(historial) {
     const velocidadKmh = diffHoras > 0 ? distanciaM / 1000 / diffHoras : Infinity;
 
     if (velocidadKmh > VELOCIDAD_MAXIMA_KMH) {
-      // Salto fisicamente imposible (error de GPS): se descarta de la
-      // ruta dibujada, pero el punto sigue existiendo en la base de datos.
+      // Physically impossible jump (GPS glitch): left out of the drawn
+      // route, though the point still exists in the database.
       continue;
     }
 
@@ -743,19 +736,10 @@ function App() {
             {ruta.length > 1 && (
               <div className="legend">
                 <div className="legend-item">
-                  <span
-                    className="legend-dot"
-                    style={{ backgroundColor: COLOR_INICIO }}
-                  ></span>{" "}
-                  Inicio
+                  <span className="legend-dot start"></span> Inicio
                 </div>
                 <div className="legend-item">
-                  <span
-                    className="legend-dot"
-                    style={{
-                      backgroundColor: siguiendoActual ? COLOR_ACTUAL : COLOR_FIN,
-                    }}
-                  ></span>
+                  <span className={`legend-dot ${siguiendoActual ? "current" : "end"}`}></span>
                   {siguiendoActual ? " Actual" : " Fin de ruta"}
                 </div>
               </div>
@@ -803,19 +787,12 @@ function App() {
                   const fecha = parsearFechaGPS(punto.timestamp_gps);
                   const esInicio = index === historialReciente.length - 1;
                   const esActual = index === 0;
-                  const colorPunto = esInicio
-                    ? COLOR_INICIO
-                    : esActual
-                      ? siguiendoActual
-                        ? COLOR_ACTUAL
-                        : COLOR_FIN
-                      : null;
+                  const claseFinal = siguiendoActual ? "current" : "end";
                   return (
                     <div className="sidebar-item" key={index}>
                       <div className="sidebar-item-header">
                         <span
-                          className="legend-dot"
-                          style={colorPunto ? { backgroundColor: colorPunto } : undefined}
+                          className={`legend-dot ${esInicio ? "start" : esActual ? claseFinal : ""}`}
                         ></span>
                         <span className="sidebar-item-time">
                           {fecha.toLocaleDateString("es-CO", OPCIONES_ZONA)} ·{" "}
