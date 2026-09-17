@@ -341,19 +341,6 @@ function RuedaOpciones({ opciones, valor, onChange }) {
   );
 }
 
-const estiloToggle = (activo) => ({
-  background: activo ? "#7c3aed" : "rgba(20, 16, 32, 0.85)",
-  border: "1px solid #7c3aed",
-  color: activo ? "#ffffff" : "#e5dcff",
-  borderRadius: "8px",
-  padding: "6px 12px",
-  fontFamily: "inherit",
-  fontSize: "12px",
-  cursor: "pointer",
-  backdropFilter: "blur(4px)",
-  whiteSpace: "nowrap",
-});
-
 function App() {
   const [location, setLocation] = useState(null);
   const [historial, setHistorial] = useState([]);
@@ -649,19 +636,9 @@ function App() {
               </div>
             )}
 
-            <div
-              style={{
-                position: "absolute",
-                top: "12px",
-                left: "12px",
-                zIndex: 1000,
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-              }}
-            >
+            <div className="controles-mapa">
               <button
-                style={estiloToggle(centradoActivo)}
+                className={`control-toggle ${centradoActivo ? "activo" : ""}`}
                 onClick={() => setCentradoActivo(!centradoActivo)}
                 title="Mantiene el punto actual en el centro sin cambiar tu zoom"
               >
@@ -669,7 +646,7 @@ function App() {
               </button>
 
               <button
-                style={estiloToggle(snapActivo)}
+                className={`control-toggle ${snapActivo ? "activo" : ""}`}
                 onClick={() => setSnapActivo(!snapActivo)}
                 title="Dibuja la ruta sobre las vías reales (OSRM)"
               >
