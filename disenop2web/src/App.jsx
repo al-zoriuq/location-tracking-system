@@ -21,6 +21,7 @@ const iconoInicio = L.divIcon({
 // A "trip" is considered finished if this much time passes with no new GPS
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
+const VELOCIDAD_MAXIMA_KMH = 180; // saltos que impliquen mas que esto se consideran error de GPS, no un viaje real
 
 function AjustarVista({ puntos, resetKey }) {
   const map = useMap();
@@ -80,6 +81,27 @@ function calcularEstado(fechaGPS) {
 // Splits the full (chronological, oldest -> newest) history into separate
 // "trips". A new trip starts whenever the gap between two consecutive
 // readings exceeds UMBRAL_NUEVA_RUTA_MS.
+function distanciaKm(punto1, punto2) {
+  const R = 6371; // radio de la Tierra en km
+  const lat1 = Number(punto1.latitud);
+  const lon1 = Number(punto1.longitud);
+  const lat2 = Number(punto2.latitud);
+  const lon2 = Number(punto2.longitud);
+
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 function dividirEnRutas(historial) {
   if (historial.length === 0) return [];
 
@@ -87,15 +109,28 @@ function dividirEnRutas(historial) {
   let rutaActual = [historial[0]];
 
   for (let i = 1; i < historial.length; i++) {
-    const fechaAnterior = parsearFechaUTC(historial[i - 1].timestamp_gps);
-    const fechaActual = parsearFechaUTC(historial[i].timestamp_gps);
+    const puntoAnterior = rutaActual[rutaActual.length - 1];
+    const puntoActual = historial[i];
+
+    const fechaAnterior = parsearFechaUTC(puntoAnterior.timestamp_gps);
+    const fechaActual = parsearFechaUTC(puntoActual.timestamp_gps);
     const diffMs = fechaActual - fechaAnterior;
+    const diffHoras = diffMs / (1000 * 60 * 60);
+
+    const distancia = distanciaKm(puntoAnterior, puntoActual);
+    const velocidadImplicita = diffHoras > 0 ? distancia / diffHoras : Infinity;
+
+    if (velocidadImplicita > VELOCIDAD_MAXIMA_KMH) {
+      // Salto fisicamente imposible (error de GPS): se descarta de la
+      // ruta dibujada, pero el punto sigue existiendo en la base de datos.
+      continue;
+    }
 
     if (diffMs > UMBRAL_NUEVA_RUTA_MS) {
       rutas.push(rutaActual);
-      rutaActual = [historial[i]];
+      rutaActual = [puntoActual];
     } else {
-      rutaActual.push(historial[i]);
+      rutaActual.push(puntoActual);
     }
   }
 
