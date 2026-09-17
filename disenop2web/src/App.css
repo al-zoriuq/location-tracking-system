@@ -8,7 +8,7 @@
   --text-dim: #a897c9;     /* secondary/muted text color (labels, meta info) */
   --accent: #b37feb;       /* primary accent: current-position marker, route line */
   --accent-2: #D0BBFC;     /* secondary accent, used for lighter purple details */
-  --marker-start: #3ddc97; /* start-of-route marker: teal green */
+  --marker-start: #FF00E6; /* start-of-route marker: teal green */
   --marker-end: #ff7a8a;   /* end of a past route: coral */
   --status-fresh: #ffee00;   /* status dot: data received within the last 2 minutes */
   --status-medium: #fbbf24;  /* status dot: data is somewhat recent (under 1 hour) */
