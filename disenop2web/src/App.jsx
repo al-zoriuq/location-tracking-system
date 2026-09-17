@@ -4,6 +4,13 @@ import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+// All GPS timestamps are stored as Barranquilla wall-clock time (no timezone
+// in the database), so both parsing and display are pinned to this zone.
+const ZONA = "America/Bogota";
+const DESFASE_ZONA = "-05:00";
+const OPCIONES_ZONA = { timeZone: ZONA };
+const OPCIONES_HORA_CORTA = { timeZone: ZONA, hour: "2-digit", minute: "2-digit" };
+
 const iconoActual = L.divIcon({
   className: "",
   html: '<div class="marker-current"></div>',
@@ -14,8 +21,17 @@ const iconoActual = L.divIcon({
 const iconoInicio = L.divIcon({
   className: "",
   html: '<div class="marker-start"></div>',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+// End of a past route: same size as the start marker, different color, so a
+// finished trip reads start -> end at a glance.
+const iconoFin = L.divIcon({
+  className: "",
+  html: '<div class="marker-end"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
 });
 
 // A "trip" is considered finished if this much time passes with no new GPS
@@ -23,6 +39,12 @@ const iconoInicio = L.divIcon({
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
 const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
 const RADIO_TIERRA_M = 6371000;
+// Jumps implying more than this are treated as GPS glitches, not real travel
+const VELOCIDAD_MAXIMA_KMH = 180;
+
+// OSRM rejects very long coordinate lists, so the trip is matched in chunks.
+const OSRM_MAX_PUNTOS = 100;
+const OSRM_RADIO_M = 30;
 
 // Haversine formula: straight-line distance in meters between two GPS
 // coordinates, accounting for the Earth's curvature.
@@ -35,6 +57,42 @@ function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return RADIO_TIERRA_M * c;
+}
+
+// Sends the raw GPS points to OSRM's map matching service and gets back the
+// same trip snapped onto the actual road network. The original coordinates
+// are never modified: this only affects the drawn line.
+async function ajustarACarretera(puntos) {
+  const tramos = [];
+  // Chunks overlap by one point so the snapped line has no visible seams.
+  for (let i = 0; i < puntos.length; i += OSRM_MAX_PUNTOS - 1) {
+    const tramo = puntos.slice(i, i + OSRM_MAX_PUNTOS);
+    if (tramo.length > 1) tramos.push(tramo);
+  }
+
+  const resultados = await Promise.all(
+    tramos.map(async (tramo) => {
+      const coords = tramo.map(([lat, lon]) => `${lon},${lat}`).join(";");
+      const radios = tramo.map(() => OSRM_RADIO_M).join(";");
+      const url =
+        `https://router.project-osrm.org/match/v1/driving/${coords}` +
+        `?geometries=geojson&overview=full&tidy=true&radiuses=${radios}`;
+
+      const respuesta = await fetch(url);
+      if (!respuesta.ok) return tramo;
+
+      const datos = await respuesta.json();
+      if (datos.code !== "Ok" || !datos.matchings || datos.matchings.length === 0) {
+        return tramo;
+      }
+
+      return datos.matchings.flatMap((m) =>
+        m.geometry.coordinates.map(([lon, lat]) => [lat, lon])
+      );
+    })
+  );
+
+  return resultados.flat();
 }
 
 function AjustarVista({ puntos, resetKey }) {
@@ -62,8 +120,21 @@ function AjustarVista({ puntos, resetKey }) {
   return null;
 }
 
-function parsearFechaUTC(timestampTexto) {
-  return new Date(timestampTexto.replace(" ", "T") + "Z");
+// Keeps the latest point centered while respecting whatever zoom level the
+// user has chosen. Only active while the "Centrado" toggle is on.
+function SeguirPunto({ lat, lon, activo }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!activo || lat == null || lon == null) return;
+    map.setView([lat, lon], map.getZoom(), { animate: true });
+  }, [lat, lon, activo, map]);
+
+  return null;
+}
+
+function parsearFechaGPS(timestampTexto) {
+  return new Date(timestampTexto.replace(" ", "T") + DESFASE_ZONA);
 }
 
 function calcularEstado(fechaGPS) {
@@ -102,11 +173,13 @@ function dividirEnRutas(historial) {
   let rutaActual = [historial[0]];
 
   for (let i = 1; i < historial.length; i++) {
-    const anterior = historial[i - 1];
+    // Compared against the last accepted point, not historial[i - 1], so a
+    // discarded point doesn't drag the next comparison with it.
+    const anterior = rutaActual[rutaActual.length - 1];
     const actual = historial[i];
 
-    const fechaAnterior = parsearFechaUTC(anterior.timestamp_gps);
-    const fechaActual = parsearFechaUTC(actual.timestamp_gps);
+    const fechaAnterior = parsearFechaGPS(anterior.timestamp_gps);
+    const fechaActual = parsearFechaGPS(actual.timestamp_gps);
     const diffMs = fechaActual - fechaAnterior;
 
     const distanciaM = calcularDistanciaMetros(
@@ -115,6 +188,15 @@ function dividirEnRutas(historial) {
       Number(actual.latitud),
       Number(actual.longitud)
     );
+
+    const diffHoras = diffMs / (1000 * 60 * 60);
+    const velocidadKmh = diffHoras > 0 ? distanciaM / 1000 / diffHoras : Infinity;
+
+    if (velocidadKmh > VELOCIDAD_MAXIMA_KMH) {
+      // Physically impossible jump (GPS glitch): left out of the drawn
+      // route, though the point still exists in the database.
+      continue;
+    }
 
     if (diffMs > UMBRAL_NUEVA_RUTA_MS || distanciaM > UMBRAL_NUEVA_RUTA_METROS) {
       rutas.push(rutaActual);
@@ -267,8 +349,14 @@ function App() {
   // specific trip index, regardless of new data arriving later.
   const [indiceRuta, setIndiceRuta] = useState(null);
 
+  // Map view toggles
+  const [centradoActivo, setCentradoActivo] = useState(false);
+  const [snapActivo, setSnapActivo] = useState(false);
+  const [rutaAjustada, setRutaAjustada] = useState(null);
+  const [snapCargando, setSnapCargando] = useState(false);
+
   // Date/time range filter state
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
   const [filtroAbierto, setFiltroAbierto] = useState(false);
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [horaDesde, setHoraDesde] = useState(12);
@@ -281,7 +369,7 @@ function App() {
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
 
-  const fechaGPS = location ? parsearFechaUTC(location.timestamp_gps) : null;
+  const fechaGPS = location ? parsearFechaGPS(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
 
   const rutas = useMemo(() => dividirEnRutas(historial), [historial]);
@@ -297,24 +385,63 @@ function App() {
 
   const historialReciente = [...puntosRutaMostrada].reverse();
 
+  const ultimoPunto = ruta.length > 0 ? ruta[ruta.length - 1] : null;
+
+  // Primitive key so the snapping effect only refires on real route changes,
+  // not on every render (array literals get a new identity each time).
+  const claveRuta = ultimoPunto
+    ? `${indiceMostrado}:${ruta.length}:${ultimoPunto[0]},${ultimoPunto[1]}`
+    : "";
+
+  useEffect(() => {
+    if (!snapActivo || ruta.length < 2) {
+      setRutaAjustada(null);
+      setSnapCargando(false);
+      return;
+    }
+
+    let cancelado = false;
+    setSnapCargando(true);
+
+    ajustarACarretera(ruta)
+      .then((ajustada) => {
+        if (!cancelado) setRutaAjustada(ajustada);
+      })
+      .catch((error) => {
+        console.error("Error ajustando la ruta a carretera:", error);
+        if (!cancelado) setRutaAjustada(null);
+      })
+      .finally(() => {
+        if (!cancelado) setSnapCargando(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapActivo, claveRuta]);
+
+  // Snapped line when available, raw GPS line otherwise.
+  const rutaDibujada = snapActivo && rutaAjustada ? rutaAjustada : ruta;
+
   const etiquetaRuta = useMemo(() => {
     if (puntosRutaMostrada.length === 0) return "";
 
-    const primero = parsearFechaUTC(puntosRutaMostrada[0].timestamp_gps);
-    const ultimo = parsearFechaUTC(
+    const primero = parsearFechaGPS(puntosRutaMostrada[0].timestamp_gps);
+    const ultimo = parsearFechaGPS(
       puntosRutaMostrada[puntosRutaMostrada.length - 1].timestamp_gps
     );
 
     const rango =
       puntosRutaMostrada.length > 1
-        ? `${primero.toLocaleDateString("es-CO")}, ${primero.toLocaleTimeString("es-CO", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })} - ${ultimo.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}`
-        : `${primero.toLocaleDateString("es-CO")}, ${primero.toLocaleTimeString("es-CO", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}`;
+        ? `${primero.toLocaleDateString("es-CO", OPCIONES_ZONA)}, ${primero.toLocaleTimeString(
+            "es-CO",
+            OPCIONES_HORA_CORTA
+          )} - ${ultimo.toLocaleTimeString("es-CO", OPCIONES_HORA_CORTA)}`
+        : `${primero.toLocaleDateString("es-CO", OPCIONES_ZONA)}, ${primero.toLocaleTimeString(
+            "es-CO",
+            OPCIONES_HORA_CORTA
+          )}`;
 
     return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}`;
   }, [puntosRutaMostrada, indiceMostrado, rutas.length]);
@@ -398,7 +525,8 @@ function App() {
     // A fully past range can't receive new points, so stop polling the
     // history for it (the live marker keeps updating regardless).
     const rangoEsPasado =
-      rangoActivo && new Date(rangoActivo.hasta.replace(" ", "T")) < new Date();
+      rangoActivo &&
+      new Date(rangoActivo.hasta.replace(" ", "T") + DESFASE_ZONA) < new Date();
 
     const intervalo = setInterval(() => {
       obtenerUbicacion();
@@ -438,8 +566,8 @@ function App() {
                 </div>
               </div>
               <div className="meta">
-                <span>{fechaGPS.toLocaleDateString("es-CO")}</span>
-                <span>{fechaGPS.toLocaleTimeString("es-CO")}</span>
+                <span>{fechaGPS.toLocaleDateString("es-CO", OPCIONES_ZONA)}</span>
+                <span>{fechaGPS.toLocaleTimeString("es-CO", OPCIONES_ZONA)}</span>
               </div>
               <p className="ip">IP: {location.ip_origen}</p>
             </div>
@@ -508,7 +636,25 @@ function App() {
               </div>
             )}
 
-            {rutas.length > 0 && (
+            <div className="controles-mapa">
+              <button
+                className={`control-toggle ${centradoActivo ? "activo" : ""}`}
+                onClick={() => setCentradoActivo(!centradoActivo)}
+                title="Mantiene el punto actual en el centro sin cambiar tu zoom"
+              >
+                Centrado: {centradoActivo ? "ON" : "OFF"}
+              </button>
+
+              <button
+                className={`control-toggle ${snapActivo ? "activo" : ""}`}
+                onClick={() => setSnapActivo(!snapActivo)}
+                title="Dibuja la ruta sobre las vías reales (OSRM)"
+              >
+                Carretera: {snapActivo ? (snapCargando ? "ajustando…" : "ON") : "OFF"}
+              </button>
+            </div>
+
+            {ruta.length > 0 && (
               <div
                 style={{
                   position: "absolute",
@@ -570,7 +716,7 @@ function App() {
                   <span className="legend-dot start"></span> Inicio
                 </div>
                 <div className="legend-item">
-                  <span className="legend-dot current"></span>
+                  <span className={`legend-dot ${siguiendoActual ? "current" : "end"}`}></span>
                   {siguiendoActual ? " Actual" : " Fin de ruta"}
                 </div>
               </div>
@@ -589,14 +735,23 @@ function App() {
 
               <AjustarVista puntos={ruta} resetKey={indiceMostrado} />
 
-              {ruta.length > 1 && (
-                <Polyline positions={ruta} color="#b37feb" weight={3} opacity={0.75} />
+              <SeguirPunto
+                lat={ultimoPunto ? ultimoPunto[0] : null}
+                lon={ultimoPunto ? ultimoPunto[1] : null}
+                activo={centradoActivo}
+              />
+
+              {rutaDibujada.length > 1 && (
+                <Polyline positions={rutaDibujada} color="#b37feb" weight={3} opacity={0.75} />
               )}
 
               {ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
 
               {ruta.length > 0 && (
-                <Marker position={ruta[ruta.length - 1]} icon={iconoActual} />
+                <Marker
+                  position={ruta[ruta.length - 1]}
+                  icon={siguiendoActual ? iconoActual : iconoFin}
+                />
               )}
             </MapContainer>
 
@@ -606,17 +761,19 @@ function App() {
               </p>
               <div className="sidebar-list">
                 {historialReciente.map((punto, index) => {
-                  const fecha = parsearFechaUTC(punto.timestamp_gps);
+                  const fecha = parsearFechaGPS(punto.timestamp_gps);
                   const esInicio = index === historialReciente.length - 1;
                   const esActual = index === 0;
+                  const claseFinal = siguiendoActual ? "current" : "end";
                   return (
                     <div className="sidebar-item" key={index}>
                       <div className="sidebar-item-header">
                         <span
-                          className={`legend-dot ${esInicio ? "start" : esActual ? "current" : ""}`}
+                          className={`legend-dot ${esInicio ? "start" : esActual ? claseFinal : ""}`}
                         ></span>
                         <span className="sidebar-item-time">
-                          {fecha.toLocaleDateString("es-CO")} · {fecha.toLocaleTimeString("es-CO")}
+                          {fecha.toLocaleDateString("es-CO", OPCIONES_ZONA)} ·{" "}
+                          {fecha.toLocaleTimeString("es-CO", OPCIONES_ZONA)}
                         </span>
                       </div>
                       <div className="coord-row small">
