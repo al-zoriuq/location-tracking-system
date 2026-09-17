@@ -119,6 +119,47 @@ body {
   filter: invert(92%) hue-rotate(225deg) brightness(0.85) contrast(0.9) saturate(0.6);
 }
 
+/* Leaflet puts its zoom buttons at the top-left by default, exactly where
+   the floating panel sits. Pushing them down keeps both usable. */
+.map .leaflet-top.leaflet-left {
+  top: 200px;
+}
+
+/* ============ Map toggles (top-right, over the map) ============ */
+/* Offset from the right edge of .main, which includes the 320px sidebar,
+   so the buttons land on the right edge of the map itself. */
+.controles-mapa {
+  position: absolute;
+  top: 20px;
+  right: 340px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+}
+
+.control-toggle {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 5px 11px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.control-toggle:hover {
+  background: rgba(179, 127, 235, 0.18);
+}
+
+.control-toggle.activo {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.22);
+  color: var(--text);
+}
+
 /* ============ Floating info panel (top-left, over the map) ============ */
 .panel {
   position: absolute;
@@ -349,6 +390,11 @@ body {
     border-left: none;
     border-top: 1px solid var(--border);
   }
+
+  /* No sidebar beside the map anymore, so no offset needed */
+  .controles-mapa {
+    right: 20px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -357,6 +403,15 @@ body {
     right: 12px;
     top: 12px;
     width: auto; /* let the panel stretch full width on small screens */
+  }
+
+  /* Panel spans the full width here, so the toggles drop below it */
+  .controles-mapa {
+    top: auto;
+    bottom: 64px;
+    right: 12px;
+    flex-direction: column;
+    align-items: flex-end;
   }
 
   .legend {
