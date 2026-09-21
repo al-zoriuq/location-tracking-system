@@ -112,83 +112,23 @@ def ultima_ubicacion():
 @app.route("/api/historial-ubicaciones")
 def historial_ubicaciones():
 
-    # Optional query params:
-    #   ?horas=48                        -> last N hours (default)
-    #   ?desde=...&hasta=...             -> explicit range (ISO format)
-    #   ?device_id=xyz                   -> filter by device
+    # Optional query param, e.g. /api/historial-ubicaciones?horas=48
     horas = request.args.get("horas", default=24, type=int)
-    device_id = request.args.get("device_id", default=None, type=str)
-    desde = request.args.get("desde", default=None, type=str)
-    hasta = request.args.get("hasta", default=None, type=str)
 
     conexion = obtener_conexion()
 
     cursor = conexion.cursor(cursor_factory=RealDictCursor)
 
-    # Explicit date range takes priority over the "last N hours" default
-    if desde and hasta:
-        if device_id:
-            cursor.execute("""
-                SELECT
-                    ip_origen,
-                    latitud,
-                    longitud,
-                    timestamp_gps
-                FROM ubicaciones
-                WHERE timestamp_gps BETWEEN %s AND %s
-                  AND device_id = %s
-                ORDER BY timestamp_gps ASC
-            """, (desde, hasta, device_id))
-        else:
-            cursor.execute("""
-                SELECT
-                    ip_origen,
-                    latitud,
-                    longitud,
-                    timestamp_gps
-                FROM ubicaciones
-                WHERE timestamp_gps BETWEEN %s AND %s
-                  AND device_id = (
-                      SELECT device_id FROM ubicaciones ORDER BY id DESC LIMIT 1
-                  )
-                ORDER BY timestamp_gps ASC
-            """, (desde, hasta))
-
-        ubicaciones = cursor.fetchall()
-        cursor.close()
-        conexion.close()
-
-        for u in ubicaciones:
-            u["timestamp_gps"] = str(u["timestamp_gps"])
-
-        return jsonify(ubicaciones)
-
-    if device_id:
-        cursor.execute("""
-            SELECT
-                ip_origen,
-                latitud,
-                longitud,
-                timestamp_gps
-            FROM ubicaciones
-            WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
-              AND device_id = %s
-            ORDER BY timestamp_gps ASC
-        """, (horas, device_id))
-    else:
-        cursor.execute("""
-            SELECT
-                ip_origen,
-                latitud,
-                longitud,
-                timestamp_gps
-            FROM ubicaciones
-            WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
-              AND device_id = (
-                  SELECT device_id FROM ubicaciones ORDER BY id DESC LIMIT 1
-              )
-            ORDER BY timestamp_gps ASC
-        """, (horas,))
+    cursor.execute("""
+        SELECT
+            ip_origen,
+            latitud,
+            longitud,
+            timestamp_gps
+        FROM ubicaciones
+        WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
+        ORDER BY timestamp_gps ASC
+    """, (horas,))
 
     ubicaciones = cursor.fetchall()
 
