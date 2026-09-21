@@ -63,7 +63,7 @@ jobs:
             pip install -r requirements.txt
             cd disenop2web
             npm install
-            npm run build
+            BASE_PATH=/ npm run build
             cd ..
             sudo systemctl restart gunicorn-location-test
 
