@@ -11,7 +11,7 @@
   --marker-start: #FF00E6; /* start-of-route marker: teal green */
   --marker-end: #ff7a8a;   /* end of a past route: coral */
   --status-fresh: #ffee00;   /* status dot: data received within the last 2 minutes */
-  --status-medium: #fbbf24;  /* status dot: data is somewhat recent (under 1 hour) */
+  --status-medium: #00ff00;  /* status dot: data is somewhat recent (under 1 hour) */
   --status-old: #6b6280;     /* status dot: data is stale (over 1 hour, or none) */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
   --font-mono: "IBM Plex Mono", monospace;      /* numeric data: coordinates, dates, times */
