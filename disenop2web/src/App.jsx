@@ -272,17 +272,116 @@ function useRueda(indice, total, onIndice) {
   return { ref, alHacerScroll, alPresionarTecla, alPresionarMouse };
 }
 
-// Numeric wheel: min..max inclusive (e.g. 1-12 for hours, 0-59 for minutes)
+// Numeric wheel: min..max inclusive (e.g. 1-12 for hours, 0-59 for minutes).
+// Infinite: the list is repeated REPETICIONES times, and scrolling near the
+// top/bottom copy silently jumps back to the middle copy (same value), so
+// it feels like it wraps around (59 -> 00) with no visible limit.
+const REPETICIONES_RUEDA = 9;
+
 function RuedaNumeros({ min = 0, max, valor, onChange }) {
   const valores = [];
   for (let i = min; i <= max; i++) valores.push(i);
+  const L = valores.length;
+  const bloqueMedio = Math.floor(REPETICIONES_RUEDA / 2);
 
-  const indice = valor - min;
-  const { ref, alHacerScroll, alPresionarTecla, alPresionarMouse } = useRueda(
-    indice,
-    valores.length,
-    (i) => onChange(valores[i])
-  );
+  const ref = useRef(null);
+  const montado = useRef(false);
+
+  const indiceActual = () => Math.round((ref.current?.scrollTop ?? 0) / ALTO_ITEM) + 1;
+  const aModulo = (i) => ((i % L) + L) % L;
+
+  // First render: start centered on the requested value, in the middle copy
+  useEffect(() => {
+    if (ref.current && !montado.current) {
+      ref.current.scrollTop = (bloqueMedio * L + (valor - min) - 1) * ALTO_ITEM;
+      montado.current = true;
+    }
+  }, []);
+
+  // If the value is changed from outside after mount, move to the nearest
+  // occurrence of it instead of resetting to the middle copy.
+  useEffect(() => {
+    if (!ref.current || !montado.current) return;
+    const actual = indiceActual();
+    const actualMod = aModulo(actual);
+    const objetivoMod = valor - min;
+    if (actualMod !== objetivoMod) {
+      ref.current.scrollTop = (actual - 1 + (objetivoMod - actualMod)) * ALTO_ITEM;
+    }
+  }, [valor]);
+
+  // Once settled, if we drifted into the first or last couple of copies,
+  // jump back near the middle at the same logical value (invisible to the user).
+  const recentrar = () => {
+    const el = ref.current;
+    if (!el) return;
+    const i = indiceActual();
+    const bloque = Math.floor(i / L);
+    if (bloque <= 1 || bloque >= REPETICIONES_RUEDA - 2) {
+      el.scrollTop = (bloqueMedio * L + aModulo(i) - 1) * ALTO_ITEM;
+    }
+  };
+
+  const confirmarDesdeScroll = () => {
+    const el = ref.current;
+    if (!el) return;
+    const mod = aModulo(indiceActual());
+    const nuevo = valores[mod];
+    if (nuevo !== valor) onChange(nuevo);
+    recentrar();
+  };
+
+  const alHacerScroll = () => {
+    if (!ref.current) return;
+    clearTimeout(ref.current._timer);
+    ref.current._timer = setTimeout(confirmarDesdeScroll, 120);
+  };
+
+  const alPresionarTecla = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      el.scrollTop -= ALTO_ITEM;
+      confirmarDesdeScroll();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      el.scrollTop += ALTO_ITEM;
+      confirmarDesdeScroll();
+    }
+  };
+
+  const alPresionarMouse = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    e.preventDefault();
+    const yInicial = e.clientY;
+    const scrollInicial = el.scrollTop;
+    el.style.scrollSnapType = "none";
+
+    const mover = (ev) => {
+      el.scrollTop = scrollInicial - (ev.clientY - yInicial);
+    };
+
+    const soltar = () => {
+      el.style.scrollSnapType = "y mandatory";
+      const i = Math.round(el.scrollTop / ALTO_ITEM);
+      el.scrollTop = i * ALTO_ITEM;
+      confirmarDesdeScroll();
+      window.removeEventListener("mousemove", mover);
+      window.removeEventListener("mouseup", soltar);
+    };
+
+    window.addEventListener("mousemove", mover);
+    window.addEventListener("mouseup", soltar);
+  };
+
+  const filas = [];
+  for (let bloque = 0; bloque < REPETICIONES_RUEDA; bloque++) {
+    for (let idx = 0; idx < L; idx++) {
+      filas.push({ clave: `${bloque}-${idx}`, n: valores[idx] });
+    }
+  }
 
   return (
     <div
@@ -293,17 +392,15 @@ function RuedaNumeros({ min = 0, max, valor, onChange }) {
       onKeyDown={alPresionarTecla}
       onMouseDown={alPresionarMouse}
     >
-      <div className="rueda-espaciador" />
-      {valores.map((n) => (
+      {filas.map(({ clave, n }) => (
         <div
-          key={n}
+          key={clave}
           className={`rueda-item ${n === valor ? "activo" : ""}`}
           onClick={() => onChange(n)}
         >
           {String(n).padStart(2, "0")}
         </div>
       ))}
-      <div className="rueda-espaciador" />
     </div>
   );
 }
