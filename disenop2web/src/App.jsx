@@ -795,6 +795,7 @@ function App() {
                 activo={centradoActivo}
               />
 
+              {/* Draw route path */}
               {rutaDibujada.length > 1 && (
                 <Polyline
                   positions={rutaDibujada}
@@ -804,13 +805,18 @@ function App() {
                 />
               )}
 
+              {/* Start of route marker */}
               {ruta.length > 1 && (
                 <Marker position={ruta[0]} icon={iconoInicio} />
               )}
 
-              {ruta.length > 0 && (
+              {/* Most recent location marker using iconoActual */}
+              {location && (
                 <Marker
-                  position={ruta[ruta.length - 1]}
+                  position={[
+                    Number(location.latitud),
+                    Number(location.longitud),
+                  ]}
                   icon={siguiendoActual ? iconoActual : iconoFin}
                 />
               )}
