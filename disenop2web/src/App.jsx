@@ -272,17 +272,116 @@ function useRueda(indice, total, onIndice) {
   return { ref, alHacerScroll, alPresionarTecla, alPresionarMouse };
 }
 
-// Numeric wheel: min..max inclusive (e.g. 1-12 for hours, 0-59 for minutes)
+// Numeric wheel: min..max inclusive (e.g. 1-12 for hours, 0-59 for minutes).
+// Infinite: the list is repeated REPETICIONES times, and scrolling near the
+// top/bottom copy silently jumps back to the middle copy (same value), so
+// it feels like it wraps around (59 -> 00) with no visible limit.
+const REPETICIONES_RUEDA = 9;
+
 function RuedaNumeros({ min = 0, max, valor, onChange }) {
   const valores = [];
   for (let i = min; i <= max; i++) valores.push(i);
+  const L = valores.length;
+  const bloqueMedio = Math.floor(REPETICIONES_RUEDA / 2);
 
-  const indice = valor - min;
-  const { ref, alHacerScroll, alPresionarTecla, alPresionarMouse } = useRueda(
-    indice,
-    valores.length,
-    (i) => onChange(valores[i])
-  );
+  const ref = useRef(null);
+  const montado = useRef(false);
+
+  const indiceActual = () => Math.round((ref.current?.scrollTop ?? 0) / ALTO_ITEM) + 1;
+  const aModulo = (i) => ((i % L) + L) % L;
+
+  // First render: start centered on the requested value, in the middle copy
+  useEffect(() => {
+    if (ref.current && !montado.current) {
+      ref.current.scrollTop = (bloqueMedio * L + (valor - min) - 1) * ALTO_ITEM;
+      montado.current = true;
+    }
+  }, []);
+
+  // If the value is changed from outside after mount, move to the nearest
+  // occurrence of it instead of resetting to the middle copy.
+  useEffect(() => {
+    if (!ref.current || !montado.current) return;
+    const actual = indiceActual();
+    const actualMod = aModulo(actual);
+    const objetivoMod = valor - min;
+    if (actualMod !== objetivoMod) {
+      ref.current.scrollTop = (actual - 1 + (objetivoMod - actualMod)) * ALTO_ITEM;
+    }
+  }, [valor]);
+
+  // Once settled, if we drifted into the first or last couple of copies,
+  // jump back near the middle at the same logical value (invisible to the user).
+  const recentrar = () => {
+    const el = ref.current;
+    if (!el) return;
+    const i = indiceActual();
+    const bloque = Math.floor(i / L);
+    if (bloque <= 1 || bloque >= REPETICIONES_RUEDA - 2) {
+      el.scrollTop = (bloqueMedio * L + aModulo(i) - 1) * ALTO_ITEM;
+    }
+  };
+
+  const confirmarDesdeScroll = () => {
+    const el = ref.current;
+    if (!el) return;
+    const mod = aModulo(indiceActual());
+    const nuevo = valores[mod];
+    if (nuevo !== valor) onChange(nuevo);
+    recentrar();
+  };
+
+  const alHacerScroll = () => {
+    if (!ref.current) return;
+    clearTimeout(ref.current._timer);
+    ref.current._timer = setTimeout(confirmarDesdeScroll, 120);
+  };
+
+  const alPresionarTecla = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      el.scrollTop -= ALTO_ITEM;
+      confirmarDesdeScroll();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      el.scrollTop += ALTO_ITEM;
+      confirmarDesdeScroll();
+    }
+  };
+
+  const alPresionarMouse = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    e.preventDefault();
+    const yInicial = e.clientY;
+    const scrollInicial = el.scrollTop;
+    el.style.scrollSnapType = "none";
+
+    const mover = (ev) => {
+      el.scrollTop = scrollInicial - (ev.clientY - yInicial);
+    };
+
+    const soltar = () => {
+      el.style.scrollSnapType = "y mandatory";
+      const i = Math.round(el.scrollTop / ALTO_ITEM);
+      el.scrollTop = i * ALTO_ITEM;
+      confirmarDesdeScroll();
+      window.removeEventListener("mousemove", mover);
+      window.removeEventListener("mouseup", soltar);
+    };
+
+    window.addEventListener("mousemove", mover);
+    window.addEventListener("mouseup", soltar);
+  };
+
+  const filas = [];
+  for (let bloque = 0; bloque < REPETICIONES_RUEDA; bloque++) {
+    for (let idx = 0; idx < L; idx++) {
+      filas.push({ clave: `${bloque}-${idx}`, n: valores[idx] });
+    }
+  }
 
   return (
     <div
@@ -293,17 +392,15 @@ function RuedaNumeros({ min = 0, max, valor, onChange }) {
       onKeyDown={alPresionarTecla}
       onMouseDown={alPresionarMouse}
     >
-      <div className="rueda-espaciador" />
-      {valores.map((n) => (
+      {filas.map(({ clave, n }) => (
         <div
-          key={n}
+          key={clave}
           className={`rueda-item ${n === valor ? "activo" : ""}`}
           onClick={() => onChange(n)}
         >
           {String(n).padStart(2, "0")}
         </div>
       ))}
-      <div className="rueda-espaciador" />
     </div>
   );
 }
@@ -354,6 +451,8 @@ function App() {
   const [snapActivo, setSnapActivo] = useState(false);
   const [rutaAjustada, setRutaAjustada] = useState(null);
   const [snapCargando, setSnapCargando] = useState(false);
+  const [capasAbierto, setCapasAbierto] = useState(false);
+  const [panelExpandido, setPanelExpandido] = useState(false);
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
@@ -369,10 +468,35 @@ function App() {
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
 
+  // Location filter state
+  const [busquedaLugar, setBusquedaLugar] = useState("");
+  const [sugerenciasLugar, setSugerenciasLugar] = useState([]);
+  const [buscandoLugar, setBuscandoLugar] = useState(false);
+  const [lugarActivo, setLugarActivo] = useState(null); // {nombre, lat_min, lat_max, lon_min, lon_max}
+
   const fechaGPS = location ? parsearFechaGPS(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
 
-  const rutas = useMemo(() => dividirEnRutas(historial), [historial]);
+  const todasLasRutas = useMemo(() => dividirEnRutas(historial), [historial]);
+
+  // A route "matches" a place if any of its points falls inside that
+  // place's bounding box (city/town box, or the small radius box built
+  // around a single-point address).
+  const rutas = useMemo(() => {
+    if (!lugarActivo) return todasLasRutas;
+    return todasLasRutas.filter((puntos) =>
+      puntos.some((p) => {
+        const lat = Number(p.latitud);
+        const lon = Number(p.longitud);
+        return (
+          lat >= lugarActivo.lat_min &&
+          lat <= lugarActivo.lat_max &&
+          lon >= lugarActivo.lon_min &&
+          lon <= lugarActivo.lon_max
+        );
+      })
+    );
+  }, [todasLasRutas, lugarActivo]);
 
   const siguiendoActual = indiceRuta === null;
   const indiceMostrado = siguiendoActual ? rutas.length - 1 : indiceRuta;
@@ -384,6 +508,45 @@ function App() {
   ]);
 
   const historialReciente = [...puntosRutaMostrada].reverse();
+
+  useEffect(() => {
+    if (busquedaLugar.trim().length < 3) {
+      setSugerenciasLugar([]);
+      return;
+    }
+
+    setBuscandoLugar(true);
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await fetch(
+          import.meta.env.BASE_URL + `api/buscar-lugar?q=${encodeURIComponent(busquedaLugar)}`
+        );
+        const data = await resp.json();
+        setSugerenciasLugar(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Error buscando lugar:", error);
+        setSugerenciasLugar([]);
+      } finally {
+        setBuscandoLugar(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [busquedaLugar]);
+
+  const elegirLugar = (lugar) => {
+    setLugarActivo(lugar);
+    setBusquedaLugar(lugar.nombre);
+    setSugerenciasLugar([]);
+    setIndiceRuta(null);
+  };
+
+  const quitarLugar = () => {
+    setLugarActivo(null);
+    setBusquedaLugar("");
+    setSugerenciasLugar([]);
+    setIndiceRuta(null);
+  };
 
   const ultimoPunto = ruta.length > 0 ? ruta[ruta.length - 1] : null;
 
@@ -553,26 +716,61 @@ function App() {
       <div className="main">
         {location ? (
           <>
-            <div className="panel">
-              <p className="label">Última posición</p>
-              <div className="coords">
-                <div className="coord-row">
-                  <span className="coord-label">Lat</span>
-                  <span>{Number(location.latitud).toFixed(4)}</span>
+            <div className={`panel ${panelExpandido ? "expandido" : ""}`}>
+              <button
+                className="panel-resumen"
+                onClick={() => setPanelExpandido(!panelExpandido)}
+                aria-expanded={panelExpandido}
+              >
+                <span className={`dot dot-${estado.tier}`}></span>
+                <span className="panel-resumen-texto">
+                  {Number(location.latitud).toFixed(4)}, {Number(location.longitud).toFixed(4)} ·{" "}
+                  {fechaGPS.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "2-digit", minute: "2-digit" })}
+                </span>
+                <span className="panel-flecha">{panelExpandido ? "▴" : "▾"}</span>
+              </button>
+
+              <div className="panel-detalle">
+                <p className="label">Última posición</p>
+                <div className="coords">
+                  <div className="coord-row">
+                    <span className="coord-label">Lat</span>
+                    <span>{Number(location.latitud).toFixed(4)}</span>
+                  </div>
+                  <div className="coord-row">
+                    <span className="coord-label">Lon</span>
+                    <span>{Number(location.longitud).toFixed(4)}</span>
+                  </div>
                 </div>
-                <div className="coord-row">
-                  <span className="coord-label">Lon</span>
-                  <span>{Number(location.longitud).toFixed(4)}</span>
+                <div className="meta">
+                  <span>{fechaGPS.toLocaleDateString("es-CO", OPCIONES_ZONA)}</span>
+                  <span>{fechaGPS.toLocaleTimeString("es-CO", OPCIONES_ZONA)}</span>
                 </div>
+                <p className="ip">IP: {location.ip_origen}</p>
               </div>
-              <div className="meta">
-                <span>{fechaGPS.toLocaleDateString("es-CO", OPCIONES_ZONA)}</span>
-                <span>{fechaGPS.toLocaleTimeString("es-CO", OPCIONES_ZONA)}</span>
-              </div>
-              <p className="ip">IP: {location.ip_origen}</p>
             </div>
 
-            {filtroAbierto ? (
+            <div className="superior">
+              {ruta.length > 0 && (
+                <div className="nav-rutas">
+                  <button
+                    className="nav-btn"
+                    onClick={verRutaAnterior}
+                    disabled={indiceMostrado === 0}
+                    aria-label="Ruta anterior"
+                  >
+                    ← <span className="nav-texto">Anterior</span>
+                  </button>
+                  <span className="nav-etiqueta">{etiquetaRuta}</span>
+                  {!siguiendoActual && (
+                    <button className="nav-btn primario" onClick={volverARutaActual} aria-label="Ruta actual">
+                      <span className="nav-texto">Actual</span> →
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {filtroAbierto ? (
               <div className="filtro-fecha">
                 <div className="filtro-grupo">
                   <span className="filtro-label">Desde</span>
@@ -620,96 +818,102 @@ function App() {
                   </button>
                 </div>
               </div>
-            ) : (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "60px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 1000,
-                }}
-              >
-                <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
-                  {rangoActivo ? "Rango: personalizado" : "Filtrar por fecha"}
-                </button>
-              </div>
-            )}
+              ) : (
+                <div className="filtros-chips">
+                  <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
+                    {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
+                  </button>
+                  {rangoActivo && (
+                    <button className="chip-quitar" onClick={quitarFiltro} aria-label="Quitar filtro de fecha">
+                      x
+                    </button>
+                  )}
+                </div>
+              )}
 
-            <div className="controles-mapa">
+              <div className="buscador-lugar">
+                <input
+                  type="text"
+                  className="buscador-input"
+                  placeholder="Filtrar por ciudad o direccion"
+                  value={busquedaLugar}
+                  onChange={(e) => {
+                    setBusquedaLugar(e.target.value);
+                    if (lugarActivo) setLugarActivo(null);
+                  }}
+                />
+                {lugarActivo && (
+                  <button className="chip-quitar" onClick={quitarLugar} aria-label="Quitar filtro de lugar">
+                    x
+                  </button>
+                )}
+
+                {sugerenciasLugar.length > 0 && (
+                  <div className="sugerencias-lugar">
+                    {sugerenciasLugar.map((s, i) => (
+                      <button key={i} className="sugerencia-item" onClick={() => elegirLugar(s)}>
+                        {s.nombre}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {buscandoLugar && <span className="buscando-lugar">Buscando...</span>}
+              </div>
+            </div>
+
+            <div className="controles-mapa fab-columna">
+              {capasAbierto && (
+                <div className="capas-menu">
+                  <p className="capas-titulo">Opciones del mapa</p>
+                  <label className="capas-opcion">
+                    <span>
+                      Ajustar a vías
+                      {snapCargando && <em> · ajustando…</em>}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={snapActivo}
+                      onChange={() => setSnapActivo(!snapActivo)}
+                    />
+                    <span className="interruptor" />
+                  </label>
+                </div>
+              )}
+
               <button
-                className={`control-toggle ${centradoActivo ? "activo" : ""}`}
-                onClick={() => setCentradoActivo(!centradoActivo)}
-                title="Mantiene el punto actual en el centro sin cambiar tu zoom"
+                className={`fab ${capasAbierto ? "activo" : ""}`}
+                onClick={() => setCapasAbierto(!capasAbierto)}
+                aria-label="Opciones del mapa"
+                title="Opciones del mapa"
               >
-                Centrado: {centradoActivo ? "ON" : "OFF"}
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                  <polyline points="2 17 12 22 22 17" />
+                  <polyline points="2 12 12 17 22 12" />
+                </svg>
+                {snapActivo && <span className="fab-punto" />}
               </button>
 
               <button
-                className={`control-toggle ${snapActivo ? "activo" : ""}`}
-                onClick={() => setSnapActivo(!snapActivo)}
-                title="Dibuja la ruta sobre las vías reales (OSRM)"
+                className={`fab ${centradoActivo ? "activo" : ""}`}
+                onClick={() => setCentradoActivo(!centradoActivo)}
+                aria-label="Seguir punto actual"
+                title="Mantiene el punto actual en el centro sin cambiar tu zoom"
               >
-                Carretera: {snapActivo ? (snapCargando ? "ajustando…" : "ON") : "OFF"}
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="7" />
+                  <circle cx="12" cy="12" r="2.5" fill={centradoActivo ? "currentColor" : "none"} />
+                  <line x1="12" y1="1" x2="12" y2="4" />
+                  <line x1="12" y1="20" x2="12" y2="23" />
+                  <line x1="1" y1="12" x2="4" y2="12" />
+                  <line x1="20" y1="12" x2="23" y2="12" />
+                </svg>
               </button>
             </div>
 
-            {ruta.length > 0 && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "12px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 1000,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  backgroundColor: "rgba(20, 16, 32, 0.85)",
-                  padding: "8px 14px",
-                  borderRadius: "10px",
-                  fontFamily: "inherit",
-                  fontSize: "13px",
-                  color: "#e5dcff",
-                  backdropFilter: "blur(4px)",
-                }}
-              >
-                <button
-                  onClick={verRutaAnterior}
-                  disabled={indiceMostrado === 0}
-                  style={{
-                    background: "none",
-                    border: "1px solid #7c3aed",
-                    color: indiceMostrado === 0 ? "#5a5568" : "#e5dcff",
-                    borderRadius: "6px",
-                    padding: "4px 10px",
-                    cursor: indiceMostrado === 0 ? "default" : "pointer",
-                    opacity: indiceMostrado === 0 ? 0.5 : 1,
-                  }}
-                >
-                  ← Ruta anterior
-                </button>
-
-                <span style={{ whiteSpace: "nowrap" }}>{etiquetaRuta}</span>
-
-                {!siguiendoActual && (
-                  <button
-                    onClick={volverARutaActual}
-                    style={{
-                      background: "#7c3aed",
-                      border: "none",
-                      color: "white",
-                      borderRadius: "6px",
-                      padding: "4px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Ruta actual →
-                  </button>
-                )}
-              </div>
-            )}
-
+            
             {ruta.length > 1 && (
               <div className="legend">
                 <div className="legend-item">
