@@ -631,3 +631,145 @@ body {
   outline: 1px solid var(--accent);
   border-radius: 6px;
 }
+
+/* ============ Floating action buttons (map controls) ============ */
+.fab-columna {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.fab {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.fab.activo {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* Small dot on the layers button when "snap to roads" is on */
+.fab-punto {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--status-fresh);
+  border: 2px solid var(--panel);
+}
+
+.capas-menu {
+  background: rgba(20, 16, 32, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 210px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.capas-titulo {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.capas-opcion {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.capas-opcion em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Native checkbox hidden; .interruptor is the visible switch */
+.capas-opcion input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.interruptor {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--border);
+  transition: background-color 0.2s;
+}
+
+.interruptor::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.capas-opcion input:checked + .interruptor {
+  background: var(--accent);
+}
+
+.capas-opcion input:checked + .interruptor::after {
+  transform: translateX(18px);
+  background: var(--text);
+}
+
+.capas-opcion input:focus-visible + .interruptor {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Mobile: the history list sits below the map with a fixed height, so the
+   map overlays are lifted by that same amount to stay over the map. */
+@media (max-width: 900px) {
+  .sidebar {
+    height: 240px;
+  }
+
+  .controles-mapa {
+    bottom: calc(240px + 28px);
+    right: 12px;
+  }
+
+  .legend {
+    bottom: calc(240px + 12px);
+  }
+}
