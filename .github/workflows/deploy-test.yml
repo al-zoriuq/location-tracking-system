@@ -2,7 +2,7 @@ name: Deploy to /test/
 
 on:
   push:
-    branches: [sthefany-test]
+    branches: [alba-test]
 
 jobs:
   test:
@@ -50,19 +50,20 @@ jobs:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.EC2_HOST_STHEFANY }}
-          username: ${{ secrets.EC2_USER_STHEFANY }}
-          key: ${{ secrets.EC2_SSH_KEY_STHEFANY }}
+          host: ${{ secrets.EC2_HOST_ALBA }}
+          username: ${{ secrets.EC2_USER_ALBA }}
+          key: ${{ secrets.EC2_SSH_KEY_ALBA }}
           timeout: 60s
           script: |
             cd /home/ubuntu/location-tracking-system-test
             git fetch origin
-            git checkout sthefany-test
-            git pull origin sthefany-test
+            git checkout alba-test
+            git pull origin alba-test
             source venv/bin/activate
             pip install -r requirements.txt
             cd disenop2web
             npm install
+            BASE_PATH = /test/
             npm run build
             cd ..
             sudo systemctl restart gunicorn-location-test
