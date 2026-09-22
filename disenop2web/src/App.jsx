@@ -355,6 +355,7 @@ function App() {
   const [rutaAjustada, setRutaAjustada] = useState(null);
   const [snapCargando, setSnapCargando] = useState(false);
   const [capasAbierto, setCapasAbierto] = useState(false);
+  const [panelExpandido, setPanelExpandido] = useState(false);
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
@@ -554,26 +555,61 @@ function App() {
       <div className="main">
         {location ? (
           <>
-            <div className="panel">
-              <p className="label">Última posición</p>
-              <div className="coords">
-                <div className="coord-row">
-                  <span className="coord-label">Lat</span>
-                  <span>{Number(location.latitud).toFixed(4)}</span>
+            <div className={`panel ${panelExpandido ? "expandido" : ""}`}>
+              <button
+                className="panel-resumen"
+                onClick={() => setPanelExpandido(!panelExpandido)}
+                aria-expanded={panelExpandido}
+              >
+                <span className={`dot dot-${estado.tier}`}></span>
+                <span className="panel-resumen-texto">
+                  {Number(location.latitud).toFixed(4)}, {Number(location.longitud).toFixed(4)} ·{" "}
+                  {fechaGPS.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "2-digit", minute: "2-digit" })}
+                </span>
+                <span className="panel-flecha">{panelExpandido ? "▴" : "▾"}</span>
+              </button>
+
+              <div className="panel-detalle">
+                <p className="label">Última posición</p>
+                <div className="coords">
+                  <div className="coord-row">
+                    <span className="coord-label">Lat</span>
+                    <span>{Number(location.latitud).toFixed(4)}</span>
+                  </div>
+                  <div className="coord-row">
+                    <span className="coord-label">Lon</span>
+                    <span>{Number(location.longitud).toFixed(4)}</span>
+                  </div>
                 </div>
-                <div className="coord-row">
-                  <span className="coord-label">Lon</span>
-                  <span>{Number(location.longitud).toFixed(4)}</span>
+                <div className="meta">
+                  <span>{fechaGPS.toLocaleDateString("es-CO", OPCIONES_ZONA)}</span>
+                  <span>{fechaGPS.toLocaleTimeString("es-CO", OPCIONES_ZONA)}</span>
                 </div>
+                <p className="ip">IP: {location.ip_origen}</p>
               </div>
-              <div className="meta">
-                <span>{fechaGPS.toLocaleDateString("es-CO", OPCIONES_ZONA)}</span>
-                <span>{fechaGPS.toLocaleTimeString("es-CO", OPCIONES_ZONA)}</span>
-              </div>
-              <p className="ip">IP: {location.ip_origen}</p>
             </div>
 
-            {filtroAbierto ? (
+            <div className="superior">
+              {ruta.length > 0 && (
+                <div className="nav-rutas">
+                  <button
+                    className="nav-btn"
+                    onClick={verRutaAnterior}
+                    disabled={indiceMostrado === 0}
+                    aria-label="Ruta anterior"
+                  >
+                    ← <span className="nav-texto">Anterior</span>
+                  </button>
+                  <span className="nav-etiqueta">{etiquetaRuta}</span>
+                  {!siguiendoActual && (
+                    <button className="nav-btn primario" onClick={volverARutaActual} aria-label="Ruta actual">
+                      <span className="nav-texto">Actual</span> →
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {filtroAbierto ? (
               <div className="filtro-fecha">
                 <div className="filtro-grupo">
                   <span className="filtro-label">Desde</span>
@@ -621,21 +657,12 @@ function App() {
                   </button>
                 </div>
               </div>
-            ) : (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "60px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 1000,
-                }}
-              >
+              ) : (
                 <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
                   {rangoActivo ? "Rango: personalizado" : "Filtrar por fecha"}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="controles-mapa fab-columna">
               {capasAbierto && (
@@ -689,62 +716,7 @@ function App() {
               </button>
             </div>
 
-            {ruta.length > 0 && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "12px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 1000,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  backgroundColor: "rgba(20, 16, 32, 0.85)",
-                  padding: "8px 14px",
-                  borderRadius: "10px",
-                  fontFamily: "inherit",
-                  fontSize: "13px",
-                  color: "#e5dcff",
-                  backdropFilter: "blur(4px)",
-                }}
-              >
-                <button
-                  onClick={verRutaAnterior}
-                  disabled={indiceMostrado === 0}
-                  style={{
-                    background: "none",
-                    border: "1px solid #7c3aed",
-                    color: indiceMostrado === 0 ? "#5a5568" : "#e5dcff",
-                    borderRadius: "6px",
-                    padding: "4px 10px",
-                    cursor: indiceMostrado === 0 ? "default" : "pointer",
-                    opacity: indiceMostrado === 0 ? 0.5 : 1,
-                  }}
-                >
-                  ← Ruta anterior
-                </button>
-
-                <span style={{ whiteSpace: "nowrap" }}>{etiquetaRuta}</span>
-
-                {!siguiendoActual && (
-                  <button
-                    onClick={volverARutaActual}
-                    style={{
-                      background: "#7c3aed",
-                      border: "none",
-                      color: "white",
-                      borderRadius: "6px",
-                      padding: "4px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Ruta actual →
-                  </button>
-                )}
-              </div>
-            )}
-
+            
             {ruta.length > 1 && (
               <div className="legend">
                 <div className="legend-item">
