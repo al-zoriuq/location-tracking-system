@@ -29,24 +29,29 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_ALBA }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_ALBA }}
           aws-region: us-east-1
 
+      # Step 2: Get the runner's public IP
       - name: Get runner public IP
         id: ip
         run: echo "ip=$(curl -s https://checkip.amazonaws.com)/32" >> "$GITHUB_OUTPUT"
 
+      # Step 3: Temporarily open port 22 on Alba's Security Group
       - name: Open SSH port for this runner
         run: |
           aws ec2 authorize-security-group-ingress \
-            --group-id sg-040f40fef53b4b9f5 \
+            --group-id sg-000664e76aea40f3e \
             --protocol tcp --port 22 \
             --cidr ${{ steps.ip.outputs.ip }}
 
+      # Step 4: Wait for firewall rule propagation
       - name: Wait for security group propagation
         run: sleep 5
 
+
+        # Step 5: SSH and run the test deployment commands
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -63,15 +68,15 @@ jobs:
             pip install -r requirements.txt
             cd disenop2web
             npm install
-            BASE_PATH = /test/
-            npm run build
+            BASE_PATH=/test/ npm run build
             cd ..
             sudo systemctl restart gunicorn-location-test
 
+      # Step 6: Always close port 22 after attempt completes
       - name: Close SSH port for this runner
         if: always()
         run: |
           aws ec2 revoke-security-group-ingress \
-            --group-id sg-040f40fef53b4b9f5 \
+            --group-id sg-000664e76aea40f3e \
             --protocol tcp --port 22 \
             --cidr ${{ steps.ip.outputs.ip }}
