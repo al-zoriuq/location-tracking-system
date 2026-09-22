@@ -1,6 +1,6 @@
 /* ============ Design tokens (colors, fonts) ============ */
 :root {
-  --bg: #150e24; /* page background: deep purple/navy */
+  --bg: #1e1533; /* page background: deep purple/navy */
   --panel: #1e1533; /* floating card and sidebar item background */
   --panel-2: #241a3d; /* alternate panel shade, currently unused but kept for future use */
   --border: #3a2a5c; /* border color used on cards, dividers, sidebar rows */
