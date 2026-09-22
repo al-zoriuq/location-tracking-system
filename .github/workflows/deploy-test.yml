@@ -71,7 +71,7 @@ jobs:
             npm install
             BASE_PATH=/test/ npm run build
             cd ..
-            sudo systemctl restart gunicorn-location-test
+            sudo systemctl restart gunicorn-test
 
       # Step 6: Always close port 22 after attempt completes
       - name: Close SSH port for this runner
