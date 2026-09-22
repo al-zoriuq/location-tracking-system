@@ -3,6 +3,7 @@ from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables from .env (RDS credentials, etc.)
@@ -34,6 +35,69 @@ def inicio():
 @app.route("/<path:path>")
 def archivos_react(path):
     return send_from_directory(BUILD_FOLDER, path)
+
+# API - GEOCODING (place name / address -> coordinates + search area)
+
+# Uses Nominatim (OpenStreetMap's free geocoder, same map tiles the app
+# already uses) to turn a place name or address into a location. Cities and
+# towns come back with a bounding box (their real extent); specific
+# addresses come back as a single point, to which we apply a small radius.
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+RADIO_DIRECCION_KM = 0.3  # used only when Nominatim returns a point, not a box
+
+@app.route("/api/buscar-lugar")
+def buscar_lugar():
+    consulta = request.args.get("q", default="", type=str).strip()
+
+    if not consulta:
+        return jsonify({"error": "Falta el parametro q"}), 400
+
+    try:
+        respuesta = requests.get(
+            NOMINATIM_URL,
+            params={
+                "q": consulta,
+                "format": "json",
+                "limit": 5,
+                "addressdetails": 1,
+            },
+            headers={
+                # Nominatim's usage policy requires a descriptive User-Agent
+                "User-Agent": "GPSLink-location-tracking-system/1.0"
+            },
+            timeout=5,
+        )
+        respuesta.raise_for_status()
+        resultados = respuesta.json()
+    except requests.RequestException as e:
+        return jsonify({"error": f"Error consultando el geocodificador: {e}"}), 502
+
+    lugares = []
+    for r in resultados:
+        lat = float(r["lat"])
+        lon = float(r["lon"])
+        bbox = r.get("boundingbox")  # [lat_min, lat_max, lon_min, lon_max] as strings
+
+        if bbox:
+            lat_min, lat_max, lon_min, lon_max = map(float, bbox)
+        else:
+            # Point-only result: build a small box around it instead
+            delta = RADIO_DIRECCION_KM / 111.0  # ~km per degree of latitude
+            lat_min, lat_max = lat - delta, lat + delta
+            lon_min, lon_max = lon - delta, lon + delta
+
+        lugares.append({
+            "nombre": r.get("display_name", consulta),
+            "lat": lat,
+            "lon": lon,
+            "lat_min": lat_min,
+            "lat_max": lat_max,
+            "lon_min": lon_min,
+            "lon_max": lon_max,
+        })
+
+    return jsonify(lugares)
+
 
 # CONNECTION TO POSTGRESQL
 
