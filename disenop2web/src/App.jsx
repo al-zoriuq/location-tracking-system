@@ -468,10 +468,35 @@ function App() {
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
 
+  // Location filter state
+  const [busquedaLugar, setBusquedaLugar] = useState("");
+  const [sugerenciasLugar, setSugerenciasLugar] = useState([]);
+  const [buscandoLugar, setBuscandoLugar] = useState(false);
+  const [lugarActivo, setLugarActivo] = useState(null); // {nombre, lat_min, lat_max, lon_min, lon_max}
+
   const fechaGPS = location ? parsearFechaGPS(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
 
-  const rutas = useMemo(() => dividirEnRutas(historial), [historial]);
+  const todasLasRutas = useMemo(() => dividirEnRutas(historial), [historial]);
+
+  // A route "matches" a place if any of its points falls inside that
+  // place's bounding box (city/town box, or the small radius box built
+  // around a single-point address).
+  const rutas = useMemo(() => {
+    if (!lugarActivo) return todasLasRutas;
+    return todasLasRutas.filter((puntos) =>
+      puntos.some((p) => {
+        const lat = Number(p.latitud);
+        const lon = Number(p.longitud);
+        return (
+          lat >= lugarActivo.lat_min &&
+          lat <= lugarActivo.lat_max &&
+          lon >= lugarActivo.lon_min &&
+          lon <= lugarActivo.lon_max
+        );
+      })
+    );
+  }, [todasLasRutas, lugarActivo]);
 
   const siguiendoActual = indiceRuta === null;
   const indiceMostrado = siguiendoActual ? rutas.length - 1 : indiceRuta;
@@ -483,6 +508,45 @@ function App() {
   ]);
 
   const historialReciente = [...puntosRutaMostrada].reverse();
+
+  useEffect(() => {
+    if (busquedaLugar.trim().length < 3) {
+      setSugerenciasLugar([]);
+      return;
+    }
+
+    setBuscandoLugar(true);
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await fetch(
+          import.meta.env.BASE_URL + `api/buscar-lugar?q=${encodeURIComponent(busquedaLugar)}`
+        );
+        const data = await resp.json();
+        setSugerenciasLugar(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Error buscando lugar:", error);
+        setSugerenciasLugar([]);
+      } finally {
+        setBuscandoLugar(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [busquedaLugar]);
+
+  const elegirLugar = (lugar) => {
+    setLugarActivo(lugar);
+    setBusquedaLugar(lugar.nombre);
+    setSugerenciasLugar([]);
+    setIndiceRuta(null);
+  };
+
+  const quitarLugar = () => {
+    setLugarActivo(null);
+    setBusquedaLugar("");
+    setSugerenciasLugar([]);
+    setIndiceRuta(null);
+  };
 
   const ultimoPunto = ruta.length > 0 ? ruta[ruta.length - 1] : null;
 
@@ -755,10 +819,46 @@ function App() {
                 </div>
               </div>
               ) : (
-                <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
-                  {rangoActivo ? "Rango: personalizado" : "Filtrar por fecha"}
-                </button>
+                <div className="filtros-chips">
+                  <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
+                    {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
+                  </button>
+                  {rangoActivo && (
+                    <button className="chip-quitar" onClick={quitarFiltro} aria-label="Quitar filtro de fecha">
+                      x
+                    </button>
+                  )}
+                </div>
               )}
+
+              <div className="buscador-lugar">
+                <input
+                  type="text"
+                  className="buscador-input"
+                  placeholder="Filtrar por ciudad o direccion"
+                  value={busquedaLugar}
+                  onChange={(e) => {
+                    setBusquedaLugar(e.target.value);
+                    if (lugarActivo) setLugarActivo(null);
+                  }}
+                />
+                {lugarActivo && (
+                  <button className="chip-quitar" onClick={quitarLugar} aria-label="Quitar filtro de lugar">
+                    x
+                  </button>
+                )}
+
+                {sugerenciasLugar.length > 0 && (
+                  <div className="sugerencias-lugar">
+                    {sugerenciasLugar.map((s, i) => (
+                      <button key={i} className="sugerencia-item" onClick={() => elegirLugar(s)}>
+                        {s.nombre}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {buscandoLugar && <span className="buscando-lugar">Buscando...</span>}
+              </div>
             </div>
 
             <div className="controles-mapa fab-columna">
