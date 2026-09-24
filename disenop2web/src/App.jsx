@@ -8,12 +8,14 @@ import CentradoAutomatico from "./components/CentradoAutomatico";
 import EstadisticasRuta from "./components/EstadisticasRuta";
 import FiltroFechas from "./components/FiltroFechas";
 import MarcadorActual from "./components/MarcadorActual";
+import MarcadoresParada from "./components/MarcadoresParada";
 import ModoLugar from "./components/ModoLugar";
 import SelectorRutas from "./components/SelectorRutas";
 import { pedirJSON } from "./utils/api";
 import { calcularEstadisticas } from "./utils/estadisticas";
 import { MARGEN_PASO_MS, desplazarTexto, tramoEntre } from "./utils/lugar";
 import { centroParaZonaLibre, moverProgramaticamente, rellenoZonaLibre } from "./utils/mapa";
+import { detectarParadas } from "./utils/paradas";
 import { formatearFecha, formatearHora, parsearFechaBogota } from "./utils/tiempo";
 import { separarEnViajes, velocidadEstimada } from "./utils/viajes";
 
@@ -383,6 +385,16 @@ function App() {
     return viajeSeleccionado ? calcularEstadisticas([viajeSeleccionado.puntos]) : null;
   }, [modoLugar, rutaPaso, viajeSeleccionado]);
 
+  // Idea C: stops (>= 5 min within 50 m) of the same route
+  const paradas = useMemo(() => {
+    const tramos = modoLugar
+      ? (rutaPaso ?? []).map((v) => v.puntos)
+      : viajeSeleccionado
+        ? [viajeSeleccionado.puntos]
+        : [];
+    return tramos.flatMap(detectarParadas);
+  }, [modoLugar, rutaPaso, viajeSeleccionado]);
+
   // What the map frames, and when: a new key re-frames (see AjustarVista).
   // In place mode, clicking the map to choose the place must NOT move it,
   // so only a loaded pass route is framed.
@@ -455,6 +467,8 @@ function App() {
             {!modoLugar && mostrarFin && (
               <Marker position={ruta[ruta.length - 1]} icon={iconoFin} />
             )}
+
+            <MarcadoresParada paradas={paradas} />
 
             <CapaLugar
               activo={modoLugar}
@@ -604,6 +618,11 @@ function App() {
                     <span className="legend-line"></span> Tramo dentro del círculo
                   </div>
                 )}
+                {paradas.length > 0 && (
+                  <div className="legend-item">
+                    <span className="legend-parada">⏸</span> Parada (≥ 5 min)
+                  </div>
+                )}
               </div>
             )}
 
@@ -622,6 +641,11 @@ function App() {
                 {mostrarActual && (
                   <div className="legend-item">
                     <span className="legend-dot current"></span> Actual
+                  </div>
+                )}
+                {paradas.length > 0 && (
+                  <div className="legend-item">
+                    <span className="legend-parada">⏸</span> Parada (≥ 5 min)
                   </div>
                 )}
               </div>
