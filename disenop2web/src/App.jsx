@@ -1,26 +1,23 @@
 import "./App.css";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import CapaLugar from "./components/CapaLugar";
+import CentradoAutomatico from "./components/CentradoAutomatico";
 import FiltroFechas from "./components/FiltroFechas";
+import MarcadorActual from "./components/MarcadorActual";
 import ModoLugar from "./components/ModoLugar";
 import SelectorRutas from "./components/SelectorRutas";
 import { pedirJSON } from "./utils/api";
 import { MARGEN_PASO_MS, desplazarTexto, tramoEntre } from "./utils/lugar";
+import { centroParaZonaLibre, moverProgramaticamente, rellenoZonaLibre } from "./utils/mapa";
 import { formatearFecha, formatearHora, parsearFechaBogota } from "./utils/tiempo";
-import { separarEnViajes } from "./utils/viajes";
+import { separarEnViajes, velocidadEstimada } from "./utils/viajes";
 
 const INTERVALO_MS = 10000;
+const PAUSA_CENTRADO_MS = 15000; // auto-centering pause after a user drag/zoom
 const CENTRO_BARRANQUILLA = [10.9878, -74.7889];
-
-const iconoActual = L.divIcon({
-  className: "",
-  html: '<div class="marker-current"></div>',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-});
 
 const iconoInicio = L.divIcon({
   className: "",
@@ -38,7 +35,8 @@ const iconoFin = L.divIcon({
 
 // Frames the map once when mounted. The parent gives it a key made of the
 // mode and the trip id, so it re-frames only when the shown trip changes,
-// never on a periodic refresh.
+// never on a periodic refresh. It frames the area NOT covered by the panels
+// and marks the move as programmatic (it must not pause auto-centering).
 function AjustarVista({ puntos }) {
   const map = useMap();
   const yaAjustado = useRef(false);
@@ -47,10 +45,12 @@ function AjustarVista({ puntos }) {
     if (yaAjustado.current) return;
 
     if (puntos.length > 1) {
-      map.fitBounds(puntos, { padding: [60, 60] });
+      moverProgramaticamente(map, () => map.fitBounds(puntos, rellenoZonaLibre(map)));
       yaAjustado.current = true;
     } else if (puntos.length === 1) {
-      map.setView(puntos[0], 15);
+      moverProgramaticamente(map, () =>
+        map.setView(centroParaZonaLibre(map, puntos[0], 15), 15)
+      );
       yaAjustado.current = true;
     }
   }, [puntos, map]);
@@ -109,6 +109,31 @@ function App() {
   const [errorPaso, setErrorPaso] = useState(null);
   // Increments on every pass request, so a slow answer for an older click is ignored
   const pedidoPasoRef = useRef(0);
+
+  // Auto-centering on the live position (toggle + 15 s pause after the user
+  // drags or zooms). ahoraTick only drives the "pausado (N s)" countdown.
+  const [centradoActivo, setCentradoActivo] = useState(true);
+  const [pausaHasta, setPausaHasta] = useState(null);
+  const [ahoraTick, setAhoraTick] = useState(0);
+  // Phones only: fold the controls column to free the map
+  const [panelesVisibles, setPanelesVisibles] = useState(true);
+
+  // Stable identity: CentradoAutomatico subscribes to map events with it
+  const pausarCentrado = useCallback(() => {
+    const ahora = Date.now();
+    setPausaHasta(ahora + PAUSA_CENTRADO_MS);
+    setAhoraTick(ahora);
+  }, []);
+
+  useEffect(() => {
+    if (pausaHasta === null) return;
+    const tic = setInterval(() => setAhoraTick(Date.now()), 1000);
+    const fin = setTimeout(() => setPausaHasta(null), Math.max(0, pausaHasta - Date.now()));
+    return () => {
+      clearInterval(tic);
+      clearTimeout(fin);
+    };
+  }, [pausaHasta]);
 
   // Mirror of viajeFijadoId readable from inside the polling callback, which
   // was created when the effect ran and would otherwise see a stale value.
@@ -320,6 +345,15 @@ function App() {
   const mostrarActual = enVivo && posicionActual !== null;
   const mostrarFin = ruta.length > 1 && !viajeEnCurso;
 
+  // Following the vehicle only makes sense while showing where it is now:
+  // live mode, not choosing a place, and not looking at an older pinned trip.
+  const centradoAplicable =
+    mostrarActual && !modoLugar && (viajeFijadoId === null || viajeEnCurso);
+  const centradoPausado = pausaHasta !== null;
+  const segundosPausa = centradoPausado
+    ? Math.max(0, Math.ceil((pausaHasta - ahoraTick) / 1000))
+    : 0;
+
   // Selected pass (Entrega 2): its surrounding route and the stretch inside the circle
   const puntosPaso = useMemo(() => (rutaPaso ? rutaPaso.flatMap((v) => v.puntos) : []), [rutaPaso]);
   const lineasPaso = useMemo(
@@ -420,10 +454,34 @@ function App() {
               tramoResaltado={tramoResaltado}
             />
 
-            {mostrarActual && <Marker position={posicionActual} icon={iconoActual} />}
+            {mostrarActual && (
+              <MarcadorActual
+                posicion={posicionActual}
+                fecha={fechaGPS}
+                velocidadKmh={velocidadEstimada(location, ultimoViaje)}
+              />
+            )}
+
+            <CentradoAutomatico
+              lat={posicionActual?.[0] ?? null}
+              lon={posicionActual?.[1] ?? null}
+              activo={centradoActivo && centradoAplicable}
+              pausado={centradoPausado}
+              onPausar={pausarCentrado}
+            />
           </MapContainer>
 
-          <div className="controles">
+          <div className={`controles ${panelesVisibles ? "" : "controles-plegados"}`}>
+            {/* Only visible on phones (CSS): folds the column to free the map */}
+            <button
+              type="button"
+              className="boton boton-paneles"
+              aria-expanded={panelesVisibles}
+              onClick={() => setPanelesVisibles(!panelesVisibles)}
+            >
+              {panelesVisibles ? "Ocultar paneles ▴" : "Mostrar paneles ▾"}
+            </button>
+
             {location && (
               <div className="card panel">
                 <p className="label">Última posición</p>
@@ -442,6 +500,19 @@ function App() {
                   <span>{formatearHora(fechaGPS)}</span>
                 </div>
                 <p className="ip">IP: {location.ip_origen}</p>
+                <label className={`interruptor ${centradoAplicable ? "" : "interruptor-inactivo"}`}>
+                  <input
+                    type="checkbox"
+                    checked={centradoActivo}
+                    disabled={!centradoAplicable}
+                    onChange={(e) => setCentradoActivo(e.target.checked)}
+                  />
+                  <span>Centrar en el vehículo</span>
+                  {!centradoAplicable && <span className="interruptor-estado">(solo en vivo)</span>}
+                  {centradoAplicable && centradoActivo && centradoPausado && (
+                    <span className="interruptor-estado">pausado ({segundosPausa} s)</span>
+                  )}
+                </label>
               </div>
             )}
 

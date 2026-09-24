@@ -269,15 +269,91 @@ body {
 
 /* ============ Map markers ============ */
 
-/* Current position: purple circle with a soft pulsing glow animation */
-.marker-current {
-  width: 18px;
-  height: 18px;
+/* Current position: inverted drop (SVG). The icon anchor is the tip of the
+   drop, so the tip marks the exact GPS coordinate. */
+.gota {
+  position: relative;
+  width: 30px;
+  height: 40px;
+  cursor: pointer;
+}
+
+.gota-svg {
+  position: relative; /* above the halo */
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5));
+}
+
+.gota-cuerpo {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.gota-centro {
+  fill: var(--bg);
+}
+
+/* Pulsing halo at the base, centered on the tip (15px, 38px) */
+.gota-halo {
+  position: absolute;
+  left: 15px;
+  top: 38px;
+  width: 22px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--accent);
-  border: 3px solid var(--bg);
-  box-shadow: 0 0 0 6px rgba(179, 127, 235, 0.3);
-  animation: pulse 2s ease-in-out infinite;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  transform: translate(-50%, -50%);
+  animation: halo 2s ease-out infinite;
+}
+
+@keyframes halo {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gota-halo {
+    animation: none;
+  }
+}
+
+/* Popup of the drop, in the dark theme */
+.popup-gota .leaflet-popup-content-wrapper,
+.popup-gota .leaflet-popup-tip {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.popup-gota .leaflet-popup-content {
+  margin: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.popup-gota .leaflet-popup-content p {
+  margin: 0;
+}
+
+.popup-gota .popup-titulo {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.popup-gota a.leaflet-popup-close-button {
+  color: var(--text-dim);
 }
 
 /* Start of route: green circle, static (no animation) */
@@ -296,16 +372,6 @@ body {
   border-radius: 3px;
   background: var(--route-end);
   border: 2px solid var(--bg);
-}
-
-/* Pulsing glow animation used by the current-position marker */
-@keyframes pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 6px rgba(179, 127, 235, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 0 10px rgba(179, 127, 235, 0.15);
-  }
 }
 
 /* Shown while the first API call hasn't returned data yet */
@@ -384,14 +450,24 @@ body {
 }
 
 @media (max-width: 640px) {
-  /* Full-width column, capped in height so part of the map stays visible */
+  /* Full-width column, capped in height so part of the map stays visible.
+     56px free on the right for Leaflet's zoom control (top-right). */
   .controles {
     top: 12px;
     left: 12px;
-    right: 12px;
+    right: 56px;
     bottom: auto;
     width: auto;
     max-height: 55%;
+  }
+
+  .boton-paneles {
+    display: block;
+  }
+
+  /* Folded: only the toggle button stays */
+  .controles-plegados > :not(.boton-paneles) {
+    display: none;
   }
 }
 
@@ -409,7 +485,7 @@ body {
   color: var(--text-dim);
 }
 
-.card input,
+.card input:not([type="checkbox"]),
 .card select {
   width: 100%;
   min-width: 0;
@@ -628,4 +704,45 @@ body {
 .etiqueta-parada {
   border-color: var(--warning);
   color: var(--warning);
+}
+
+/* ============ Auto-centering toggle and phone panel toggle ============ */
+.interruptor {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.interruptor input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.interruptor-inactivo {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.interruptor-estado {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--warning);
+}
+
+.interruptor-inactivo .interruptor-estado {
+  color: var(--text-dim);
+}
+
+/* Hidden on desktop; shown by the phone media query */
+.boton-paneles {
+  display: none;
+  flex: none;
+  background: var(--panel);
 }

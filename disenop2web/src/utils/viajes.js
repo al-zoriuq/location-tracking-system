@@ -103,3 +103,15 @@ export function etiquetaViaje(viaje, numero) {
     formatearKm(viaje.distanciaM),
   ].join(" · ");
 }
+
+// Speed (km/h) between the latest position and the previous point of the
+// current trip, or null when there is no recent previous point (> 1 h).
+export function velocidadEstimada(ubicacion, viaje) {
+  if (!ubicacion || !viaje) return null;
+  const actual = normalizarPunto(ubicacion);
+  const anterior = [...viaje.puntos].reverse().find((p) => p.fecha < actual.fecha);
+  if (!anterior) return null;
+  const dtS = (actual.fecha - anterior.fecha) / 1000;
+  if (dtS * 1000 > MAX_PAUSA_MS) return null;
+  return (distanciaMetros(anterior, actual) / dtS) * 3.6;
+}
