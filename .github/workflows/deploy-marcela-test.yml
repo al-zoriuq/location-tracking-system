@@ -1,0 +1,127 @@
+name: Deploy marcela-test to /test/ (Marcela's server)
+
+# Triggers only on pushes to the marcela-test branch. It never touches main,
+# the root site "/" or the other team members' servers.
+on:
+  push:
+    branches: [marcela-test]
+
+# Never run two deployments of this branch at the same time
+concurrency:
+  group: deploy-marcela-test
+  cancel-in-progress: false
+
+env:
+  # Folder and systemd service of the /test/ copy on Marcela's EC2
+  CARPETA_TEST: /home/ubuntu/location-tracking-system-test
+  SERVICIO_TEST: gunicorn-test
+  # Public URL used to confirm the new version is live after deploying
+  URL_TEST: https://marcelamgps.duckdns.org/test
+
+jobs:
+  # Job 1: nothing reaches the server unless backend tests, lint and build pass
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run backend tests (no database needed)
+        run: python -m pytest tests -q
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Lint and build the frontend with base /test/
+        working-directory: disenop2web
+        run: |
+          npm ci
+          npm run lint
+          npm run build -- --base=/test/
+
+  # Job 2: same SSH pattern as the other deploy workflows
+  deploy:
+    needs: verificar
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Authenticate to AWS using Marcela's IAM credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_MARCELA }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_MARCELA }}
+          aws-region: us-east-1
+
+      # Step 2: Get the runner's public IP (it changes on every run)
+      - name: Get runner public IP
+        id: ip
+        run: echo "ip=$(curl -s https://checkip.amazonaws.com)/32" >> "$GITHUB_OUTPUT"
+
+      # Step 3: Temporarily open port 22 on Marcela's Security Group, only for this runner
+      - name: Open SSH port for this runner
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id sg-0e524eabd8e6036a2 \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
+
+      # Step 4: Give AWS a few seconds to propagate the firewall rule
+      - name: Wait for security group propagation
+        run: sleep 5
+
+      # Step 5: Update the /test/ copy. set -e stops at the first failing
+      # command instead of restarting the service with a half-updated app.
+      # --ff-only: the server only fast-forwards, it never creates merges.
+      # --base=/test/: assets and API calls live under /test/ behind NGINX.
+      - name: Deploy to Marcela's EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          CARPETA_TEST: ${{ env.CARPETA_TEST }}
+          SERVICIO_TEST: ${{ env.SERVICIO_TEST }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          timeout: 60s
+          command_timeout: 15m
+          envs: CARPETA_TEST,SERVICIO_TEST
+          script: |
+            set -e
+            cd "$CARPETA_TEST"
+            git fetch origin
+            git checkout marcela-test
+            git pull --ff-only origin marcela-test
+            source venv/bin/activate
+            pip install -r requirements.txt
+            cd disenop2web
+            npm install
+            npm run build -- --base=/test/
+            cd ..
+            sudo systemctl restart "$SERVICIO_TEST"
+            echo "Desplegado: $(git log --oneline -1)"
+
+      # Step 6: Always close port 22 again, even if the deployment failed
+      - name: Close SSH port for this runner
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id sg-0e524eabd8e6036a2 \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
+
+      # Step 7: Confirm the NEW version is live: this endpoint only exists
+      # from Entrega 2 on (the old /test/ answered 404 here)
+      - name: Check /test/ serves the new version
+        run: |
+          sleep 5
+          curl -fsS "$URL_TEST/api/pasos-por-lugar?lat=11.019&lon=-74.85" | head -c 300
