@@ -5,11 +5,13 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import CapaLugar from "./components/CapaLugar";
 import CentradoAutomatico from "./components/CentradoAutomatico";
+import EstadisticasRuta from "./components/EstadisticasRuta";
 import FiltroFechas from "./components/FiltroFechas";
 import MarcadorActual from "./components/MarcadorActual";
 import ModoLugar from "./components/ModoLugar";
 import SelectorRutas from "./components/SelectorRutas";
 import { pedirJSON } from "./utils/api";
+import { calcularEstadisticas } from "./utils/estadisticas";
 import { MARGEN_PASO_MS, desplazarTexto, tramoEntre } from "./utils/lugar";
 import { centroParaZonaLibre, moverProgramaticamente, rellenoZonaLibre } from "./utils/mapa";
 import { formatearFecha, formatearHora, parsearFechaBogota } from "./utils/tiempo";
@@ -372,6 +374,15 @@ function App() {
     [pasoSeleccionado, puntosPaso]
   );
 
+  // Idea A: statistics of the route on screen (selected trip, or the trips
+  // around the selected pass in place mode)
+  const estadisticas = useMemo(() => {
+    if (modoLugar) {
+      return rutaPaso?.length ? calcularEstadisticas(rutaPaso.map((v) => v.puntos)) : null;
+    }
+    return viajeSeleccionado ? calcularEstadisticas([viajeSeleccionado.puntos]) : null;
+  }, [modoLugar, rutaPaso, viajeSeleccionado]);
+
   // What the map frames, and when: a new key re-frames (see AjustarVista).
   // In place mode, clicking the map to choose the place must NOT move it,
   // so only a loaded pass route is framed.
@@ -559,6 +570,11 @@ function App() {
                 onSeleccionar={seleccionarViaje}
               />
             )}
+
+            <EstadisticasRuta
+              titulo={modoLugar ? "Recorrido del paso (±10 min)" : "Estadísticas de la ruta"}
+              estadisticas={estadisticas}
+            />
 
             {!modoLugar && (aviso || errorHistorial || errorUbicacionVisible || mensajeVacio ||
               viajeSeleccionado?.descartados > 0) && (

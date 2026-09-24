@@ -746,3 +746,23 @@ body {
   flex: none;
   background: var(--panel);
 }
+
+/* ============ Idea A: route statistics ============ */
+.estadisticas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.estadisticas dt {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.estadisticas dd {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--accent);
+}
