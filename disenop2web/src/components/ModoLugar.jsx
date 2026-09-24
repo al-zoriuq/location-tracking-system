@@ -18,6 +18,7 @@ function ModoLugar({
   pasoSeleccionado,
   onSeleccionarPaso,
   onSalir,
+  guardados, // idea F: saved places block, rendered under the radius picker
 }) {
   const pasos = resultado?.pasos ?? [];
 
@@ -40,6 +41,8 @@ function ModoLugar({
           </button>
         ))}
       </div>
+
+      {guardados}
 
       {lugar && (
         <p className="filtro-estado">

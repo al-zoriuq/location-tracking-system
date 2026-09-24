@@ -15,6 +15,7 @@ import CapaLugar from "./components/CapaLugar";
 import CentradoAutomatico from "./components/CentradoAutomatico";
 import EstadisticasRuta from "./components/EstadisticasRuta";
 import FiltroFechas from "./components/FiltroFechas";
+import LugaresGuardados from "./components/LugaresGuardados";
 import ListaPuntos from "./components/ListaPuntos";
 import MarcadorActual from "./components/MarcadorActual";
 import MarcadoresParada from "./components/MarcadoresParada";
@@ -27,6 +28,7 @@ import { copiarTexto, escribirEstadoUrl, leerEstadoUrl } from "./utils/estadoUrl
 import { MARGEN_PASO_MS, desplazarTexto, tramoEntre } from "./utils/lugar";
 import { centroParaZonaLibre, moverProgramaticamente, rellenoZonaLibre } from "./utils/mapa";
 import { detectarParadas } from "./utils/paradas";
+import { conLugar, escribirLugares, leerLugares } from "./utils/lugaresGuardados";
 import { formatearFecha, formatearHora, parsearFechaBogota } from "./utils/tiempo";
 import { separarEnViajes, velocidadEstimada } from "./utils/viajes";
 
@@ -114,6 +116,12 @@ function App() {
   const [viajeFijadoId, setViajeFijadoId] = useState(estadoInicial.ruta);
   const [aviso, setAviso] = useState(null);
   const [avisoEnlace, setAvisoEnlace] = useState(null);
+  // Place the map must frame once (from a shared link or a saved place);
+  // compared by identity with `lugar`, see the framing logic below
+  const [lugarAEncuadrar, setLugarAEncuadrar] = useState(estadoInicial.lugar);
+  // Idea F: saved places (localStorage, read once)
+  const [lugaresGuardados, setLugaresGuardados] = useState(() => leerLugares());
+  const [errorLugares, setErrorLugares] = useState(null);
 
   // Entrega 2 ("¿Cuándo pasó por aquí?") is an overlay on top of the state
   // above: it never changes rango or the pinned trip, so leaving it brings
@@ -313,6 +321,44 @@ function App() {
     setErrorPaso(null);
   }
 
+  // Idea F: the list always lives in React state; localStorage is only a
+  // copy, so if it fails the places still work until the page is closed
+  function actualizarLugares(lista) {
+    setLugaresGuardados(lista);
+    setErrorLugares(
+      escribirLugares(lista)
+        ? null
+        : "No se pudo guardar en este navegador (almacenamiento no disponible). Los lugares solo durarán mientras la página esté abierta."
+    );
+  }
+
+  function guardarLugar(nombre) {
+    if (!lugar) return;
+    actualizarLugares(
+      conLugar(lugaresGuardados, {
+        nombre,
+        lat: Number(lugar.lat.toFixed(6)),
+        lon: Number(lugar.lon.toFixed(6)),
+        radio: radioLugar,
+      })
+    );
+  }
+
+  function eliminarLugar(nombre) {
+    actualizarLugares(lugaresGuardados.filter((l) => l.nombre !== nombre));
+  }
+
+  // One click: enter place mode with that place and radius (the query runs
+  // by itself because the query key changes) and frame it on the map
+  function elegirLugarGuardado(guardado) {
+    limpiarPaso();
+    const nuevo = { lat: guardado.lat, lon: guardado.lon };
+    setLugar(nuevo);
+    setLugarAEncuadrar(nuevo);
+    setRadioLugar(guardado.radio);
+    setModoLugar(true);
+  }
+
   function fijarLugar(nuevoLugar) {
     limpiarPaso();
     setLugar(nuevoLugar);
@@ -448,12 +494,14 @@ function App() {
   let puntosVista;
   let claveVista;
   if (modoLugar) {
-    // A place restored from a shared link is framed once: it is still the
-    // very same object read from the URL (identity check). A place the user
-    // clicks is a new object, so the map does not move under the cursor.
-    const lugarDelEnlace = lugar !== null && lugar === estadoInicial.lugar;
-    puntosVista = rutaPaso ? lineasPaso.flat() : lugarDelEnlace ? [[lugar.lat, lugar.lon]] : [];
-    claveVista = `lugar|${pasoSeleccionado?.entrada ?? "-"}|${rutaPaso ? "listo" : "cargando"}`;
+    // A place from a shared link or a saved place is framed once: it is the
+    // very same object stored in lugarAEncuadrar (identity check). A place
+    // the user clicks is a new object, so the map does not move under the
+    // cursor.
+    const encuadrarLugar = lugar !== null && lugar === lugarAEncuadrar;
+    puntosVista = rutaPaso ? lineasPaso.flat() : encuadrarLugar ? [[lugar.lat, lugar.lon]] : [];
+    const claveLugarVista = encuadrarLugar ? `${lugar.lat},${lugar.lon}` : "-";
+    claveVista = `lugar|${claveLugarVista}|${pasoSeleccionado?.entrada ?? "-"}|${rutaPaso ? "listo" : "cargando"}`;
   } else {
     puntosVista = ruta.length ? ruta : mostrarActual ? [posicionActual] : [];
     claveVista = `${rango ? `${rango.desde}|${rango.hasta}` : "vivo"}|${viajeSeleccionado?.id ?? "ninguno"}`;
@@ -645,6 +693,13 @@ function App() {
                 >
                   ¿Cuándo pasó por aquí?
                 </button>
+                <LugaresGuardados
+                  lugares={lugaresGuardados}
+                  puedeGuardar={false}
+                  onElegir={elegirLugarGuardado}
+                  onEliminar={eliminarLugar}
+                  error={errorLugares}
+                />
               </div>
             )}
 
@@ -660,6 +715,16 @@ function App() {
                 pasoSeleccionado={pasoSeleccionado}
                 onSeleccionarPaso={seleccionarPaso}
                 onSalir={salirModoLugar}
+                guardados={
+                  <LugaresGuardados
+                    lugares={lugaresGuardados}
+                    puedeGuardar={lugar !== null}
+                    onGuardar={guardarLugar}
+                    onElegir={elegirLugarGuardado}
+                    onEliminar={eliminarLugar}
+                    error={errorLugares}
+                  />
+                }
               />
             )}
 

@@ -890,3 +890,68 @@ button.sidebar-item:focus-visible {
     padding: 6px 8px;
   }
 }
+
+/* ============ Idea F: saved places ============ */
+.lugares-guardados {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card > .boton-ancho + .lugares-guardados {
+  margin-top: 10px;
+}
+
+.chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.chip button {
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  font-family: var(--font-display);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip-nombre {
+  padding: 4px 6px 4px 10px;
+}
+
+.chip .chip-quitar {
+  padding: 4px 8px 4px 4px;
+  color: var(--text-dim);
+}
+
+.chip button:hover {
+  color: var(--accent);
+}
+
+.chip:focus-within {
+  border-color: var(--accent);
+}
+
+.guardar-lugar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.guardar-lugar .boton {
+  flex: none;
+}
