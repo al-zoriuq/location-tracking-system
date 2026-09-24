@@ -1,21 +1,25 @@
+from datetime import datetime
+
 from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env (RDS credentials, etc.)
+from repositorio import crear_repositorio, modo_demo_activo
+from tiempo_bogota import formatear
+
+# Load environment variables from .env (RDS credentials, MODO_DEMO, etc.)
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)  # allow the React frontend to call this API from the browser
 
-# RDS connection settings, pulled from the .env file
-password = os.getenv("rdspass")
-host = os.getenv("rdshost")
-database = os.getenv("rdsdbname")
-user = os.getenv("rdsuser")
+# Data source: real RDS, or in-memory simulated data when MODO_DEMO=1.
+# Module-level so tests can swap it for another implementation.
+repositorio = crear_repositorio()
+
+if modo_demo_activo():
+    print("MODO_DEMO=1: usando datos simulados, sin conexión a la RDS")
 
 # Folder where the built React app (Vite output) lives, served as static files
 BUILD_FOLDER = os.path.join(
@@ -35,22 +39,14 @@ def inicio():
 def archivos_react(path):
     return send_from_directory(BUILD_FOLDER, path)
 
-# CONNECTION TO POSTGRESQL
 
-# Opens a new connection to the RDS database.
-# Called fresh for each request instead of keeping one long-lived connection.
-def obtener_conexion():
-
-    return psycopg2.connect(
-        host=host,
-        port=5432,
-        database=database,
-        user=user,
-        password=password,
-        sslmode='verify-full',
-        sslrootcert='./global-bundle.pem'
-    )
-
+# Convert datetime values to "YYYY-MM-DD HH:MM:SS" strings so rows can be
+# JSON-serialized. Builds a new dict so cached demo rows are never mutated.
+def serializar(fila):
+    return {
+        clave: formatear(valor) if isinstance(valor, datetime) else valor
+        for clave, valor in fila.items()
+    }
 
 
 # API - LATEST LOCATION
@@ -60,28 +56,7 @@ def obtener_conexion():
 @app.route("/api/ultima-ubicacion")
 def ultima_ubicacion():
 
-    conexion = obtener_conexion()
-
-    cursor = conexion.cursor(cursor_factory=RealDictCursor)
-
-    cursor.execute("""
-        SELECT
-            device_id,
-            ip_origen,
-            latitud,
-            longitud,
-            timestamp_gps,
-            timestamp_recepcion
-        FROM ubicaciones
-        ORDER BY id DESC
-        LIMIT 1
-    """)
-
-    ubicacion = cursor.fetchone()
-
-    cursor.close()
-    conexion.close()
-
+    ubicacion = repositorio.ultima_ubicacion()
 
     if ubicacion is None:
 
@@ -89,18 +64,7 @@ def ultima_ubicacion():
             "error": "No hay ubicaciones registradas"
         }), 404
 
-
-    # Convert datetime objects to plain strings so they can be JSON-serialized
-    ubicacion["timestamp_gps"] = str(
-        ubicacion["timestamp_gps"]
-    )
-
-    ubicacion["timestamp_recepcion"] = str(
-        ubicacion["timestamp_recepcion"]
-    )
-
-
-    return jsonify(ubicacion)
+    return jsonify(serializar(ubicacion))
 
 
 # API - LOCATION HISTORY (used to draw the route line and list every point)
@@ -115,31 +79,9 @@ def historial_ubicaciones():
     # Optional query param, e.g. /api/historial-ubicaciones?horas=48
     horas = request.args.get("horas", default=24, type=int)
 
-    conexion = obtener_conexion()
+    ubicaciones = repositorio.historial(horas)
 
-    cursor = conexion.cursor(cursor_factory=RealDictCursor)
-
-    cursor.execute("""
-        SELECT
-            ip_origen,
-            latitud,
-            longitud,
-            timestamp_gps
-        FROM ubicaciones
-        WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
-        ORDER BY timestamp_gps ASC
-    """, (horas,))
-
-    ubicaciones = cursor.fetchall()
-
-    cursor.close()
-    conexion.close()
-
-    # Convert each row's datetime to a plain string for JSON
-    for u in ubicaciones:
-        u["timestamp_gps"] = str(u["timestamp_gps"])
-
-    return jsonify(ubicaciones)
+    return jsonify([serializar(u) for u in ubicaciones])
 
 
 # START SERVER (only used for local development; production runs via Gunicorn)
