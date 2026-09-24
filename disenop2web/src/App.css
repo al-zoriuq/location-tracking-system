@@ -787,3 +787,41 @@ body {
   color: var(--warning);
   font-size: 11px;
 }
+
+/* ============ Idea E: clickable sidebar points ============ */
+button.sidebar-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: inherit;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font: inherit;
+  cursor: pointer;
+}
+
+button.sidebar-item:hover {
+  background: var(--panel);
+}
+
+button.sidebar-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sidebar-item-activo {
+  background: var(--panel-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.sidebar-item-ip {
+  display: block; /* now a <span> inside the button */
+}
+
+/* Ring around the point chosen in the sidebar */
+.map .punto-resaltado {
+  stroke: var(--accent-2);
+  fill: var(--accent-2);
+  fill-opacity: 0.25;
+}

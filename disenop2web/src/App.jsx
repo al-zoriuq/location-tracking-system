@@ -1,12 +1,21 @@
 import "./App.css";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, ZoomControl, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Polyline,
+  CircleMarker,
+  ZoomControl,
+  useMap,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import CapaLugar from "./components/CapaLugar";
 import CentradoAutomatico from "./components/CentradoAutomatico";
 import EstadisticasRuta from "./components/EstadisticasRuta";
 import FiltroFechas from "./components/FiltroFechas";
+import ListaPuntos from "./components/ListaPuntos";
 import MarcadorActual from "./components/MarcadorActual";
 import MarcadoresParada from "./components/MarcadoresParada";
 import ModoLugar from "./components/ModoLugar";
@@ -121,6 +130,10 @@ function App() {
   const [ahoraTick, setAhoraTick] = useState(0);
   // Phones only: fold the controls column to free the map
   const [panelesVisibles, setPanelesVisibles] = useState(true);
+  // Leaflet map instance (MapContainer ref), for moves started outside the map
+  const [mapa, setMapa] = useState(null);
+  // Idea E: sidebar point highlighted on the map (its timestamp_gps)
+  const [puntoResaltado, setPuntoResaltado] = useState(null);
 
   // Stable identity: CentradoAutomatico subscribes to map events with it
   const pausarCentrado = useCallback(() => {
@@ -408,11 +421,34 @@ function App() {
     claveVista = `${rango ? `${rango.desde}|${rango.hasta}` : "vivo"}|${viajeSeleccionado?.id ?? "ninguno"}`;
   }
 
-  const puntosLista = modoLugar
-    ? [...puntosPaso].reverse()
-    : viajeSeleccionado
-      ? [...viajeSeleccionado.puntos].reverse()
-      : [];
+  // Memoized so ListaPuntos (memo) only re-renders when the list changes
+  const puntosLista = useMemo(
+    () =>
+      modoLugar
+        ? [...puntosPaso].reverse()
+        : viajeSeleccionado
+          ? [...viajeSeleccionado.puntos].reverse()
+          : [],
+    [modoLugar, puntosPaso, viajeSeleccionado]
+  );
+  const puntoDestacado = puntosLista.find((p) => p.timestamp_gps === puntoResaltado) ?? null;
+
+  // Idea E: fly to a sidebar point. It is a programmatic move, but the user
+  // asked to look elsewhere, so auto-centering is paused explicitly.
+  const irAPunto = useCallback(
+    (punto) => {
+      setPuntoResaltado(punto.timestamp_gps);
+      if (!mapa) return;
+      pausarCentrado();
+      const zoom = Math.max(17, mapa.getZoom());
+      moverProgramaticamente(mapa, () =>
+        mapa.flyTo(centroParaZonaLibre(mapa, [punto.lat, punto.lon], zoom), zoom, {
+          duration: 0.8,
+        })
+      );
+    },
+    [mapa, pausarCentrado]
+  );
 
   // Both endpoints fail the same way when the database is down: say it once
   const errorUbicacionVisible = errorUbicacion !== errorHistorial ? errorUbicacion : null;
@@ -441,6 +477,7 @@ function App() {
       <div className="main">
         <div className="mapa-contenedor">
           <MapContainer
+            ref={setMapa}
             center={posicionActual ?? CENTRO_BARRANQUILLA}
             zoom={13}
             scrollWheelZoom={true}
@@ -469,6 +506,14 @@ function App() {
             )}
 
             <MarcadoresParada paradas={paradas} />
+
+            {puntoDestacado && (
+              <CircleMarker
+                center={[puntoDestacado.lat, puntoDestacado.lon]}
+                radius={11}
+                pathOptions={{ className: "punto-resaltado", weight: 3 }}
+              />
+            )}
 
             <CapaLugar
               activo={modoLugar}
@@ -653,39 +698,13 @@ function App() {
           </div>
         </div>
 
-        <aside className="sidebar">
-          <p className="sidebar-title">
-            {modoLugar ? "Puntos del paso" : "Puntos de la ruta"} ({puntosLista.length})
-          </p>
-          <div className="sidebar-list">
-            {puntosLista.map((punto, index) => {
-              const esInicio = index === puntosLista.length - 1;
-              const esFinal = index === 0;
-              const claseFinal = viajeEnCurso && !modoLugar ? "current" : "end";
-              return (
-                <div className="sidebar-item" key={punto.timestamp_gps}>
-                  <div className="sidebar-item-header">
-                    <span
-                      className={`legend-dot ${esInicio ? "start" : esFinal ? claseFinal : ""}`}
-                    ></span>
-                    <span className="sidebar-item-time">
-                      {formatearFecha(punto.fecha)} · {formatearHora(punto.fecha)}
-                    </span>
-                  </div>
-                  <div className="coord-row small">
-                    <span className="coord-label">Lat</span>
-                    <span>{punto.lat.toFixed(4)}</span>
-                  </div>
-                  <div className="coord-row small">
-                    <span className="coord-label">Lon</span>
-                    <span>{punto.lon.toFixed(4)}</span>
-                  </div>
-                  <p className="sidebar-item-ip">IP: {punto.ip_origen}</p>
-                </div>
-              );
-            })}
-          </div>
-        </aside>
+        <ListaPuntos
+          titulo={modoLugar ? "Puntos del paso" : "Puntos de la ruta"}
+          puntos={puntosLista}
+          claseFinal={viajeEnCurso && !modoLugar ? "current" : "end"}
+          resaltado={puntoResaltado}
+          onElegir={irAPunto}
+        />
       </div>
     </div>
   );
