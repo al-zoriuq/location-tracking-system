@@ -862,3 +862,31 @@ button.sidebar-item:focus-visible {
   fill: var(--accent-2);
   fill-opacity: 1;
 }
+
+/* ============ Idea D: shareable link ============ */
+.topbar-derecha {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.boton-enlace {
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 12px 16px;
+    gap: 8px;
+  }
+
+  .topbar-derecha {
+    gap: 10px;
+  }
+
+  .boton-enlace {
+    padding: 6px 8px;
+  }
+}

@@ -23,6 +23,7 @@ import Reproductor from "./components/Reproductor";
 import SelectorRutas from "./components/SelectorRutas";
 import { pedirJSON } from "./utils/api";
 import { calcularEstadisticas } from "./utils/estadisticas";
+import { copiarTexto, escribirEstadoUrl, leerEstadoUrl } from "./utils/estadoUrl";
 import { MARGEN_PASO_MS, desplazarTexto, tramoEntre } from "./utils/lugar";
 import { centroParaZonaLibre, moverProgramaticamente, rellenoZonaLibre } from "./utils/mapa";
 import { detectarParadas } from "./utils/paradas";
@@ -99,23 +100,27 @@ function calcularEstado(fechaGPS) {
 }
 
 function App() {
+  // Idea D: state restored from a shared link, read (and validated) once
+  const [estadoInicial] = useState(() => leerEstadoUrl());
+
   const [location, setLocation] = useState(null);
   const [errorUbicacion, setErrorUbicacion] = useState(null);
   const [viajes, setViajes] = useState([]);
   const [historialCargado, setHistorialCargado] = useState(false);
   const [errorHistorial, setErrorHistorial] = useState(null);
   // null = live mode (last 24 h); otherwise {desde, hasta} in Bogota time
-  const [rango, setRango] = useState(null);
+  const [rango, setRango] = useState(estadoInicial.rango);
   // Pinned trip id (timestamp of its first point); null = follow the latest
-  const [viajeFijadoId, setViajeFijadoId] = useState(null);
+  const [viajeFijadoId, setViajeFijadoId] = useState(estadoInicial.ruta);
   const [aviso, setAviso] = useState(null);
+  const [avisoEnlace, setAvisoEnlace] = useState(null);
 
   // Entrega 2 ("¿Cuándo pasó por aquí?") is an overlay on top of the state
   // above: it never changes rango or the pinned trip, so leaving it brings
   // back exactly what was on screen before.
-  const [modoLugar, setModoLugar] = useState(false);
-  const [lugar, setLugar] = useState(null); // {lat, lon}
-  const [radioLugar, setRadioLugar] = useState(100);
+  const [modoLugar, setModoLugar] = useState(estadoInicial.lugar !== null);
+  const [lugar, setLugar] = useState(estadoInicial.lugar); // {lat, lon}
+  const [radioLugar, setRadioLugar] = useState(estadoInicial.radio ?? 100);
   // Answer tagged with the query key that produced it: {clave, datos, error}
   const [resultadoLugar, setResultadoLugar] = useState(null);
   const [pasoSeleccionado, setPasoSeleccionado] = useState(null);
@@ -157,7 +162,25 @@ function App() {
 
   // Mirror of viajeFijadoId readable from inside the polling callback, which
   // was created when the effect ran and would otherwise see a stale value.
-  const fijadoRef = useRef(null);
+  const fijadoRef = useRef(estadoInicial.ruta);
+
+  // Idea D: keep the URL in sync with the shareable state
+  useEffect(() => {
+    escribirEstadoUrl({
+      rango,
+      lugar: modoLugar ? lugar : null,
+      radio: radioLugar,
+      ruta: viajeFijadoId,
+    });
+  }, [rango, modoLugar, lugar, radioLugar, viajeFijadoId]);
+
+  async function copiarEnlace() {
+    const copiado = await copiarTexto(window.location.href);
+    setAvisoEnlace(
+      copiado ? "Enlace copiado" : "No se pudo copiar: copia la dirección del navegador"
+    );
+    setTimeout(() => setAvisoEnlace(null), 3000);
+  }
 
   const deviceId = location?.device_id ?? null;
   const fechaGPS = location ? parsearFechaBogota(location.timestamp_gps) : null;
@@ -220,7 +243,11 @@ function App() {
         if (fijadoRef.current && !nuevos.some((v) => v.id === fijadoRef.current)) {
           fijadoRef.current = null;
           setViajeFijadoId(null);
-          setAviso("La ruta fijada ya no está en el periodo consultado. Se volvió al modo en vivo.");
+          setAviso(
+            rango
+              ? "La ruta fijada no está en el rango consultado. Se muestra la última del rango."
+              : "La ruta fijada ya no está en el periodo consultado. Se volvió al modo en vivo."
+          );
         }
         setViajes(nuevos);
         setErrorHistorial(null);
@@ -421,7 +448,11 @@ function App() {
   let puntosVista;
   let claveVista;
   if (modoLugar) {
-    puntosVista = lineasPaso.flat();
+    // A place restored from a shared link is framed once: it is still the
+    // very same object read from the URL (identity check). A place the user
+    // clicks is a new object, so the map does not move under the cursor.
+    const lugarDelEnlace = lugar !== null && lugar === estadoInicial.lugar;
+    puntosVista = rutaPaso ? lineasPaso.flat() : lugarDelEnlace ? [[lugar.lat, lugar.lon]] : [];
     claveVista = `lugar|${pasoSeleccionado?.entrada ?? "-"}|${rutaPaso ? "listo" : "cargando"}`;
   } else {
     puntosVista = ruta.length ? ruta : mostrarActual ? [posicionActual] : [];
@@ -475,9 +506,14 @@ function App() {
         <div className="brand">
           GPSLink <span>· {nombre}</span>
         </div>
-        <div className="status">
-          <span className={`dot dot-${estado.tier}`}></span>
-          {estado.texto}
+        <div className="topbar-derecha">
+          <button type="button" className="boton boton-enlace" onClick={copiarEnlace}>
+            {avisoEnlace ?? "Copiar enlace"}
+          </button>
+          <div className="status">
+            <span className={`dot dot-${estado.tier}`}></span>
+            {estado.texto}
+          </div>
         </div>
       </div>
 
