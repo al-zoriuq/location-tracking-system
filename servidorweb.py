@@ -5,8 +5,9 @@ from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 
-from repositorio import crear_repositorio, modo_demo_activo
+from repositorio import ErrorBaseDatos, crear_repositorio, modo_demo_activo
 from tiempo_bogota import formatear
+from validacion import ErrorValidacion, leer_device_id, leer_horas, leer_rango
 
 # Load environment variables from .env (RDS credentials, MODO_DEMO, etc.)
 load_dotenv()
@@ -49,14 +50,37 @@ def serializar(fila):
     }
 
 
+# ERROR HANDLING: always answer JSON with a Spanish message, never an HTML page
+
+# Invalid query parameters -> 400 with the validation message
+@app.errorhandler(ErrorValidacion)
+def error_validacion(error):
+    return jsonify({"error": str(error)}), 400
+
+
+# Database unreachable or query failed -> 503 (details only in the server log)
+@app.errorhandler(ErrorBaseDatos)
+def error_base_datos(error):
+    app.logger.error("Error de base de datos: %s", error)
+    return jsonify({"error": "No se pudo consultar la base de datos."}), 503
+
+
+# The device to query: the one requested, or else the one that sent the most
+# recent GPS point. Returns None when the table is empty.
+def resolver_device_id(args):
+    return leer_device_id(args) or repositorio.ultimo_device_id()
+
+
 # API - LATEST LOCATION
 
 # Returns only the single most recent GPS point (used for the map marker
 # and the "last position" panel in the frontend).
+# Optional: ?device_id=... (defaults to the device with the latest point)
 @app.route("/api/ultima-ubicacion")
 def ultima_ubicacion():
 
-    ubicacion = repositorio.ultima_ubicacion()
+    device_id = resolver_device_id(request.args)
+    ubicacion = repositorio.ultima_ubicacion(device_id) if device_id else None
 
     if ubicacion is None:
 
@@ -69,17 +93,23 @@ def ultima_ubicacion():
 
 # API - LOCATION HISTORY (used to draw the route line and list every point)
 
-# Returns all points within the last N hours (defaults to 24), ordered oldest
-# to newest, so the frontend can draw a route line and a point-by-point list.
-# Includes ip_origen so the sidebar list can show it per point, same as the
-# floating "last position" panel does.
+# Returns one device's points ordered oldest to newest, so the frontend can
+# split them into trips, draw the route line and list every point.
+# Query params (all optional):
+#   desde, hasta  "YYYY-MM-DD HH:MM:SS" in Bogota time, both or none (Entrega 1)
+#   horas         window size when there is no range (default 24, 1..720)
+#   device_id     defaults to the device with the latest point
 @app.route("/api/historial-ubicaciones")
 def historial_ubicaciones():
 
-    # Optional query param, e.g. /api/historial-ubicaciones?horas=48
-    horas = request.args.get("horas", default=24, type=int)
+    desde, hasta = leer_rango(request.args)
+    horas = leer_horas(request.args)
+    device_id = resolver_device_id(request.args)
 
-    ubicaciones = repositorio.historial(horas)
+    if device_id is None:
+        return jsonify([])
+
+    ubicaciones = repositorio.historial(device_id, desde, hasta, horas)
 
     return jsonify([serializar(u) for u in ubicaciones])
 

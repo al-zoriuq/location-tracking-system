@@ -11,6 +11,10 @@
   --status-fresh: #4ade80;   /* status dot: data received within the last 2 minutes */
   --status-medium: #fbbf24;  /* status dot: data is somewhat recent (under 1 hour) */
   --status-old: #6b6280;     /* status dot: data is stale (over 1 hour, or none) */
+  --route-start: #4ade80;    /* start-of-route marker (green) */
+  --route-end: #ff7f6e;      /* end-of-route marker (coral) */
+  --error: #ff7f6e;          /* error messages */
+  --warning: #fbbf24;        /* warnings (e.g. "Hasta se ajustó a la hora actual") */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
   --font-mono: "IBM Plex Mono", monospace;      /* numeric data: coordinates, dates, times */
 }
@@ -41,6 +45,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  text-align: left; /* index.css (Vite template leftover) centers #root text */
 }
 
 /* ============ Top bar ============ */
@@ -104,11 +109,23 @@ body {
   min-height: 0; /* IMPORTANT: allows flex children to shrink properly instead of overflowing */
 }
 
-.map {
-  flex: 1; /* map takes all remaining horizontal space next to the sidebar */
-  height: 100%;
+/* Map area: holds the map plus the floating controls column on top of it */
+.mapa-contenedor {
+  position: relative;
+  flex: 1; /* takes all remaining horizontal space next to the sidebar */
+  min-width: 0;
   min-height: 480px;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
   z-index: 0;
+}
+
+/* Route line color comes from the theme instead of a hardcoded SVG attribute */
+.map .ruta-linea {
+  stroke: var(--accent);
 }
 
 /* CSS trick to recolor the free OpenStreetMap tiles into a dark/purple theme,
@@ -117,18 +134,46 @@ body {
   filter: invert(92%) hue-rotate(225deg) brightness(0.85) contrast(0.9) saturate(0.6);
 }
 
-/* ============ Floating info panel (top-left, over the map) ============ */
-.panel {
+/* ============ Controls column (left, over the map) ============
+   Every floating card lives in this single flex column, so cards stack
+   instead of overlapping each other. The column itself ignores the mouse
+   (pointer-events: none) so the empty space still pans the map. */
+.controles {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 10; /* sit above the map tiles */
-  width: 260px;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: 300px;
+  z-index: 10; /* above the map tiles and Leaflet controls */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.controles > * {
+  pointer-events: auto;
+  flex-shrink: 0;
+}
+
+/* Base floating card */
+.card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 18px 20px;
+  padding: 14px 16px;
   box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.7);
+}
+
+.card-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
 .panel .label {
@@ -185,15 +230,9 @@ body {
 
 /* ============ Legend (bottom-left, over the map) ============ */
 .legend {
-  position: absolute;
-  bottom: 24px;
-  left: 20px;
-  z-index: 10;
   display: flex;
-  gap: 16px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   padding: 10px 14px;
   font-size: 12px;
   color: var(--text-dim);
@@ -217,7 +256,11 @@ body {
 }
 
 .legend-dot.start {
-  background: var(--accent-2); /* gold, matches the start marker */
+  background: var(--route-start); /* green, matches the start marker */
+}
+
+.legend-dot.end {
+  background: var(--route-end); /* coral, matches the end-of-route marker */
 }
 
 .legend-dot.current {
@@ -237,12 +280,21 @@ body {
   animation: pulse 2s ease-in-out infinite;
 }
 
-/* Start of route: gold circle, static (no animation), for contrast against the current marker */
+/* Start of route: green circle, static (no animation) */
 .marker-start {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: var(--accent-2);
+  background: var(--route-start);
+  border: 2px solid var(--bg);
+}
+
+/* End of a finished route: coral square-ish dot, distinct from "current" */
+.marker-end {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--route-end);
   border: 2px solid var(--bg);
 }
 
@@ -332,15 +384,120 @@ body {
 }
 
 @media (max-width: 640px) {
-  .panel {
+  /* Full-width column, capped in height so part of the map stays visible */
+  .controles {
+    top: 12px;
     left: 12px;
     right: 12px;
-    top: 12px;
-    width: auto; /* let the panel stretch full width on small screens */
+    bottom: auto;
+    width: auto;
+    max-height: 55%;
   }
+}
 
-  .legend {
-    left: 12px;
-    bottom: 12px;
-  }
+/* ============ Forms: date filter, trip selector, buttons ============ */
+.filtro-fila {
+  display: grid;
+  grid-template-columns: 44px 1fr 88px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.filtro-etiqueta {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.card input,
+.card select {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color-scheme: dark; /* dark native date/time pickers and icons */
+}
+
+.card input:focus-visible,
+.card select:focus-visible,
+.boton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.botones {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.boton {
+  flex: 1;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.boton:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.boton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.boton-primario {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.filtro-estado {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.selector-modo {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* ============ Messages (errors, warnings, empty states) ============ */
+.mensajes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mensaje {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.card .mensaje + .botones,
+.filtro .mensaje {
+  margin-top: 4px;
+}
+
+.mensaje-error {
+  color: var(--error);
+}
+
+.mensaje-aviso {
+  color: var(--warning);
 }

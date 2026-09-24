@@ -1,8 +1,16 @@
 import "./App.css";
-import { useState, useEffect, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { MapContainer, TileLayer, Marker, Polyline, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import FiltroFechas from "./components/FiltroFechas";
+import SelectorRutas from "./components/SelectorRutas";
+import { pedirJSON } from "./utils/api";
+import { formatearFecha, formatearHora, parsearFechaBogota } from "./utils/tiempo";
+import { separarEnViajes } from "./utils/viajes";
+
+const INTERVALO_MS = 10000;
+const CENTRO_BARRANQUILLA = [10.9878, -74.7889];
 
 const iconoActual = L.divIcon({
   className: "",
@@ -14,10 +22,20 @@ const iconoActual = L.divIcon({
 const iconoInicio = L.divIcon({
   className: "",
   html: '<div class="marker-start"></div>',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
 });
 
+const iconoFin = L.divIcon({
+  className: "",
+  html: '<div class="marker-end"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+// Frames the map once when mounted. The parent gives it a key made of the
+// mode and the trip id, so it re-frames only when the shown trip changes,
+// never on a periodic refresh.
 function AjustarVista({ puntos }) {
   const map = useMap();
   const yaAjustado = useRef(false);
@@ -29,16 +47,12 @@ function AjustarVista({ puntos }) {
       map.fitBounds(puntos, { padding: [60, 60] });
       yaAjustado.current = true;
     } else if (puntos.length === 1) {
-      map.setView(puntos[0], 13);
+      map.setView(puntos[0], 15);
       yaAjustado.current = true;
     }
   }, [puntos, map]);
 
   return null;
-}
-
-function parsearFechaUTC(timestampTexto) {
-  return new Date(timestampTexto.replace(" ", "T") + "Z");
 }
 
 function calcularEstado(fechaGPS) {
@@ -69,56 +83,162 @@ function calcularEstado(fechaGPS) {
 
 function App() {
   const [location, setLocation] = useState(null);
-  const [historial, setHistorial] = useState([]);
+  const [errorUbicacion, setErrorUbicacion] = useState(null);
+  const [viajes, setViajes] = useState([]);
+  const [historialCargado, setHistorialCargado] = useState(false);
+  const [errorHistorial, setErrorHistorial] = useState(null);
+  // null = live mode (last 24 h); otherwise {desde, hasta} in Bogota time
+  const [rango, setRango] = useState(null);
+  // Pinned trip id (timestamp of its first point); null = follow the latest
+  const [viajeFijadoId, setViajeFijadoId] = useState(null);
+  const [aviso, setAviso] = useState(null);
 
-  const fechaGPS = location ? parsearFechaUTC(location.timestamp_gps) : null;
+  // Mirror of viajeFijadoId readable from inside the polling callback, which
+  // was created when the effect ran and would otherwise see a stale value.
+  const fijadoRef = useRef(null);
+
+  const deviceId = location?.device_id ?? null;
+  const fechaGPS = location ? parsearFechaBogota(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
 
-  const ruta = historial.map((punto) => [
-    Number(punto.latitud),
-    Number(punto.longitud),
-  ]);
+  const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
 
   useEffect(() => {
-    const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
     document.title = `GPSLink - ${nombre}`;
-  }, []);
+  }, [nombre]);
 
+  function fijarViaje(id) {
+    fijadoRef.current = id;
+    setViajeFijadoId(id);
+  }
+
+  // Latest position: always polled (drives the status dot and live marker)
   useEffect(() => {
+    let activo = true;
+
     const obtenerUbicacion = async () => {
       try {
-        const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
-        const data = await response.json();
+        const data = await pedirJSON("ultima-ubicacion");
+        if (!activo) return;
         setLocation(data);
+        setErrorUbicacion(null);
       } catch (error) {
-        console.error("Error obteniendo ubicación:", error);
-      }
-    };
-
-    const obtenerHistorial = async () => {
-      try {
-        const response = await fetch(import.meta.env.BASE_URL + "api/historial-ubicaciones");
-        const data = await response.json();
-        setHistorial(data);
-      } catch (error) {
-        console.error("Error obteniendo historial:", error);
+        if (!activo) return;
+        if (error.status === 404) setLocation(null);
+        setErrorUbicacion(error.message);
       }
     };
 
     obtenerUbicacion();
-    obtenerHistorial();
+    const intervalo = setInterval(obtenerUbicacion, INTERVALO_MS);
 
-    const intervalo = setInterval(() => {
-      obtenerUbicacion();
-      obtenerHistorial();
-    }, 10000);
-
-    return () => clearInterval(intervalo);
+    return () => {
+      activo = false;
+      clearInterval(intervalo);
+    };
   }, []);
 
-  const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+  // History: polled in live mode; fetched once for a date range, because a
+  // range always ends in the past (Hasta is clamped to now), so no new points
+  // can ever arrive in it.
+  useEffect(() => {
+    // Ignores answers that arrive after the mode or range changed
+    let activo = true;
 
-  const historialReciente = [...historial].reverse();
+    const obtenerHistorial = async () => {
+      try {
+        const data = await pedirJSON("historial-ubicaciones", {
+          device_id: deviceId,
+          desde: rango?.desde,
+          hasta: rango?.hasta,
+        });
+        if (!activo) return;
+
+        const nuevos = separarEnViajes(data);
+        if (fijadoRef.current && !nuevos.some((v) => v.id === fijadoRef.current)) {
+          fijadoRef.current = null;
+          setViajeFijadoId(null);
+          setAviso("La ruta fijada ya no está en el periodo consultado. Se volvió al modo en vivo.");
+        }
+        setViajes(nuevos);
+        setErrorHistorial(null);
+      } catch (error) {
+        if (activo) setErrorHistorial(error.message);
+      } finally {
+        if (activo) setHistorialCargado(true);
+      }
+    };
+
+    obtenerHistorial();
+
+    if (rango) {
+      return () => {
+        activo = false;
+      };
+    }
+
+    const intervalo = setInterval(obtenerHistorial, INTERVALO_MS);
+    return () => {
+      activo = false;
+      clearInterval(intervalo);
+    };
+  }, [rango, deviceId]);
+
+  function aplicarRango(nuevoRango) {
+    fijarViaje(null);
+    setAviso(null);
+    setViajes([]);
+    setHistorialCargado(false);
+    setRango(nuevoRango);
+  }
+
+  function verEnVivo() {
+    fijarViaje(null);
+    setAviso(null);
+    if (rango) {
+      setViajes([]);
+      setHistorialCargado(false);
+      setRango(null);
+    }
+  }
+
+  function seleccionarViaje(id) {
+    fijarViaje(id);
+    setAviso(null);
+  }
+
+  const enVivo = rango === null;
+  const ultimoViaje = viajes.length ? viajes[viajes.length - 1] : null;
+  const viajeSeleccionado = viajes.find((v) => v.id === viajeFijadoId) ?? ultimoViaje;
+  // Only the latest trip in live mode can still be growing; any other trip
+  // (or any trip of a finished range) ends in "Fin de ruta", never "Actual".
+  const viajeEnCurso = enVivo && viajeSeleccionado !== null && viajeSeleccionado === ultimoViaje;
+
+  const ruta = useMemo(
+    () => (viajeSeleccionado ? viajeSeleccionado.puntos.map((p) => [p.lat, p.lon]) : []),
+    [viajeSeleccionado]
+  );
+
+  const posicionActual = location ? [Number(location.latitud), Number(location.longitud)] : null;
+  const mostrarActual = enVivo && posicionActual !== null;
+  const mostrarFin = ruta.length > 1 && !viajeEnCurso;
+
+  const puntosVista = ruta.length ? ruta : mostrarActual ? [posicionActual] : [];
+  const claveVista = `${rango ? `${rango.desde}|${rango.hasta}` : "vivo"}|${viajeSeleccionado?.id ?? "ninguno"}`;
+
+  const puntosLista = viajeSeleccionado ? [...viajeSeleccionado.puntos].reverse() : [];
+
+  // Both endpoints fail the same way when the database is down: say it once
+  const errorUbicacionVisible = errorUbicacion !== errorHistorial ? errorUbicacion : null;
+
+  let mensajeVacio = null;
+  if (!historialCargado) {
+    mensajeVacio = "Cargando recorrido...";
+  } else if (!errorHistorial && viajes.length === 0) {
+    mensajeVacio = rango
+      ? "No hay registros en ese rango de fechas."
+      : "No hay registros en las últimas 24 horas.";
+  }
 
   return (
     <div className="app">
@@ -133,98 +253,146 @@ function App() {
       </div>
 
       <div className="main">
-        {location ? (
-          <>
-            <div className="panel">
-              <p className="label">Última posición</p>
-              <div className="coords">
-                <div className="coord-row">
-                  <span className="coord-label">Lat</span>
-                  <span>{Number(location.latitud).toFixed(4)}</span>
-                </div>
-                <div className="coord-row">
-                  <span className="coord-label">Lon</span>
-                  <span>{Number(location.longitud).toFixed(4)}</span>
-                </div>
-              </div>
-              <div className="meta">
-                <span>{fechaGPS.toLocaleDateString("es-CO")}</span>
-                <span>{fechaGPS.toLocaleTimeString("es-CO")}</span>
-              </div>
-              <p className="ip">IP: {location.ip_origen}</p>
-            </div>
+        <div className="mapa-contenedor">
+          <MapContainer
+            center={posicionActual ?? CENTRO_BARRANQUILLA}
+            zoom={13}
+            scrollWheelZoom={true}
+            zoomControl={false}
+            className="map"
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <ZoomControl position="topright" />
+
+            <AjustarVista key={claveVista} puntos={puntosVista} />
 
             {ruta.length > 1 && (
-              <div className="legend">
-                <div className="legend-item">
-                  <span className="legend-dot start"></span> Inicio
+              <Polyline
+                positions={ruta}
+                pathOptions={{ className: "ruta-linea", weight: 3, opacity: 0.8 }}
+              />
+            )}
+
+            {ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
+
+            {mostrarFin && <Marker position={ruta[ruta.length - 1]} icon={iconoFin} />}
+
+            {mostrarActual && <Marker position={posicionActual} icon={iconoActual} />}
+          </MapContainer>
+
+          <div className="controles">
+            {location && (
+              <div className="card panel">
+                <p className="label">Última posición</p>
+                <div className="coords">
+                  <div className="coord-row">
+                    <span className="coord-label">Lat</span>
+                    <span>{Number(location.latitud).toFixed(4)}</span>
+                  </div>
+                  <div className="coord-row">
+                    <span className="coord-label">Lon</span>
+                    <span>{Number(location.longitud).toFixed(4)}</span>
+                  </div>
                 </div>
-                <div className="legend-item">
-                  <span className="legend-dot current"></span> Actual
+                <div className="meta">
+                  <span>{formatearFecha(fechaGPS)}</span>
+                  <span>{formatearHora(fechaGPS)}</span>
                 </div>
+                <p className="ip">IP: {location.ip_origen}</p>
               </div>
             )}
 
-            <MapContainer
-              center={[Number(location.latitud), Number(location.longitud)]}
-              zoom={13}
-              scrollWheelZoom={true}
-              className="map"
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            <FiltroFechas
+              rango={rango}
+              onAplicar={aplicarRango}
+              onVerEnVivo={verEnVivo}
+              puedeVolverEnVivo={!enVivo || viajeFijadoId !== null}
+            />
+
+            {viajes.length > 0 && (
+              <SelectorRutas
+                viajes={viajes}
+                seleccionadoId={viajeSeleccionado?.id ?? null}
+                fijado={viajeFijadoId !== null}
+                enVivo={enVivo}
+                onSeleccionar={seleccionarViaje}
               />
+            )}
 
-              <AjustarVista puntos={ruta} />
-
-              {ruta.length > 1 && (
-                <Polyline positions={ruta} color="#b37feb" weight={3} opacity={0.75} />
-              )}
-
-              {ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
-
-              <Marker
-                position={[Number(location.latitud), Number(location.longitud)]}
-                icon={iconoActual}
-              />
-            </MapContainer>
-
-            <aside className="sidebar">
-              <p className="sidebar-title">Historial de puntos ({historialReciente.length})</p>
-              <div className="sidebar-list">
-                {historialReciente.map((punto, index) => {
-                  const fecha = parsearFechaUTC(punto.timestamp_gps);
-                  const esInicio = index === historialReciente.length - 1;
-                  const esActual = index === 0;
-                  return (
-                    <div className="sidebar-item" key={index}>
-                      <div className="sidebar-item-header">
-                        <span
-                          className={`legend-dot ${esInicio ? "start" : esActual ? "current" : ""}`}
-                        ></span>
-                        <span className="sidebar-item-time">
-                          {fecha.toLocaleDateString("es-CO")} · {fecha.toLocaleTimeString("es-CO")}
-                        </span>
-                      </div>
-                      <div className="coord-row small">
-                        <span className="coord-label">Lat</span>
-                        <span>{Number(punto.latitud).toFixed(4)}</span>
-                      </div>
-                      <div className="coord-row small">
-                        <span className="coord-label">Lon</span>
-                        <span>{Number(punto.longitud).toFixed(4)}</span>
-                      </div>
-                      <p className="sidebar-item-ip">IP: {punto.ip_origen}</p>
-                    </div>
-                  );
-                })}
+            {(aviso || errorHistorial || errorUbicacionVisible || mensajeVacio ||
+              viajeSeleccionado?.descartados > 0) && (
+              <div className="card mensajes">
+                {aviso && <p className="mensaje mensaje-aviso">{aviso}</p>}
+                {errorHistorial && <p className="mensaje mensaje-error">{errorHistorial}</p>}
+                {errorUbicacionVisible && (
+                  <p className="mensaje mensaje-error">{errorUbicacionVisible}</p>
+                )}
+                {mensajeVacio && <p className="mensaje">{mensajeVacio}</p>}
+                {viajeSeleccionado?.descartados > 0 && (
+                  <p className="mensaje">
+                    Se descartaron {viajeSeleccionado.descartados} punto(s) con saltos
+                    imposibles (error de GPS).
+                  </p>
+                )}
               </div>
-            </aside>
-          </>
-        ) : (
-          <p className="empty-state">Cargando ubicación...</p>
-        )}
+            )}
+
+            {(ruta.length > 1 || mostrarActual) && (
+              <div className="card legend">
+                {ruta.length > 1 && (
+                  <div className="legend-item">
+                    <span className="legend-dot start"></span> Inicio
+                  </div>
+                )}
+                {mostrarFin && (
+                  <div className="legend-item">
+                    <span className="legend-dot end"></span> Fin de ruta
+                  </div>
+                )}
+                {mostrarActual && (
+                  <div className="legend-item">
+                    <span className="legend-dot current"></span> Actual
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <aside className="sidebar">
+          <p className="sidebar-title">Puntos de la ruta ({puntosLista.length})</p>
+          <div className="sidebar-list">
+            {puntosLista.map((punto, index) => {
+              const esInicio = index === puntosLista.length - 1;
+              const esFinal = index === 0;
+              const claseFinal = viajeEnCurso ? "current" : "end";
+              return (
+                <div className="sidebar-item" key={punto.timestamp_gps}>
+                  <div className="sidebar-item-header">
+                    <span
+                      className={`legend-dot ${esInicio ? "start" : esFinal ? claseFinal : ""}`}
+                    ></span>
+                    <span className="sidebar-item-time">
+                      {formatearFecha(punto.fecha)} · {formatearHora(punto.fecha)}
+                    </span>
+                  </div>
+                  <div className="coord-row small">
+                    <span className="coord-label">Lat</span>
+                    <span>{punto.lat.toFixed(4)}</span>
+                  </div>
+                  <div className="coord-row small">
+                    <span className="coord-label">Lon</span>
+                    <span>{punto.lon.toFixed(4)}</span>
+                  </div>
+                  <p className="sidebar-item-ip">IP: {punto.ip_origen}</p>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
       </div>
     </div>
   );
