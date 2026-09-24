@@ -115,3 +115,31 @@ export function velocidadEstimada(ubicacion, viaje) {
   if (dtS * 1000 > MAX_PAUSA_MS) return null;
   return (distanciaMetros(anterior, actual) / dtS) * 3.6;
 }
+
+// Position at an instant (Date or ms) on a time-ordered list of points, by
+// linear interpolation between the two samples around it (same assumption as
+// the backend: constant speed between consecutive points). null outside the
+// route's time span. Binary search: O(log n), called ~60 times per second
+// during playback (idea B).
+export function posicionEnInstante(puntos, instante) {
+  const t = typeof instante === "number" ? instante : instante.getTime();
+  if (puntos.length === 0) return null;
+  const primero = puntos[0].fecha.getTime();
+  const ultimo = puntos[puntos.length - 1].fecha.getTime();
+  if (t < primero || t > ultimo) return null;
+  if (puntos.length === 1) return [puntos[0].lat, puntos[0].lon];
+
+  // Last index whose time is <= t
+  let bajo = 0;
+  let alto = puntos.length - 1;
+  while (bajo < alto) {
+    const medio = Math.ceil((bajo + alto) / 2);
+    if (puntos[medio].fecha.getTime() <= t) bajo = medio;
+    else alto = medio - 1;
+  }
+  const a = puntos[bajo];
+  const b = puntos[Math.min(bajo + 1, puntos.length - 1)];
+  const dt = b.fecha - a.fecha;
+  const f = dt > 0 ? (t - a.fecha.getTime()) / dt : 0;
+  return [a.lat + f * (b.lat - a.lat), a.lon + f * (b.lon - a.lon)];
+}

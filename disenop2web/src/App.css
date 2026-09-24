@@ -485,7 +485,7 @@ body {
   color: var(--text-dim);
 }
 
-.card input:not([type="checkbox"]),
+.card input:not([type="checkbox"]):not([type="range"]),
 .card select {
   width: 100%;
   min-width: 0;
@@ -824,4 +824,41 @@ button.sidebar-item:focus-visible {
   stroke: var(--accent-2);
   fill: var(--accent-2);
   fill-opacity: 0.25;
+}
+
+/* ============ Idea B: route playback ============ */
+.reproductor-controles {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 6px;
+}
+
+.reproductor-controles .boton {
+  padding: 6px 4px;
+}
+
+.boton-activo {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.reproductor-barra {
+  width: 100%;
+  margin: 12px 0 4px;
+  accent-color: var(--accent);
+}
+
+.reproductor-hora {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent-2);
+  text-align: center;
+}
+
+/* Replay marker (plain Leaflet circleMarker created by Reproductor) */
+.map .marcador-reproduccion {
+  stroke: var(--bg);
+  fill: var(--accent-2);
+  fill-opacity: 1;
 }

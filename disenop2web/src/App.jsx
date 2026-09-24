@@ -19,6 +19,7 @@ import ListaPuntos from "./components/ListaPuntos";
 import MarcadorActual from "./components/MarcadorActual";
 import MarcadoresParada from "./components/MarcadoresParada";
 import ModoLugar from "./components/ModoLugar";
+import Reproductor from "./components/Reproductor";
 import SelectorRutas from "./components/SelectorRutas";
 import { pedirJSON } from "./utils/api";
 import { calcularEstadisticas } from "./utils/estadisticas";
@@ -134,6 +135,8 @@ function App() {
   const [mapa, setMapa] = useState(null);
   // Idea E: sidebar point highlighted on the map (its timestamp_gps)
   const [puntoResaltado, setPuntoResaltado] = useState(null);
+  // Idea B: true while the route is being played back
+  const [reproduciendoRuta, setReproduciendoRuta] = useState(false);
 
   // Stable identity: CentradoAutomatico subscribes to map events with it
   const pausarCentrado = useCallback(() => {
@@ -364,8 +367,12 @@ function App() {
 
   // Following the vehicle only makes sense while showing where it is now:
   // live mode, not choosing a place, and not looking at an older pinned trip.
+  // (Also off during playback: the user is watching the replay marker.)
   const centradoAplicable =
-    mostrarActual && !modoLugar && (viajeFijadoId === null || viajeEnCurso);
+    mostrarActual &&
+    !modoLugar &&
+    !reproduciendoRuta &&
+    (viajeFijadoId === null || viajeEnCurso);
   const centradoPausado = pausaHasta !== null;
   const segundosPausa = centradoPausado
     ? Math.max(0, Math.ceil((pausaHasta - ahoraTick) / 1000))
@@ -627,6 +634,15 @@ function App() {
                 fijado={viajeFijadoId !== null}
                 enVivo={enVivo}
                 onSeleccionar={seleccionarViaje}
+              />
+            )}
+
+            {!modoLugar && viajeSeleccionado?.puntos.length > 1 && (
+              <Reproductor
+                key={viajeSeleccionado.id}
+                mapa={mapa}
+                puntos={viajeSeleccionado.puntos}
+                onReproduciendo={setReproduciendoRuta}
               />
             )}
 
