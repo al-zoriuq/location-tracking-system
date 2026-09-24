@@ -3,9 +3,12 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import CapaLugar from "./components/CapaLugar";
 import FiltroFechas from "./components/FiltroFechas";
+import ModoLugar from "./components/ModoLugar";
 import SelectorRutas from "./components/SelectorRutas";
 import { pedirJSON } from "./utils/api";
+import { MARGEN_PASO_MS, desplazarTexto, tramoEntre } from "./utils/lugar";
 import { formatearFecha, formatearHora, parsearFechaBogota } from "./utils/tiempo";
 import { separarEnViajes } from "./utils/viajes";
 
@@ -92,6 +95,20 @@ function App() {
   // Pinned trip id (timestamp of its first point); null = follow the latest
   const [viajeFijadoId, setViajeFijadoId] = useState(null);
   const [aviso, setAviso] = useState(null);
+
+  // Entrega 2 ("¿Cuándo pasó por aquí?") is an overlay on top of the state
+  // above: it never changes rango or the pinned trip, so leaving it brings
+  // back exactly what was on screen before.
+  const [modoLugar, setModoLugar] = useState(false);
+  const [lugar, setLugar] = useState(null); // {lat, lon}
+  const [radioLugar, setRadioLugar] = useState(100);
+  // Answer tagged with the query key that produced it: {clave, datos, error}
+  const [resultadoLugar, setResultadoLugar] = useState(null);
+  const [pasoSeleccionado, setPasoSeleccionado] = useState(null);
+  const [rutaPaso, setRutaPaso] = useState(null); // trips around the selected pass
+  const [errorPaso, setErrorPaso] = useState(null);
+  // Increments on every pass request, so a slow answer for an older click is ignored
+  const pedidoPasoRef = useRef(0);
 
   // Mirror of viajeFijadoId readable from inside the polling callback, which
   // was created when the effect ran and would otherwise see a stale value.
@@ -184,7 +201,86 @@ function App() {
     };
   }, [rango, deviceId]);
 
+  // Query of Entrega 2 as a string key: the effect re-runs only when some
+  // input really changes, and "loading" is simply "the stored answer belongs
+  // to another key" (no extra state to keep in sync).
+  const claveLugar =
+    modoLugar && lugar
+      ? JSON.stringify({
+          lat: lugar.lat.toFixed(6),
+          lon: lugar.lon.toFixed(6),
+          radio: radioLugar,
+          desde: rango?.desde,
+          hasta: rango?.hasta,
+          device_id: deviceId,
+        })
+      : null;
+
+  useEffect(() => {
+    if (!claveLugar) return;
+    let activo = true;
+    pedirJSON("pasos-por-lugar", JSON.parse(claveLugar))
+      .then((datos) => {
+        if (activo) setResultadoLugar({ clave: claveLugar, datos, error: null });
+      })
+      .catch((error) => {
+        if (activo) setResultadoLugar({ clave: claveLugar, datos: null, error: error.message });
+      });
+    return () => {
+      activo = false;
+    };
+  }, [claveLugar]);
+
+  const resultadoVigente = resultadoLugar?.clave === claveLugar ? resultadoLugar : null;
+  const cargandoLugar = claveLugar !== null && resultadoVigente === null;
+
+  function limpiarPaso() {
+    pedidoPasoRef.current += 1;
+    setPasoSeleccionado(null);
+    setRutaPaso(null);
+    setErrorPaso(null);
+  }
+
+  function fijarLugar(nuevoLugar) {
+    limpiarPaso();
+    setLugar(nuevoLugar);
+  }
+
+  function cambiarRadio(radio) {
+    limpiarPaso();
+    setRadioLugar(radio);
+  }
+
+  function salirModoLugar() {
+    limpiarPaso();
+    setModoLugar(false);
+    setLugar(null);
+    setResultadoLugar(null);
+  }
+
+  // Loads the history from 10 min before the entry to 10 min after the exit
+  async function seleccionarPaso(paso) {
+    const pedido = ++pedidoPasoRef.current;
+    setPasoSeleccionado(paso);
+    setRutaPaso(null);
+    setErrorPaso(null);
+    try {
+      const data = await pedirJSON("historial-ubicaciones", {
+        device_id: deviceId,
+        desde: desplazarTexto(paso.entrada, -MARGEN_PASO_MS),
+        hasta: desplazarTexto(paso.salida, MARGEN_PASO_MS),
+      });
+      if (pedido === pedidoPasoRef.current) setRutaPaso(separarEnViajes(data));
+    } catch (error) {
+      if (pedido === pedidoPasoRef.current) {
+        setRutaPaso([]);
+        setErrorPaso(error.message);
+      }
+    }
+  }
+
   function aplicarRango(nuevoRango) {
+    limpiarPaso();
     fijarViaje(null);
     setAviso(null);
     setViajes([]);
@@ -193,6 +289,7 @@ function App() {
   }
 
   function verEnVivo() {
+    limpiarPaso();
     fijarViaje(null);
     setAviso(null);
     if (rango) {
@@ -223,10 +320,42 @@ function App() {
   const mostrarActual = enVivo && posicionActual !== null;
   const mostrarFin = ruta.length > 1 && !viajeEnCurso;
 
-  const puntosVista = ruta.length ? ruta : mostrarActual ? [posicionActual] : [];
-  const claveVista = `${rango ? `${rango.desde}|${rango.hasta}` : "vivo"}|${viajeSeleccionado?.id ?? "ninguno"}`;
+  // Selected pass (Entrega 2): its surrounding route and the stretch inside the circle
+  const puntosPaso = useMemo(() => (rutaPaso ? rutaPaso.flatMap((v) => v.puntos) : []), [rutaPaso]);
+  const lineasPaso = useMemo(
+    () => (rutaPaso ? rutaPaso.map((v) => v.puntos.map((p) => [p.lat, p.lon])) : []),
+    [rutaPaso]
+  );
+  const tramoResaltado = useMemo(
+    () =>
+      pasoSeleccionado && puntosPaso.length
+        ? tramoEntre(
+            puntosPaso,
+            parsearFechaBogota(pasoSeleccionado.entrada),
+            parsearFechaBogota(pasoSeleccionado.salida)
+          )
+        : [],
+    [pasoSeleccionado, puntosPaso]
+  );
 
-  const puntosLista = viajeSeleccionado ? [...viajeSeleccionado.puntos].reverse() : [];
+  // What the map frames, and when: a new key re-frames (see AjustarVista).
+  // In place mode, clicking the map to choose the place must NOT move it,
+  // so only a loaded pass route is framed.
+  let puntosVista;
+  let claveVista;
+  if (modoLugar) {
+    puntosVista = lineasPaso.flat();
+    claveVista = `lugar|${pasoSeleccionado?.entrada ?? "-"}|${rutaPaso ? "listo" : "cargando"}`;
+  } else {
+    puntosVista = ruta.length ? ruta : mostrarActual ? [posicionActual] : [];
+    claveVista = `${rango ? `${rango.desde}|${rango.hasta}` : "vivo"}|${viajeSeleccionado?.id ?? "ninguno"}`;
+  }
+
+  const puntosLista = modoLugar
+    ? [...puntosPaso].reverse()
+    : viajeSeleccionado
+      ? [...viajeSeleccionado.puntos].reverse()
+      : [];
 
   // Both endpoints fail the same way when the database is down: say it once
   const errorUbicacionVisible = errorUbicacion !== errorHistorial ? errorUbicacion : null;
@@ -269,16 +398,27 @@ function App() {
 
             <AjustarVista key={claveVista} puntos={puntosVista} />
 
-            {ruta.length > 1 && (
+            {!modoLugar && ruta.length > 1 && (
               <Polyline
                 positions={ruta}
                 pathOptions={{ className: "ruta-linea", weight: 3, opacity: 0.8 }}
               />
             )}
 
-            {ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
+            {!modoLugar && ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
 
-            {mostrarFin && <Marker position={ruta[ruta.length - 1]} icon={iconoFin} />}
+            {!modoLugar && mostrarFin && (
+              <Marker position={ruta[ruta.length - 1]} icon={iconoFin} />
+            )}
+
+            <CapaLugar
+              activo={modoLugar}
+              lugar={lugar}
+              radio={radioLugar}
+              onFijarLugar={fijarLugar}
+              rutaPaso={lineasPaso}
+              tramoResaltado={tramoResaltado}
+            />
 
             {mostrarActual && <Marker position={posicionActual} icon={iconoActual} />}
           </MapContainer>
@@ -312,7 +452,34 @@ function App() {
               puedeVolverEnVivo={!enVivo || viajeFijadoId !== null}
             />
 
-            {viajes.length > 0 && (
+            {!modoLugar && (
+              <div className="card">
+                <button
+                  type="button"
+                  className="boton boton-primario boton-ancho"
+                  onClick={() => setModoLugar(true)}
+                >
+                  ¿Cuándo pasó por aquí?
+                </button>
+              </div>
+            )}
+
+            {modoLugar && (
+              <ModoLugar
+                lugar={lugar}
+                radio={radioLugar}
+                onCambiarRadio={cambiarRadio}
+                resultado={resultadoVigente?.datos ?? null}
+                cargando={cargandoLugar}
+                error={resultadoVigente?.error ?? errorPaso}
+                hayRango={rango !== null}
+                pasoSeleccionado={pasoSeleccionado}
+                onSeleccionarPaso={seleccionarPaso}
+                onSalir={salirModoLugar}
+              />
+            )}
+
+            {!modoLugar && viajes.length > 0 && (
               <SelectorRutas
                 viajes={viajes}
                 seleccionadoId={viajeSeleccionado?.id ?? null}
@@ -322,7 +489,7 @@ function App() {
               />
             )}
 
-            {(aviso || errorHistorial || errorUbicacionVisible || mensajeVacio ||
+            {!modoLugar && (aviso || errorHistorial || errorUbicacionVisible || mensajeVacio ||
               viajeSeleccionado?.descartados > 0) && (
               <div className="card mensajes">
                 {aviso && <p className="mensaje mensaje-aviso">{aviso}</p>}
@@ -340,7 +507,20 @@ function App() {
               </div>
             )}
 
-            {(ruta.length > 1 || mostrarActual) && (
+            {modoLugar && lugar && (
+              <div className="card legend">
+                <div className="legend-item">
+                  <span className="legend-dot lugar"></span> Lugar ({radioLugar} m)
+                </div>
+                {tramoResaltado.length > 1 && (
+                  <div className="legend-item">
+                    <span className="legend-line"></span> Tramo dentro del círculo
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!modoLugar && (ruta.length > 1 || mostrarActual) && (
               <div className="card legend">
                 {ruta.length > 1 && (
                   <div className="legend-item">
@@ -363,12 +543,14 @@ function App() {
         </div>
 
         <aside className="sidebar">
-          <p className="sidebar-title">Puntos de la ruta ({puntosLista.length})</p>
+          <p className="sidebar-title">
+            {modoLugar ? "Puntos del paso" : "Puntos de la ruta"} ({puntosLista.length})
+          </p>
           <div className="sidebar-list">
             {puntosLista.map((punto, index) => {
               const esInicio = index === puntosLista.length - 1;
               const esFinal = index === 0;
-              const claseFinal = viajeEnCurso ? "current" : "end";
+              const claseFinal = viajeEnCurso && !modoLugar ? "current" : "end";
               return (
                 <div className="sidebar-item" key={punto.timestamp_gps}>
                   <div className="sidebar-item-header">

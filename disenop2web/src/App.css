@@ -501,3 +501,131 @@ body {
 .mensaje-aviso {
   color: var(--warning);
 }
+
+/* ============ Place mode (Entrega 2) ============ */
+
+/* Crosshair while choosing a place (beats Leaflet's .leaflet-grab cursor) */
+.leaflet-container.modo-lugar {
+  cursor: crosshair;
+}
+
+/* Search circle: accent color, semi-transparent fill */
+.map .lugar-circulo {
+  stroke: var(--accent);
+  fill: var(--accent);
+  fill-opacity: 0.15;
+}
+
+/* Stretch of the route inside the circle, drawn thicker on top of the route */
+.map .ruta-resaltada {
+  stroke: var(--accent-2);
+  stroke-linecap: round;
+}
+
+/* Place marker: accent ring with a dot in the middle (draggable) */
+.marker-lugar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 3px, var(--bg) 4px);
+  cursor: grab;
+}
+
+.legend-dot.lugar {
+  background: var(--bg);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.legend-line {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent-2);
+  flex-shrink: 0;
+}
+
+.boton-ancho {
+  width: 100%;
+}
+
+.radios {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.radios .boton {
+  padding: 6px 4px;
+  font-family: var(--font-mono);
+}
+
+.resultado-total {
+  margin: 12px 0 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.lista-pasos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* Each pass is a full-width button: clicking it draws that pass */
+.paso {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.paso:hover,
+.paso-activo {
+  border-color: var(--accent);
+}
+
+.paso:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.paso-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.paso-detalle {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.etiqueta {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.etiqueta-parada {
+  border-color: var(--warning);
+  color: var(--warning);
+}

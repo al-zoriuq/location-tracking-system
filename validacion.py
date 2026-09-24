@@ -3,6 +3,7 @@
 Every problem raises ErrorValidacion with a Spanish message that the API
 returns as HTTP 400, so the frontend can show it as-is.
 """
+import math
 import re
 from datetime import datetime
 
@@ -10,6 +11,10 @@ from tiempo_bogota import FORMATO_FECHA
 
 HORAS_MIN = 1
 HORAS_MAX = 720  # 30 days
+
+RADIO_MIN_M = 20
+RADIO_MAX_M = 2000
+RADIO_POR_DEFECTO_M = 100
 
 # Same character set the sniffer accepts for the device id: [\w-]+
 PATRON_DEVICE_ID = re.compile(r"[\w-]{1,64}")
@@ -72,3 +77,30 @@ def leer_device_id(args):
     if not PATRON_DEVICE_ID.fullmatch(device_id):
         raise ErrorValidacion("'device_id' inválido.")
     return device_id
+
+
+def _leer_numero(args, nombre, minimo, maximo, por_defecto=None):
+    """Reads a finite float within [minimo, maximo]; required if no default."""
+    texto = args.get(nombre, "").strip()
+    if not texto:
+        if por_defecto is None:
+            raise ErrorValidacion(f"Falta el parámetro '{nombre}'.")
+        return por_defecto
+    try:
+        valor = float(texto)
+    except ValueError:
+        raise ErrorValidacion(f"'{nombre}' debe ser un número.") from None
+    # float() accepts "nan" and "inf". Every comparison with NaN is False, so a
+    # check written as (valor < minimo or valor > maximo) would let NaN through;
+    # isfinite() rejects it explicitly, whatever the form of the range check.
+    if not math.isfinite(valor) or not minimo <= valor <= maximo:
+        raise ErrorValidacion(f"'{nombre}' debe estar entre {minimo} y {maximo}.")
+    return valor
+
+
+def leer_lugar(args):
+    """Reads the place of Entrega 2: lat, lon (required) and radio in meters."""
+    lat = _leer_numero(args, "lat", -90, 90)
+    lon = _leer_numero(args, "lon", -180, 180)
+    radio = _leer_numero(args, "radio", RADIO_MIN_M, RADIO_MAX_M, RADIO_POR_DEFECTO_M)
+    return lat, lon, radio

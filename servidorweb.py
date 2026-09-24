@@ -1,13 +1,17 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 
+from analisis_lugar import analizar_pasos, caja_circulo
 from repositorio import ErrorBaseDatos, crear_repositorio, modo_demo_activo
-from tiempo_bogota import formatear
-from validacion import ErrorValidacion, leer_device_id, leer_horas, leer_rango
+from tiempo_bogota import ahora_bogota, formatear
+from validacion import ErrorValidacion, leer_device_id, leer_horas, leer_lugar, leer_rango
+
+# Default period for Entrega 2 when no date range is given
+DIAS_POR_DEFECTO_LUGAR = 30
 
 # Load environment variables from .env (RDS credentials, MODO_DEMO, etc.)
 load_dotenv()
@@ -112,6 +116,42 @@ def historial_ubicaciones():
     ubicaciones = repositorio.historial(device_id, desde, hasta, horas)
 
     return jsonify([serializar(u) for u in ubicaciones])
+
+
+# API - PASSES THROUGH A PLACE (Entrega 2)
+
+# "When did the vehicle pass through this place?"
+# Query params:
+#   lat, lon      center of the place (required)
+#   radio         meters, 20..2000 (default 100)
+#   desde, hasta  same rules as the history; default: last 30 days (Bogota)
+#   device_id     same logic as the history
+# Answers {lugar, rango, total, pasos[]} with passes in chronological order.
+@app.route("/api/pasos-por-lugar")
+def pasos_por_lugar():
+
+    lat, lon, radio = leer_lugar(request.args)
+    desde, hasta = leer_rango(request.args)
+    device_id = resolver_device_id(request.args)
+
+    if desde is None:
+        hasta = ahora_bogota()
+        desde = hasta - timedelta(days=DIAS_POR_DEFECTO_LUGAR)
+
+    pasos = []
+    if device_id is not None:
+        # SQL narrows the data to segments near the circle; the exact geometry
+        # (segment-circle intersection, grouping) happens in analisis_lugar.py
+        filas = repositorio.segmentos_cerca(device_id, desde, hasta, caja_circulo(lat, lon, radio))
+        pasos = analizar_pasos(filas, lat, lon, radio)
+
+    return jsonify({
+        "lugar": {"lat": lat, "lon": lon, "radio": radio},
+        "rango": {"desde": formatear(desde), "hasta": formatear(hasta)},
+        "device_id": device_id,
+        "total": len(pasos),
+        "pasos": [serializar(p) for p in pasos],
+    })
 
 
 # START SERVER (only used for local development; production runs via Gunicorn)

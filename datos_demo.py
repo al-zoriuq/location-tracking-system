@@ -13,6 +13,8 @@ import random
 from datetime import datetime, timedelta
 from functools import lru_cache
 
+from analisis_lugar import haversine_m
+
 SEMILLA = 2026
 INTERVALO_S = 10  # the Android app sends one point every 10 s
 
@@ -77,12 +79,8 @@ def _reverso(tramo):
 # Geometry helpers
 # ---------------------------------------------------------------------------
 def distancia_m(a, b):
-    """Haversine great-circle distance in meters between (lat, lon) pairs."""
-    lat1, lon1 = map(math.radians, a)
-    lat2, lon2 = map(math.radians, b)
-    h = (math.sin((lat2 - lat1) / 2) ** 2
-         + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2)
-    return 2 * RADIO_TIERRA_M * math.asin(math.sqrt(h))
+    """Haversine distance in meters between (lat, lon) pairs."""
+    return haversine_m(*a, *b)
 
 
 def _desplazar(lat, lon, este_m, norte_m):

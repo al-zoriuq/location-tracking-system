@@ -15,6 +15,7 @@ import os
 from contextlib import contextmanager
 from datetime import timedelta
 
+from analisis_lugar import filas_con_vecinos, filtrar_por_caja
 from tiempo_bogota import ahora_bogota
 
 
@@ -118,6 +119,48 @@ class RepositorioRDS:
                 """, (device_id, horas))
             return cursor.fetchall()
 
+    def segmentos_cerca(self, device_id, desde, hasta, caja):
+        """Entrega 2: every point of the device in [desde, hasta] together with
+        its REAL previous and next point, keeping only the rows whose segment
+        (point -> next point) bounding box touches the circle's box.
+
+        The window functions run in the CTE over ALL the points of the range
+        and the box filter is applied afterwards; filtering first would make
+        LEAD() return the next point inside the box, not the real next one.
+        GREATEST/LEAST ignore NULL, so for the last point (no next one) the
+        box is just the point itself.
+        """
+        lat_min, lat_max, lon_min, lon_max = caja
+        with self._cursor() as cursor:
+            cursor.execute("""
+                WITH puntos AS (
+                    SELECT latitud AS lat, longitud AS lon, timestamp_gps AS ts,
+                           LAG(latitud)        OVER w AS lat_ant,
+                           LAG(longitud)       OVER w AS lon_ant,
+                           LAG(timestamp_gps)  OVER w AS ts_ant,
+                           LEAD(latitud)       OVER w AS lat_sig,
+                           LEAD(longitud)      OVER w AS lon_sig,
+                           LEAD(timestamp_gps) OVER w AS ts_sig
+                    FROM ubicaciones
+                    WHERE device_id = %s
+                      AND timestamp_gps BETWEEN %s AND %s
+                    WINDOW w AS (ORDER BY timestamp_gps)
+                )
+                SELECT lat, lon, ts, lat_ant, lon_ant, ts_ant, lat_sig, lon_sig, ts_sig
+                FROM puntos
+                WHERE GREATEST(lat, lat_sig) >= %s AND LEAST(lat, lat_sig) <= %s
+                  AND GREATEST(lon, lon_sig) >= %s AND LEAST(lon, lon_sig) <= %s
+                ORDER BY ts
+            """, (device_id, desde, hasta, lat_min, lat_max, lon_min, lon_max))
+            filas = cursor.fetchall()
+
+        # latitud/longitud may come back as Decimal (NUMERIC columns)
+        coordenadas = ("lat", "lon", "lat_ant", "lon_ant", "lat_sig", "lon_sig")
+        return [
+            {k: (float(v) if k in coordenadas and v is not None else v) for k, v in fila.items()}
+            for fila in filas
+        ]
+
 
 class RepositorioDemo:
     """Same interface as RepositorioRDS, backed by datos_demo.py."""
@@ -152,3 +195,12 @@ class RepositorioDemo:
             and p["timestamp_gps"] >= desde
             and (hasta is None or p["timestamp_gps"] <= hasta)
         ]
+
+    def segmentos_cerca(self, device_id, desde, hasta, caja):
+        """Same rows as the SQL version, computed in memory."""
+        puntos = [
+            (p["latitud"], p["longitud"], p["timestamp_gps"])
+            for p in self._puntos()
+            if p["device_id"] == device_id and desde <= p["timestamp_gps"] <= hasta
+        ]
+        return filtrar_por_caja(filas_con_vecinos(puntos), caja)
