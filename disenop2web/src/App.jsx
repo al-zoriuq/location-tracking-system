@@ -46,9 +46,19 @@ const RADIO_TIERRA_M = 6371000;
 // Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
 
-// OSRM rejects very long coordinate lists, so the trip is matched in chunks.
-const OSRM_MAX_PUNTOS = 100;
-const OSRM_RADIO_M = 30;
+// The public OSRM server (router.project-osrm.org) accepts at most 10
+// coordinates and a 40 m search radius per map-matching request; anything
+// above answers 400, so a trip is matched in small chunks.
+const OSRM_MAX_PUNTOS = 10;
+const OSRM_RADIO_M = 40;
+const OSRM_CONCURRENCIA = 3; // requests in flight at once: the server is shared
+const OSRM_MAX_TRAMOS = 60; // longer trips would need hundreds of requests: not snapped
+
+// Answers already received, by request URL. The route is snapped again every
+// time a point arrives (every 10 s in live mode), but only its last chunk
+// changes, so the rest comes from here instead of asking the server again.
+const cacheOSRM = new Map();
+const CACHE_OSRM_MAX = 500;
 
 // Haversine formula: straight-line distance in meters between two GPS
 // coordinates, accounting for the Earth's curvature.
@@ -75,13 +85,57 @@ function consultarLugarVisitado(lugar) {
   return pedirJSON(import.meta.env.BASE_URL + `api/lugar-visitado?${parametros}`);
 }
 
+// Matches one chunk of points onto the road network. Never rejects because of
+// the server: a failed chunk keeps its raw points and reports why in `fallo`.
+async function ajustarTramo(tramo, senal) {
+  const coords = tramo.map(([lat, lon]) => `${lon},${lat}`).join(";");
+  const radios = tramo.map(() => OSRM_RADIO_M).join(";");
+  const url =
+    `https://router.project-osrm.org/match/v1/driving/${coords}` +
+    `?geometries=geojson&overview=full&tidy=true&radiuses=${radios}`;
+
+  if (cacheOSRM.has(url)) return cacheOSRM.get(url);
+
+  let resultado;
+  try {
+    let respuesta = await fetch(url, { signal: senal });
+    if (respuesta.status === 429) {
+      // Rate limited: wait a moment and try once more
+      await new Promise((resolver) => setTimeout(resolver, 1000));
+      respuesta = await fetch(url, { signal: senal });
+    }
+    if (!respuesta.ok) return { puntos: tramo, fallo: "servicio" };
+
+    const datos = await respuesta.json();
+    if (datos.code !== "Ok" || !datos.matchings || datos.matchings.length === 0) {
+      resultado = { puntos: tramo, fallo: "sin-coincidencia" };
+    } else {
+      resultado = {
+        puntos: datos.matchings.flatMap((m) =>
+          m.geometry.coordinates.map(([lon, lat]) => [lat, lon])
+        ),
+        fallo: null,
+      };
+    }
+  } catch (error) {
+    if (senal.aborted) throw error; // superseded by a newer route: caller ignores it
+    return { puntos: tramo, fallo: "servicio" };
+  }
+
+  // Only answers from the server are kept; a "servicio" failure is retried next time
+  cacheOSRM.set(url, resultado);
+  if (cacheOSRM.size > CACHE_OSRM_MAX) cacheOSRM.delete(cacheOSRM.keys().next().value);
+  return resultado;
+}
+
 // Sends the raw GPS points to OSRM's map matching service and gets back the
 // same trip snapped onto the actual road network. The original coordinates
 // are never modified: this only affects the drawn line.
 // Returns { puntos, fallo }: `fallo` is null when everything matched,
-// "servicio" when OSRM itself failed and "sin-coincidencia" when it answered
-// but could not match some points to a road. Failed chunks keep their raw points.
-async function ajustarACarretera(puntos) {
+// "servicio" when OSRM itself failed, "sin-coincidencia" when it answered but
+// could not match some points to a road, and "muy-larga" when the trip needs
+// more than OSRM_MAX_TRAMOS requests. Failed chunks keep their raw points.
+async function ajustarACarretera(puntos, senal) {
   const tramos = [];
   // Chunks overlap by one point so the snapped line has no visible seams.
   for (let i = 0; i < puntos.length; i += OSRM_MAX_PUNTOS - 1) {
@@ -89,30 +143,19 @@ async function ajustarACarretera(puntos) {
     if (tramo.length > 1) tramos.push(tramo);
   }
 
-  const resultados = await Promise.all(
-    tramos.map(async (tramo) => {
-      const coords = tramo.map(([lat, lon]) => `${lon},${lat}`).join(";");
-      const radios = tramo.map(() => OSRM_RADIO_M).join(";");
-      const url =
-        `https://router.project-osrm.org/match/v1/driving/${coords}` +
-        `?geometries=geojson&overview=full&tidy=true&radiuses=${radios}`;
+  if (tramos.length > OSRM_MAX_TRAMOS) return { puntos, fallo: "muy-larga" };
 
-      const respuesta = await fetch(url);
-      if (!respuesta.ok) return { puntos: tramo, fallo: "servicio" };
-
-      const datos = await respuesta.json();
-      if (datos.code !== "Ok" || !datos.matchings || datos.matchings.length === 0) {
-        return { puntos: tramo, fallo: "sin-coincidencia" };
-      }
-
-      return {
-        puntos: datos.matchings.flatMap((m) =>
-          m.geometry.coordinates.map(([lon, lat]) => [lat, lon])
-        ),
-        fallo: null,
-      };
-    })
-  );
+  // A few workers take chunks in order, so the requests are not all sent at once
+  const resultados = new Array(tramos.length);
+  let siguiente = 0;
+  const trabajador = async () => {
+    while (siguiente < tramos.length && !senal.aborted) {
+      const i = siguiente++;
+      resultados[i] = await ajustarTramo(tramos[i], senal);
+    }
+  };
+  await Promise.all(Array.from({ length: OSRM_CONCURRENCIA }, trabajador));
+  if (senal.aborted) throw new DOMException("Ajuste cancelado", "AbortError");
 
   const fallos = resultados.map((r) => r.fallo);
   return {
@@ -487,8 +530,10 @@ function App() {
 
   // Primitive key so the snapping effect only refires on real route changes,
   // not on every render (array literals get a new identity each time).
+  // Identity of the route on screen: the timestamp of its first point
+  const idRuta = puntosRutaMostrada.length > 0 ? puntosRutaMostrada[0].timestamp_gps : null;
   const claveRuta = ultimoPunto
-    ? `${indiceMostrado}:${ruta.length}:${ultimoPunto[0]},${ultimoPunto[1]}`
+    ? `${indiceMostrado}:${idRuta}:${ruta.length}:${ultimoPunto[0]},${ultimoPunto[1]}`
     : "";
 
   useEffect(() => {
@@ -500,12 +545,13 @@ function App() {
     }
 
     let cancelado = false;
+    const controlador = new AbortController();
     setSnapCargando(true);
 
-    ajustarACarretera(ruta)
+    ajustarACarretera(ruta, controlador.signal)
       .then(({ puntos, fallo }) => {
         if (cancelado) return;
-        setRutaAjustada(puntos);
+        setRutaAjustada({ idRuta, puntos });
 
         // The drawn line falls back to the raw GPS points, so these are warnings
         if (fallo === "servicio") {
@@ -514,6 +560,12 @@ function App() {
             "osrm",
             "osrm:servicio",
             "No se pudo ajustar la ruta a las vías (el servicio de mapas no responde). Se muestra la ruta original."
+          );
+        } else if (fallo === "muy-larga") {
+          registrarFallo(
+            "osrm",
+            "osrm:larga",
+            "Esta ruta es demasiado larga para ajustarla a las vías. Se muestra la ruta original."
           );
         } else if (fallo === "sin-coincidencia") {
           console.error("Error ajustando la ruta a carretera: OSRM no encontró vías cercanas");
@@ -527,8 +579,8 @@ function App() {
         }
       })
       .catch((error) => {
+        if (cancelado) return; // a newer route replaced this one
         console.error("Error ajustando la ruta a carretera:", error);
-        if (cancelado) return;
         setRutaAjustada(null);
         registrarFallo(
           "osrm",
@@ -542,12 +594,15 @@ function App() {
 
     return () => {
       cancelado = true;
+      controlador.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapActivo, claveRuta]);
 
-  // Snapped line when available, raw GPS line otherwise.
-  const rutaDibujada = snapActivo && rutaAjustada ? rutaAjustada : ruta;
+  // Snapped line when it belongs to the route on screen, raw GPS line otherwise
+  // (while a new route is being snapped, the previous route's line must not linger).
+  const rutaDibujada =
+    snapActivo && rutaAjustada && rutaAjustada.idRuta === idRuta ? rutaAjustada.puntos : ruta;
 
   const etiquetaRuta = useMemo(() => {
     if (puntosRutaMostrada.length === 0) return "";
