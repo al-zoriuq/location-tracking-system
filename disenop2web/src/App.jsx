@@ -688,6 +688,13 @@ function App() {
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
 
+  // One route forward. Reaching the newest route goes back to "live" mode
+  // (null), so from then on new points keep updating it.
+  const verRutaSiguiente = () => {
+    const siguiente = indiceMostrado + 1;
+    setIndiceRuta(siguiente >= rutas.length - 1 ? null : siguiente);
+  };
+
   const volverARutaActual = () => {
     setIndiceRuta(null);
   };
@@ -901,9 +908,23 @@ function App() {
                     ← <span className="nav-texto">Anterior</span>
                   </button>
                   <span className="nav-etiqueta">{etiquetaRuta}</span>
-                  {!siguiendoActual && (
-                    <button className="nav-btn primario" onClick={volverARutaActual} aria-label="Ruta actual">
-                      <span className="nav-texto">Actual</span> →
+                  <button
+                    className="nav-btn"
+                    onClick={verRutaSiguiente}
+                    disabled={siguiendoActual}
+                    aria-label="Ruta siguiente"
+                  >
+                    <span className="nav-texto">Siguiente</span> →
+                  </button>
+                  {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
+                  {indiceMostrado < rutas.length - 2 && (
+                    <button
+                      className="nav-btn primario"
+                      onClick={volverARutaActual}
+                      aria-label="Ir a la ruta actual, la más reciente"
+                      title="Ir a la ruta más reciente"
+                    >
+                      <span className="nav-texto">Actual</span> »
                     </button>
                   )}
                 </div>

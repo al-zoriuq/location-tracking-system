@@ -170,8 +170,9 @@ export default function AyudaModal({ onCerrar }) {
         <p>
           Una ruta es un viaje completo. Se considera que una ruta terminó y empezó otra
           cuando pasa más de 1 hora sin datos, o cuando el dispositivo aparece a más de 1
-          km de donde estaba. Con las flechas «Anterior» y «Actual» te mueves entre viajes:
-          «Ruta 5 de 5» es la más reciente.
+          km de donde estaba. Con «Anterior» y «Siguiente» te mueves de un viaje en un viaje
+          (por ejemplo, de la Ruta 1 a la Ruta 2), y «Actual» salta directo al más reciente.
+          «Ruta 5 de 5» es siempre la más reciente.
         </p>
       </section>
 
