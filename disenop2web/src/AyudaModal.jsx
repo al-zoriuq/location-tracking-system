@@ -172,7 +172,9 @@ export default function AyudaModal({ onCerrar }) {
           cuando pasa más de 1 hora sin datos, o cuando el dispositivo aparece a más de 1
           km de donde estaba. Con «Anterior» y «Siguiente» te mueves de un viaje en un viaje
           (por ejemplo, de la Ruta 1 a la Ruta 2), y «Actual» salta directo al más reciente.
-          «Ruta 5 de 5» es siempre la más reciente.
+          Para ir a cualquier ruta de una vez, toca el título de la barra («Ruta 3 de 10…»):
+          se abre la lista con todas, con su fecha, horario y cantidad de puntos, y eliges
+          una. «Ruta 5 de 5» es siempre la más reciente.
         </p>
       </section>
 

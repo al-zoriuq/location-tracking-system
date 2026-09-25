@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet
 import L from "leaflet";
 import AyudaModal from "./AyudaModal.jsx";
 import SelectorFechaHora from "./SelectorFechaHora.jsx";
+import SelectorRuta from "./SelectorRuta.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, MENSAJE_RECUPERADA } from "./api.js";
@@ -684,6 +685,27 @@ function App() {
     return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}`;
   }, [puntosRutaMostrada, indiceMostrado, rutas.length]);
 
+  // One line of description per route, for the "pick a route" list
+  const opcionesRuta = useMemo(
+    () =>
+      rutas.map((puntos) => {
+        const primero = parsearFechaGPS(puntos[0].timestamp_gps);
+        const ultimo = parsearFechaGPS(puntos[puntos.length - 1].timestamp_gps);
+        const hora = (fecha) => fecha.toLocaleTimeString("es-CO", OPCIONES_HORA_CORTA);
+        return {
+          fecha: primero.toLocaleDateString("es-CO", OPCIONES_ZONA),
+          horario: puntos.length > 1 ? `${hora(primero)} - ${hora(ultimo)}` : hora(primero),
+          puntos: puntos.length,
+        };
+      }),
+    [rutas]
+  );
+
+  // Jump to any route. The newest one is the live one, so picking it returns to live mode.
+  const irARuta = (indice) => {
+    setIndiceRuta(indice >= rutas.length - 1 ? null : indice);
+  };
+
   const verRutaAnterior = () => {
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
@@ -907,7 +929,12 @@ function App() {
                   >
                     ← <span className="nav-texto">Anterior</span>
                   </button>
-                  <span className="nav-etiqueta">{etiquetaRuta}</span>
+                  <SelectorRuta
+                    etiqueta={etiquetaRuta}
+                    opciones={opcionesRuta}
+                    indice={indiceMostrado}
+                    onElegir={irARuta}
+                  />
                   <button
                     className="nav-btn"
                     onClick={verRutaSiguiente}

@@ -1482,6 +1482,162 @@ input:focus-visible {
   }
 }
 
+/* ============ Route picker (the label of the route bar) ============ */
+.nav-rutas {
+  position: relative; /* the list opens under the whole bar */
+  z-index: 40; /* and must stay above the filter chip and search box below it */
+}
+
+.nav-etiqueta {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.nav-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out);
+}
+
+.nav-selector-texto {
+  min-width: 0;
+}
+
+.nav-selector-flecha {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nav-selector:hover {
+    background: rgba(179, 127, 235, 0.14);
+    border-color: var(--glass-borde);
+  }
+}
+
+.rutas-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  overflow: hidden;
+  background: #1a1230; /* opaque: what is behind must not show through */
+  border: 1px solid var(--glass-borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  text-align: left;
+  animation: fh-entrada 160ms var(--ease-out);
+}
+
+.rutas-atajos {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rutas-atajos button {
+  flex: 1;
+  min-height: 36px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rutas-atajos button:hover {
+    background: rgba(179, 127, 235, 0.2);
+    border-color: var(--accent);
+  }
+}
+
+.rutas-lista {
+  max-height: min(50dvh, 340px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.ruta-opcion {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease-out);
+}
+
+.ruta-opcion:last-child {
+  border-bottom: none;
+}
+
+.ruta-opcion-numero {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ruta-opcion-detalle {
+  min-width: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.ruta-opcion-puntos {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ruta-opcion.elegida {
+  background: rgba(179, 127, 235, 0.16);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ruta-opcion:hover {
+    background: rgba(179, 127, 235, 0.12);
+  }
+}
+
+.ruta-opcion:focus-visible {
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rutas-menu {
+    animation: none;
+  }
+}
+
 /* ============ Responsive ============ */
 /* Two breakpoints only, ordered widest first: 900px (map on top, history list
    under it) and 640px (phones). Everything above 900px is the desktop layout
@@ -1702,8 +1858,8 @@ input:focus-visible {
     padding: 6px 8px;
   }
 
-  .nav-etiqueta {
-    flex: 1;
+  .nav-selector {
+    min-height: 44px;
   }
 
   .filtro-fecha {
