@@ -8,14 +8,12 @@ import SelectorRuta from "./SelectorRuta.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, MENSAJE_RECUPERADA } from "./api.js";
+import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
+import PanelVisitas from "./PanelVisitas.jsx";
+import { calcularDistanciaMetros } from "./geo.js";
+import { calcularVisitas } from "./visitas.js";
+import { DESFASE_ZONA, OPCIONES_ZONA, OPCIONES_HORA_CORTA, parsearFechaGPS } from "./zona.js";
 import "leaflet/dist/leaflet.css";
-
-// All GPS timestamps are stored as Barranquilla wall-clock time (no timezone
-// in the database), so both parsing and display are pinned to this zone.
-const ZONA = "America/Bogota";
-const DESFASE_ZONA = "-05:00";
-const OPCIONES_ZONA = { timeZone: ZONA };
-const OPCIONES_HORA_CORTA = { timeZone: ZONA, hour: "2-digit", minute: "2-digit" };
 
 const iconoActual = L.divIcon({
   className: "",
@@ -44,7 +42,6 @@ const iconoFin = L.divIcon({
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
 const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
-const RADIO_TIERRA_M = 6371000;
 // Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
 
@@ -61,19 +58,6 @@ const OSRM_MAX_TRAMOS = 60; // longer trips would need hundreds of requests: not
 // changes, so the rest comes from here instead of asking the server again.
 const cacheOSRM = new Map();
 const CACHE_OSRM_MAX = 500;
-
-// Haversine formula: straight-line distance in meters between two GPS
-// coordinates, accounting for the Earth's curvature.
-function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
-  const toRad = (grados) => (grados * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return RADIO_TIERRA_M * c;
-}
 
 // Asks the backend if the device has EVER been inside the place's bounding
 // box (whole history, not just the loaded date range). Resolves {visitado}.
@@ -279,10 +263,6 @@ function SeguirPunto({ lat, lon, activo }) {
   return null;
 }
 
-function parsearFechaGPS(timestampTexto) {
-  return new Date(timestampTexto.replace(" ", "T") + DESFASE_ZONA);
-}
-
 // Current time in the project zone, formatted like the value of an
 // <input type="datetime-local"> ("YYYY-MM-DDTHH:mm"). Strings in this format
 // compare correctly with < and >.
@@ -435,6 +415,9 @@ function App() {
   const [lugarActivo, setLugarActivo] = useState(null); // {nombre, lat_min, lat_max, lon_min, lon_max}
   // Name of the chosen place when the database has no point inside it at all
   const [lugarSinHistorial, setLugarSinHistorial] = useState(null);
+  // Visit picked in the sidebar list (its ring is highlighted) and the spot the map flies to
+  const [visitaSel, setVisitaSel] = useState(null);
+  const [vueloA, setVueloA] = useState(null);
   const busquedaElegida = useRef(null); // text set by picking a suggestion: must not trigger a new search
   const eleccionActual = useRef(0); // ignores the answer of an older pick if a newer one was made
 
@@ -461,6 +444,10 @@ function App() {
       })
     );
   }, [todasLasRutas, lugarActivo]);
+
+  // When the vehicle was at the chosen place: one entry per visit, newest first
+  const visitas = useMemo(() => calcularVisitas(rutas, lugarActivo), [rutas, lugarActivo]);
+  const visitaElegida = visitas.some((v) => v.id === visitaSel) ? visitaSel : null;
 
   // Why there is nothing to show for the chosen place. Never leave it empty
   // without a reason: either it was never visited, or only outside the dates.
@@ -704,6 +691,19 @@ function App() {
   // Jump to any route. The newest one is the live one, so picking it returns to live mode.
   const irARuta = (indice) => {
     setIndiceRuta(indice >= rutas.length - 1 ? null : indice);
+  };
+
+  // Height of the panels floating over the top of the map (route bar, filters, search
+  // box, messages): the rings and popups are kept below them
+  const margenSuperior = esMovil ? 330 : 250;
+
+  // Select a visit: show its route if needed and fly the map to its ring
+  const elegirVisita = (visita) => {
+    setVisitaSel(visita.id);
+    if (visita.indiceRuta !== indiceMostrado) irARuta(visita.indiceRuta);
+    // On phones the list covers the map: fold it so the ring can be seen
+    if (esMovil) setListaAbierta(false);
+    setVueloA({ centro: [visita.cercano.lat, visita.cercano.lon], n: Date.now() });
   };
 
   const verRutaAnterior = () => {
@@ -1066,6 +1066,21 @@ function App() {
                   {mensajeLugar}
                 </p>
               )}
+
+              {lugarActivo && visitas.length > 0 && (
+                <p className="lugar-mensaje lugar-mensaje-ok" role="status">
+                  <span>
+                    {visitas.length === 1
+                      ? "Pasó 1 vez por este lugar (círculo amarillo en el mapa)."
+                      : `Pasó ${visitas.length} veces por este lugar (círculos amarillos en el mapa).`}
+                  </span>
+                  {esMovil && (
+                    <button type="button" className="lugar-mensaje-boton" onClick={() => setListaAbierta(true)}>
+                      Ver lista
+                    </button>
+                  )}
+                </p>
+              )}
             </div>
 
             <div className="controles-mapa fab-columna">
@@ -1131,6 +1146,11 @@ function App() {
                   <span className={`legend-dot ${siguiendoActual ? "current" : "end"}`}></span>
                   {siguiendoActual ? " Actual" : " Fin de ruta"}
                 </div>
+                {visitas.length > 0 && (
+                  <div className="legend-item">
+                    <span className="legend-dot visita"></span> Pasó por el lugar
+                  </div>
+                )}
               </div>
             )}
 
@@ -1167,6 +1187,16 @@ function App() {
                   icon={siguiendoActual ? iconoActual : iconoFin}
                 />
               )}
+
+              <MarcadoresVisitas
+                visitas={visitas}
+                indiceRuta={indiceMostrado}
+                seleccionada={visitaElegida}
+                onIrARuta={elegirVisita}
+                margenSuperior={margenSuperior}
+              />
+
+              <VolarA destino={vueloA} margenSuperior={margenSuperior} />
             </MapContainer>
 
             <aside className="sidebar">
@@ -1187,6 +1217,13 @@ function App() {
                   Historial de puntos ({historialReciente.length})
                 </p>
               )}
+              <PanelVisitas
+                visitas={visitas}
+                nombreLugar={lugarActivo ? lugarActivo.nombre.split(",")[0] : ""}
+                rangoActivo={rangoActivo}
+                seleccionada={visitaElegida}
+                onElegir={elegirVisita}
+              />
               <div className="sidebar-list" id="lista-historial">
                 {historialReciente.length === 0 && historialCargado && (
                   <p className="sidebar-vacio">

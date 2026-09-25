@@ -161,7 +161,11 @@ export default function AyudaModal({ onCerrar }) {
           Escribe una ciudad o dirección en el buscador y elige una opción de la lista.
           La página mostrará solo las rutas que pasaron por ese lugar. Las opciones
           marcadas con «Sin historial» son lugares por los que el dispositivo nunca ha
-          pasado. Para quitar el filtro, pulsa la «x» junto al buscador.
+          pasado. Cada vez que el vehículo estuvo allí queda marcado con un círculo
+          amarillo en el punto exacto por donde pasó, con el día y la hora; toca el círculo
+          para ver cuánto tiempo estuvo. En la lista de la derecha (o «Ver lista» en el
+          celular) están todas las visitas: al tocar una, el mapa te lleva hasta ella.
+          Para quitar el filtro, pulsa la «x» junto al buscador.
         </p>
       </section>
 
