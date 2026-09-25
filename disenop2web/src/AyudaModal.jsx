@@ -137,9 +137,10 @@ export default function AyudaModal({ onCerrar }) {
             se vea más limpia. Los puntos originales no cambian.
           </li>
           <li>
-            <strong>Botón de mira (círculo con líneas):</strong> «Centrado automático».
-            Cuando está activo, el mapa se mueve solo para mantener la ubicación actual en
-            el centro, sin cambiar tu zoom.
+            <strong>Botón de mira (círculo con líneas):</strong> «Mantener el punto
+            centrado». Cuando está activo, el mapa mantiene la ubicación actual en el
+            centro sin cambiar tu zoom. Puedes mover el mapa a otro lado para mirar: si lo
+            sueltas unos 4 segundos, vuelve solo al punto.
           </li>
         </ul>
       </section>

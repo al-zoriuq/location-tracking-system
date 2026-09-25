@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import AyudaModal from "./AyudaModal.jsx";
+import SelectorFechaHora from "./SelectorFechaHora.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, MENSAJE_RECUPERADA } from "./api.js";
@@ -208,15 +209,71 @@ function AjustarVista({ puntos, resetKey }) {
   return null;
 }
 
-// Keeps the latest point centered while respecting whatever zoom level the
-// user has chosen. Only active while the "Centrado" toggle is on.
+// While the "Centrado" toggle is on, the latest point stays in the middle of
+// the map without ever changing the zoom the user chose. If the user moves the
+// map away, it glides back to the point once they have left it alone for
+// RETORNO_CENTRADO_MS.
+const RETORNO_CENTRADO_MS = 4000;
+
 function SeguirPunto({ lat, lon, activo }) {
   const map = useMap();
+  const objetivo = useRef(null); // latest point to follow
+  const temporizador = useRef(null); // pending "go back to the point"
+  const tocando = useRef(false); // a finger / the mouse is down on the map
 
+  // Follow the point as new readings arrive, unless the user is exploring
   useEffect(() => {
-    if (!activo || lat == null || lon == null) return;
-    map.setView([lat, lon], map.getZoom(), { animate: true });
+    objetivo.current = lat == null || lon == null ? null : [lat, lon];
+    if (!activo || !objetivo.current) return;
+    if (tocando.current || temporizador.current !== null) return; // the timer will bring it back
+    map.panTo(objetivo.current, { animate: true });
   }, [lat, lon, activo, map]);
+
+  // Any user gesture postpones the return; when they stop, count down again
+  useEffect(() => {
+    if (!activo) return;
+
+    const contenedor = map.getContainer();
+
+    const programarRetorno = () => {
+      clearTimeout(temporizador.current);
+      temporizador.current = setTimeout(() => {
+        temporizador.current = null;
+        if (!tocando.current && objetivo.current) map.panTo(objetivo.current, { animate: true });
+      }, RETORNO_CENTRADO_MS);
+    };
+    const alPresionar = () => {
+      tocando.current = true;
+      clearTimeout(temporizador.current);
+      temporizador.current = null;
+    };
+    const alSoltar = () => {
+      if (!tocando.current) return;
+      tocando.current = false;
+      programarRetorno();
+    };
+
+    contenedor.addEventListener("pointerdown", alPresionar);
+    contenedor.addEventListener("wheel", programarRetorno, { passive: true });
+    contenedor.addEventListener("keydown", programarRetorno);
+    // The button can be released outside the map after a drag
+    window.addEventListener("pointerup", alSoltar);
+    window.addEventListener("pointercancel", alSoltar);
+
+    // Turning the toggle on brings the point to the center right away
+    if (objetivo.current) map.panTo(objetivo.current, { animate: true });
+
+    return () => {
+      contenedor.removeEventListener("pointerdown", alPresionar);
+      contenedor.removeEventListener("wheel", programarRetorno);
+      contenedor.removeEventListener("keydown", programarRetorno);
+      window.removeEventListener("pointerup", alSoltar);
+      window.removeEventListener("pointercancel", alSoltar);
+      clearTimeout(temporizador.current);
+      temporizador.current = null;
+      tocando.current = false;
+    };
+  }, [activo, map]);
 
   return null;
 }
@@ -365,6 +422,7 @@ function App() {
   // Upper bound for both inputs: "now" in the project zone, refreshed on every open
   const [ahoraMax, setAhoraMax] = useState(ahoraParaInput);
   const [errorFiltro, setErrorFiltro] = useState("");
+  const [campoFecha, setCampoFecha] = useState(null); // which picker is unfolded: "desde" | "hasta" | null
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
 
@@ -638,6 +696,7 @@ function App() {
     const ahora = ahoraParaInput();
     setAhoraMax(ahora);
     setErrorFiltro("");
+    setCampoFecha(null);
     // First time: today from 00:00 until now. Afterwards keep what was chosen.
     setFechaDesde((valor) => valor || `${ahora.slice(0, 10)}T00:00`);
     setFechaHasta((valor) => (valor && valor <= ahora ? valor : ahora));
@@ -765,6 +824,11 @@ function App() {
     <div className="app">
       <div className="topbar">
         <div className="brand">
+          <svg className="brand-icono" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+            <circle cx="12" cy="9.5" r="2.5" />
+          </svg>
           GPSLink <span>· {nombre}</span>
         </div>
         <div className="topbar-derecha">
@@ -847,32 +911,30 @@ function App() {
 
               {filtroAbierto ? (
               <div className="filtro-fecha">
-                <label className="filtro-grupo">
-                  <span className="filtro-label">Desde</span>
-                  <input
-                    type="datetime-local"
-                    value={fechaDesde}
-                    max={ahoraMax}
-                    onChange={(e) => {
-                      setFechaDesde(e.target.value);
-                      setErrorFiltro("");
-                    }}
-                  />
-                </label>
+                <SelectorFechaHora
+                  etiqueta="Desde"
+                  valor={fechaDesde}
+                  max={ahoraMax}
+                  abierto={campoFecha === "desde"}
+                  onAlternar={() => setCampoFecha(campoFecha === "desde" ? null : "desde")}
+                  onChange={(valor) => {
+                    setFechaDesde(valor);
+                    setErrorFiltro("");
+                  }}
+                />
 
-                <label className="filtro-grupo">
-                  <span className="filtro-label">Hasta</span>
-                  <input
-                    type="datetime-local"
-                    value={fechaHasta}
-                    min={fechaDesde || undefined}
-                    max={ahoraMax}
-                    onChange={(e) => {
-                      setFechaHasta(e.target.value);
-                      setErrorFiltro("");
-                    }}
-                  />
-                </label>
+                <SelectorFechaHora
+                  etiqueta="Hasta"
+                  valor={fechaHasta}
+                  min={fechaDesde || undefined}
+                  max={ahoraMax}
+                  abierto={campoFecha === "hasta"}
+                  onAlternar={() => setCampoFecha(campoFecha === "hasta" ? null : "hasta")}
+                  onChange={(valor) => {
+                    setFechaHasta(valor);
+                    setErrorFiltro("");
+                  }}
+                />
 
                 {errorFiltro && (
                   <p className="filtro-error" role="alert">
@@ -891,6 +953,13 @@ function App() {
               ) : (
                 <div className="filtros-chips">
                   <button className="filtro-toggle" onClick={abrirFiltro}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="16" rx="3" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                      <line x1="8" y1="3" x2="8" y2="7" />
+                      <line x1="16" y1="3" x2="16" y2="7" />
+                    </svg>
                     {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
                   </button>
                   {rangoActivo && (
@@ -988,8 +1057,9 @@ function App() {
               <button
                 className={`fab ${centradoActivo ? "activo" : ""}`}
                 onClick={() => setCentradoActivo(!centradoActivo)}
-                aria-label="Seguir punto actual"
-                title="Mantiene el punto actual en el centro sin cambiar tu zoom"
+                aria-label="Mantener el punto centrado"
+                aria-pressed={centradoActivo}
+                title="Mantiene el punto actual en el centro sin cambiar tu zoom. Si mueves el mapa, vuelve solo tras unos segundos"
               >
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -1085,7 +1155,7 @@ function App() {
                   const esActual = index === 0;
                   const claseFinal = siguiendoActual ? "current" : "end";
                   return (
-                    <div className="sidebar-item" key={index}>
+                    <div className={`sidebar-item ${esActual ? "actual" : ""}`} key={index}>
                       <div className="sidebar-item-header">
                         <span
                           className={`legend-dot ${esInicio ? "start" : esActual ? claseFinal : ""}`}
@@ -1095,13 +1165,15 @@ function App() {
                           {fecha.toLocaleTimeString("es-CO", OPCIONES_ZONA)}
                         </span>
                       </div>
-                      <div className="coord-row small">
-                        <span className="coord-label">Lat</span>
-                        <span>{Number(punto.latitud).toFixed(4)}</span>
-                      </div>
-                      <div className="coord-row small">
-                        <span className="coord-label">Lon</span>
-                        <span>{Number(punto.longitud).toFixed(4)}</span>
+                      <div className="coords-fila">
+                        <div className="coord-row small">
+                          <span className="coord-label">Lat</span>
+                          <span>{Number(punto.latitud).toFixed(4)}</span>
+                        </div>
+                        <div className="coord-row small">
+                          <span className="coord-label">Lon</span>
+                          <span>{Number(punto.longitud).toFixed(4)}</span>
+                        </div>
                       </div>
                       <p className="sidebar-item-ip">IP: {punto.ip_origen}</p>
                     </div>

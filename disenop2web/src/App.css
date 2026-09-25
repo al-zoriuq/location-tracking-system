@@ -15,6 +15,12 @@
   --status-old: #6b6280;     /* status dot: data is stale (over 1 hour, or none) */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
   --font-mono: "IBM Plex Mono", monospace;      /* numeric data: coordinates, dates, times */
+  --glass: rgba(24, 17, 42, 0.84);              /* floating panels over the map */
+  --glass-borde: rgba(179, 127, 235, 0.24);
+  --sombra: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --radio: 14px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: dark; /* native selects and scrollbars follow the dark theme */
 }
 
 * {
@@ -34,6 +40,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Root app container: fills the screen and stacks topbar + main vertically */
@@ -413,28 +420,11 @@ body {
   background: rgba(179, 127, 235, 0.15);
 }
 
-.filtro-grupo {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .filtro-label {
   font-size: 11px;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}
-
-.filtro-fecha input[type="datetime-local"] {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color-scheme: dark;
 }
 
 .filtro-acciones {
@@ -984,6 +974,514 @@ body {
   outline-offset: 2px;
 }
 
+/* ============ Visual polish ============ */
+
+/* One glass look for everything that floats over the map */
+.panel,
+.legend,
+.nav-rutas,
+.filtro-fecha,
+.capas-menu,
+.lugar-mensaje,
+.buscador-input,
+.sugerencias-lugar {
+  background: var(--glass);
+  border: 1px solid var(--glass-borde);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Keyboard focus, everywhere */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* Top bar */
+.topbar {
+  padding: 14px 24px;
+  background: linear-gradient(180deg, #1d1333 0%, var(--bg) 100%);
+}
+
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* A long name is cut with "…" instead of breaking the bar */
+.topbar .brand span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-derecha {
+  flex-shrink: 0;
+}
+
+.brand-icono {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.status {
+  white-space: nowrap;
+  padding: 6px 14px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+/* Buttons share one feel: quick color change and a small press */
+.nav-btn,
+.filtro-toggle,
+.filtro-acciones button,
+.btn-ayuda,
+.fab,
+.fh-campo,
+.fh-ahora,
+.fh-listo {
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out),
+    color 150ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+.nav-btn:active,
+.filtro-toggle:active,
+.filtro-acciones button:active,
+.btn-ayuda:active,
+.fab:active,
+.fh-ahora:active,
+.fh-listo:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nav-btn:not(:disabled):hover,
+  .filtro-acciones button:hover {
+    background: rgba(179, 127, 235, 0.22);
+  }
+}
+
+.nav-rutas {
+  padding: 8px 10px;
+}
+
+.nav-btn {
+  border-radius: 10px;
+}
+
+.filtro-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 16px;
+  background: var(--glass);
+  border: 1px solid var(--glass-borde);
+  border-radius: 999px;
+  box-shadow: var(--sombra);
+  backdrop-filter: blur(12px);
+}
+
+.filtro-toggle svg {
+  color: var(--accent);
+}
+
+.filtro-acciones button {
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+
+.chip-quitar {
+  background: var(--glass);
+  border-color: var(--glass-borde);
+}
+
+/* Search box, with a magnifier */
+.buscador-input {
+  min-height: 40px;
+  padding-left: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b37feb' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.5' y2='16.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 13px center;
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+.buscador-input:focus {
+  box-shadow: 0 0 0 3px rgba(179, 127, 235, 0.22), var(--sombra);
+}
+
+.sugerencias-lugar {
+  border-radius: var(--radio);
+}
+
+/* Info panel: label as a small caption */
+.panel .label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Map controls */
+.fab {
+  background: var(--glass);
+  border-color: var(--glass-borde);
+  backdrop-filter: blur(12px);
+}
+
+.legend {
+  gap: 14px;
+}
+
+/* Zoom buttons: same glass, bigger targets, no white Leaflet default */
+.leaflet-container.map .leaflet-bar {
+  border: 1px solid var(--glass-borde);
+  border-radius: var(--radio);
+  overflow: hidden;
+  background: var(--glass);
+  box-shadow: var(--sombra);
+  backdrop-filter: blur(12px);
+}
+
+.leaflet-container.map .leaflet-bar a {
+  width: 44px;
+  height: 44px;
+  line-height: 42px;
+  font: 400 22px/42px var(--font-display);
+  border-radius: 0;
+  border-bottom: 1px solid var(--glass-borde);
+  background: transparent;
+  color: var(--text);
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.leaflet-container.map .leaflet-bar a:last-child {
+  border-bottom: none;
+}
+
+.leaflet-container.map .leaflet-bar a:active {
+  background: rgba(179, 127, 235, 0.32);
+}
+
+.leaflet-container.map .leaflet-bar a.leaflet-disabled {
+  background: transparent;
+  color: var(--text-dim);
+  opacity: 0.4;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .leaflet-container.map .leaflet-bar a:not(.leaflet-disabled):hover {
+    background: rgba(179, 127, 235, 0.22);
+    color: #fff;
+  }
+}
+
+.leaflet-container.map .leaflet-control-attribution {
+  background: var(--glass);
+  color: var(--text-dim);
+  font-size: 10px;
+  border-radius: 10px 0 0 0;
+}
+
+.leaflet-container.map .leaflet-control-attribution a {
+  color: var(--accent-2);
+}
+
+/* History list */
+.sidebar-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.sidebar-item {
+  transition: background-color 150ms var(--ease-out);
+}
+
+.sidebar-item.actual {
+  background: rgba(179, 127, 235, 0.08);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sidebar-item:hover {
+    background: rgba(179, 127, 235, 0.12);
+  }
+}
+
+.coords-fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 20px;
+}
+
+.coords-fila .coord-row.small {
+  margin-bottom: 0;
+}
+
+/* ============ Date and time picker ============ */
+.filtro-fecha {
+  min-width: 320px;
+}
+
+.fh {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fh-campo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fh-campo svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.fh-valor {
+  flex: 1;
+}
+
+.fh-flecha {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.fh-campo.abierto {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fh-campo:hover {
+    border-color: var(--accent);
+  }
+}
+
+.fh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  animation: fh-entrada 160ms var(--ease-out);
+}
+
+@keyframes fh-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.fh-mes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fh-mes-nombre {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.fh-nav {
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out);
+}
+
+.fh-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fh-nav:not(:disabled):hover {
+    background: rgba(179, 127, 235, 0.2);
+    border-color: var(--accent);
+  }
+}
+
+.fh-semana,
+.fh-dias {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+}
+
+.fh-semana span {
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.fh-dia {
+  aspect-ratio: 1;
+  min-height: 36px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fh-dia:not(:disabled):hover {
+    background: rgba(179, 127, 235, 0.2);
+  }
+}
+
+.fh-dia:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.fh-dia.hoy {
+  border-color: var(--accent-2);
+}
+
+.fh-dia.elegido {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.fh-dia:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+/* "Hora" and "Minutos" are written out above their fields */
+.fh-hora {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fh-hora-campo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fh-hora-campo span {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.fh-hora-campo select {
+  appearance: none;
+  min-height: 42px;
+  padding: 0 28px 0 12px;
+  background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%23a897c9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 11px center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.fh-hora-campo select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fh-dospuntos {
+  padding-bottom: 8px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 18px;
+}
+
+.fh-ayuda {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.fh-pie {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fh-ahora,
+.fh-listo {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fh-ahora {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.fh-listo {
+  margin-left: auto;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fh-panel {
+    animation: none;
+  }
+}
+
 /* ============ Responsive ============ */
 /* Two breakpoints only, ordered widest first: 900px (map on top, history list
    under it) and 640px (phones). Everything above 900px is the desktop layout
@@ -1244,13 +1742,24 @@ body {
     min-height: 44px;
   }
 
-  .filtro-fecha input[type="datetime-local"] {
-    min-height: 44px;
-  }
-
   .chip-quitar {
     width: 44px;
     height: 44px;
+  }
+
+  .fh-nav {
+    width: 44px;
+    height: 44px;
+  }
+
+  .fh-dia {
+    min-height: 40px;
+  }
+
+  .fh-ahora,
+  .fh-listo,
+  .fh-hora-campo select {
+    min-height: 44px;
   }
 
   .nav-btn,
@@ -1258,12 +1767,6 @@ body {
   .filtro-acciones button {
     padding-left: 14px;
     padding-right: 14px;
-  }
-
-  .leaflet-container.map .leaflet-bar a {
-    width: 44px;
-    height: 44px;
-    line-height: 44px;
   }
 
   /* Modals: follow the visible viewport, not the one under the browser bars */
@@ -1284,7 +1787,12 @@ body {
   }
 
   .topbar-derecha {
-    gap: 10px;
+    gap: 8px;
+  }
+
+  .status {
+    padding: 6px 10px;
+    font-size: 12px;
   }
 
   .btn-ayuda {
