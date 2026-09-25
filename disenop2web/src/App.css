@@ -38,9 +38,10 @@ body {
 
 /* Root app container: fills the screen and stacks topbar + main vertically */
 .app {
-  height: 100%;
+  height: 100vh; /* fallback */
+  height: 100dvh; /* excludes mobile browser bars that 100vh counts */
   width: 100%;
-  min-height: 100vh;
+  overflow: hidden; /* the app fills the screen exactly; the page never scrolls */
   display: flex;
   flex-direction: column;
 }
@@ -379,48 +380,6 @@ body {
   opacity: 0.7;
 }
 
-/* ============ Mobile / narrow-screen adjustments ============ */
-@media (max-width: 900px) {
-  /* Stack the sidebar below the map instead of beside it */
-  .main {
-    flex-direction: column;
-  }
-
-  .sidebar {
-    width: 100%;
-    max-height: 240px; /* cap its height so the map keeps most of the screen */
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
-
-  /* No sidebar beside the map anymore, so no offset needed */
-  .controles-mapa {
-    right: 20px;
-  }
-}
-
-@media (max-width: 640px) {
-  .panel {
-    left: 12px;
-    right: 12px;
-    top: 12px;
-    width: auto; /* let the panel stretch full width on small screens */
-  }
-
-  /* Legend moves up here, so the toggles stack above it */
-  .controles-mapa {
-    bottom: 12px;
-    right: 12px;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  .legend {
-    left: 12px;
-    bottom: 12px;
-  }
-}
-
 /* ============ Date/time range filter ============ */
 .filtro-fecha {
   position: absolute;
@@ -467,7 +426,7 @@ body {
   letter-spacing: 0.06em;
 }
 
-.filtro-fecha input[type="date"] {
+.filtro-fecha input[type="datetime-local"] {
   background: var(--panel);
   border: 1px solid var(--border);
   color: var(--text);
@@ -476,54 +435,6 @@ body {
   font-family: var(--font-mono);
   font-size: 13px;
   color-scheme: dark;
-}
-
-.filtro-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filtro-slider-row span {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-dim);
-  min-width: 26px;
-}
-
-.filtro-slider-row .valor {
-  color: var(--text);
-  min-width: 30px;
-  text-align: right;
-}
-
-.filtro-fecha input[type="range"] {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  outline: none;
-}
-
-.filtro-fecha input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: pointer;
-}
-
-.filtro-fecha input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: none;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: pointer;
 }
 
 .filtro-acciones {
@@ -543,6 +454,13 @@ body {
   font-size: 12px;
 }
 
+/* Validation message shown above the buttons when the range can't be applied */
+.filtro-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--marker-end);
+}
+
 .filtro-acciones .aplicar {
   border-color: var(--accent);
   background: rgba(179, 127, 235, 0.2);
@@ -551,87 +469,6 @@ body {
 .filtro-acciones button:hover {
   background: rgba(179, 127, 235, 0.25);
 }
-/* ============ Wheel-style time picker ============ */
-.rueda-grupo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  position: relative;
-  padding: 4px 0;
-}
-
-/* Highlighted band marking the selected row at the center */
-.rueda-grupo::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 34px;
-  transform: translateY(-50%);
-  background: rgba(179, 127, 235, 0.14);
-  border-radius: 8px;
-  pointer-events: none;
-}
-
-.rueda {
-  height: 102px;           /* exactly 3 rows of 34px */
-  width: 52px;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  scrollbar-width: none;          /* Firefox */
-  -ms-overflow-style: none;       /* old Edge */
-}
-
-.rueda::-webkit-scrollbar {
-  display: none;                  /* Chrome/Safari */
-}
-
-.rueda-item {
-  height: 34px;
-  line-height: 34px;
-  text-align: center;
-  scroll-snap-align: center;
-  font-family: var(--font-mono);
-  font-size: 17px;
-  color: var(--text-dim);
-  opacity: 0.45;
-  transition: opacity 0.15s, color 0.15s;
-  user-select: none;
-}
-
-.rueda-item.activo {
-  color: var(--text);
-  opacity: 1;
-  font-size: 19px;
-}
-
-/* Blank spacers so the first and last real values can reach the center */
-.rueda-espaciador {
-  height: 34px;
-}
-
-.rueda-separador {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  color: var(--text-dim);
-  padding-bottom: 2px;
-}
-
-.rueda-texto {
-  width: 48px;
-}
-
-.rueda:focus {
-  outline: none;
-}
-
-.rueda:focus-visible {
-  outline: 1px solid var(--accent);
-  border-radius: 6px;
-}
-
 /* ============ Floating action buttons (map controls) ============ */
 .fab-columna {
   flex-direction: column;
@@ -757,35 +594,23 @@ body {
   outline-offset: 2px;
 }
 
-/* Mobile: the history list sits below the map with a fixed height, so the
-   map overlays are lifted by that same amount to stay over the map. */
-@media (max-width: 900px) {
-  .sidebar {
-    height: 240px;
-  }
-
-  .controles-mapa {
-    bottom: calc(240px + 28px);
-    right: 12px;
-  }
-
-  .legend {
-    bottom: calc(240px + 12px);
-  }
-}
-
 /* ============ Top column: route navigation + filter, stacked ============ */
 .superior {
   position: absolute;
   top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 300px;
+  right: 332px;
   z-index: 1000;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  max-width: calc(100% - 24px);
+  /* Column sits between the info panel (left) and the sidebar (right) */
+  pointer-events: none; /* the empty strip must not block the map */
+}
+
+.superior > * {
+  pointer-events: auto;
 }
 
 /* The filter panel now flows inside the column instead of floating alone */
@@ -808,7 +633,8 @@ body {
 }
 
 .nav-etiqueta {
-  white-space: nowrap;
+  min-width: 0;
+  text-align: center;
 }
 
 .nav-btn {
@@ -838,85 +664,18 @@ body {
   display: none;
 }
 
-@media (max-width: 640px) {
-  .panel {
-    padding: 0;
-  }
-
-  .panel-resumen {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    background: none;
-    border: none;
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    padding: 11px 14px;
-    cursor: pointer;
-  }
-
-  .panel-resumen .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .panel-resumen-texto {
-    flex: 1;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .panel-detalle {
-    display: none;
-    padding: 0 16px 14px;
-  }
-
-  .panel.expandido .panel-detalle {
-    display: block;
-  }
-
-  /* When expanded, the panel temporarily covers the column below it */
-  .panel.expandido {
-    z-index: 1100;
-  }
-
-  .superior {
-    top: 68px;
-    width: calc(100% - 24px);
-  }
-
-  .nav-rutas {
-    width: 100%;
-    justify-content: space-between;
-    padding: 6px 8px;
-  }
-
-  .nav-etiqueta {
-    flex: 1;
-    white-space: normal;
-    text-align: center;
-    font-size: 12px;
-  }
-
-  /* Arrows only on phones; the words take too much room */
-  .nav-texto {
-    display: none;
-  }
-
-  .nav-btn {
-    padding: 8px 12px;
-    font-size: 15px;
-  }
-
-  .map .leaflet-top.leaflet-left {
-    top: 190px;
-  }
+/* Title of the history list; a button on small screens, where it folds the list */
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: inherit;
+  cursor: pointer;
 }
 
 /* ============ Location search + filter chips ============ */
@@ -990,7 +749,10 @@ body {
 }
 
 .sugerencia-item {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   width: 100%;
   text-align: left;
   background: none;
@@ -1011,6 +773,40 @@ body {
   background: rgba(179, 127, 235, 0.15);
 }
 
+/* Tag under each suggestion: does the place have any history? */
+.chip-estado {
+  padding: 1px 8px;
+  border: 1px solid;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.chip-sin-historial {
+  color: var(--marker-end);
+  border-color: var(--marker-end);
+}
+
+.chip-con-historial {
+  color: var(--marker-start);
+  border-color: var(--marker-start);
+}
+
+/* Persistent explanation under the search box */
+.lugar-mensaje {
+  max-width: 260px;
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(20, 16, 32, 0.92);
+  border: 1px solid var(--status-medium);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  text-align: center;
+  backdrop-filter: blur(4px);
+}
+
 .buscando-lugar {
   position: absolute;
   top: calc(100% + 4px);
@@ -1019,8 +815,527 @@ body {
   color: var(--text-dim);
 }
 
-@media (max-width: 640px) {
-  .buscador-lugar {
+/* ============ Help button + modal ============ */
+.topbar-derecha {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.btn-ayuda {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 18px;
+  padding: 0 12px 0 6px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-ayuda:hover {
+  background: rgba(179, 127, 235, 0.15);
+}
+
+.btn-ayuda-signo {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+/* Above Leaflet's panes and the floating panels (z-index up to 1200) */
+.modal-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 5, 16, 0.72);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: 100%;
+  max-height: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  text-align: left;
+}
+
+.modal:focus {
+  outline: none;
+}
+
+.modal-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 14px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-cabecera h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-cerrar {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-cerrar:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.modal-cuerpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 20px 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.modal-cuerpo section {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-cuerpo section:last-child {
+  border-bottom: none;
+}
+
+.modal-cuerpo h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+
+.modal-cuerpo p {
+  margin: 0;
+  color: var(--text);
+}
+
+.modal-cuerpo ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.modal-cuerpo li {
+  margin-bottom: 4px;
+}
+
+.modal-pie {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-entendido {
+  min-height: 44px;
+  padding: 0 22px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-cerrar:focus-visible,
+.modal-entendido:focus-visible,
+.btn-ayuda:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* ============ Responsive ============ */
+/* Two breakpoints only, ordered widest first: 900px (map on top, history list
+   under it) and 640px (phones). Everything above 900px is the desktop layout
+   defined earlier in this file. */
+
+/* ============ Toasts ============ */
+.toasts {
+  position: fixed;
+  top: 84px;
+  right: 16px;
+  z-index: 2000; /* above the map overlays, below the modals */
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none; /* only the toasts themselves catch clicks */
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding-left: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  text-align: left;
+  animation: toast-entrada 0.2s ease-out;
+}
+
+.toast-error {
+  border-left-color: var(--marker-end);
+}
+
+.toast-aviso {
+  border-left-color: var(--status-medium);
+}
+
+.toast-exito {
+  border-left-color: var(--marker-start);
+}
+
+.toast-mensaje {
+  flex: 1;
+  margin: 0;
+  padding: 12px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.toast-cerrar {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.toast-cerrar:hover {
+  color: var(--text);
+}
+
+.toast-cerrar:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+
+@keyframes toast-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+
+/* Shown in the history list when the range/place has no points */
+.sidebar-vacio {
+  margin: 0;
+  padding: 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  /* Map on top, history list under it. The list is folded by default and
+     --alto-lista is its height, so the overlays can sit above it. */
+  .main {
+    --alto-lista: 48px;
+    flex-direction: column;
+  }
+
+  .main.lista-abierta {
+    --alto-lista: min(34dvh, 280px);
+  }
+
+  .map {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+
+  .sidebar {
     width: 100%;
+    height: var(--alto-lista);
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .sidebar-title {
+    min-height: 48px;
+  }
+
+  .nav-btn {
+    min-width: 44px;
+  }
+
+  .sidebar-flecha {
+    color: var(--accent);
+  }
+
+  .main:not(.lista-abierta) .sidebar-list {
+    display: none;
+  }
+
+  .controles-mapa {
+    right: 12px;
+    bottom: calc(var(--alto-lista) + 28px);
+  }
+
+  .legend {
+    left: 12px;
+    bottom: calc(var(--alto-lista) + 12px);
+  }
+
+  /* Info panel: collapsed one-line summary that expands on tap */
+  .panel {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    width: auto;
+    max-width: 420px;
+    padding: 0;
+  }
+
+  .panel-resumen {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 0 14px;
+    cursor: pointer;
+  }
+
+  .panel-resumen .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .panel-resumen-texto {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .panel-detalle {
+    display: none;
+    padding: 0 16px 14px;
+  }
+
+  .panel.expandido .panel-detalle {
+    display: block;
+  }
+
+  /* When expanded, the panel temporarily covers the column below it */
+  .panel.expandido {
+    z-index: 1100;
+  }
+
+  /* Route navigation, date filter and place search: full-width rows under the panel */
+  .superior {
+    top: 64px;
+    left: 12px;
+    right: 12px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .nav-rutas {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding: 6px 8px;
+  }
+
+  .nav-etiqueta {
+    flex: 1;
+  }
+
+  .filtro-fecha {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-height: calc(100dvh - 190px);
+    overflow-y: auto;
+  }
+
+  .filtros-chips {
+    flex: 0 0 auto;
+  }
+
+  .buscador-lugar {
+    flex: 1 1 200px;
+    width: auto;
+  }
+
+  .lugar-mensaje {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  /* Leaflet's zoom buttons sit under the top overlays */
+  .map .leaflet-top.leaflet-left {
+    top: 176px;
+  }
+
+  /* Touch targets: at least 44px */
+  .nav-btn,
+  .filtro-toggle,
+  .filtro-acciones button,
+  .buscador-input,
+  .sugerencia-item,
+  .capas-opcion {
+    min-height: 44px;
+  }
+
+  .filtro-fecha input[type="datetime-local"] {
+    min-height: 44px;
+  }
+
+  .chip-quitar {
+    width: 44px;
+    height: 44px;
+  }
+
+  .nav-btn,
+  .filtro-toggle,
+  .filtro-acciones button {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .leaflet-container.map .leaflet-bar a {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+  }
+
+  /* Modals: follow the visible viewport, not the one under the browser bars */
+  .modal-fondo {
+    bottom: auto;
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 12px 16px;
+  }
+
+  .topbar .brand {
+    font-size: 16px;
+  }
+
+  .topbar-derecha {
+    gap: 10px;
+  }
+
+  .btn-ayuda {
+    padding: 0 6px;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    border-radius: 22px;
+  }
+
+  .btn-ayuda-texto {
+    display: none;
+  }
+
+  .panel {
+    max-width: none;
+  }
+
+  /* Arrows only on phones; the words take too much room */
+  .nav-texto {
+    display: none;
+  }
+
+  .nav-btn {
+    padding: 8px 12px;
+    font-size: 15px;
+  }
+
+  .nav-etiqueta {
+    font-size: 12px;
+  }
+
+  .legend {
+    padding: 8px 10px;
+    gap: 12px;
+  }
+
+  .modal-fondo {
+    padding: 8px;
+  }
+
+  .toasts {
+    top: 76px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  /* The top overlays are taller here: the route label wraps and the filter
+     button and search box share a second row */
+  .map .leaflet-top.leaflet-left {
+    top: 252px;
   }
 }
