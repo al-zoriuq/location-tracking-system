@@ -6,4 +6,3 @@ flask_cors
 gunicorn
 requests
 requests
-tzdata
