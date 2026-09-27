@@ -60,6 +60,7 @@ Todas las referencias `archivo:línea` corresponden al código del commit que ag
 | [analisis_lugar.py](analisis_lugar.py) | Geometría de la Entrega 2 (funciones puras) |
 | [tiempo_bogota.py](tiempo_bogota.py) | Única definición de "ahora en Bogotá" |
 | [datos_demo.py](datos_demo.py) | Datos simulados determinísticos (`MODO_DEMO=1`) |
+| [geocodificacion.py](geocodificacion.py) | Búsqueda de direcciones y lugares (OpenStreetMap: Photon y Nominatim) |
 
 **Frontend** (`disenop2web/src/`)
 
@@ -73,11 +74,11 @@ Todas las referencias `archivo:línea` corresponden al código del commit que ag
 
 Ambas leen la misma tabla y comparten:
 
-- la validación de rangos (`leer_rango`, [validacion.py:38](validacion.py#L38));
-- la resolución del dispositivo (`resolver_device_id`, [servidorweb.py:74](servidorweb.py#L74));
+- la validación de rangos (`leer_rango`, [validacion.py:41](validacion.py#L41));
+- la resolución del dispositivo (`resolver_device_id`, [servidorweb.py:92](servidorweb.py#L92));
 - los umbrales de "movimiento continuo": 1 h, 1 km y 180 km/h. Están definidos en [viajes.js:6-8](disenop2web/src/utils/viajes.js#L6-L8) y en [analisis_lugar.py:27-29](analisis_lugar.py#L27-L29), con un comentario de que deben coincidir.
 
-En la interfaz, el modo lugar es una **capa encima** del estado de la Entrega 1: usa el rango de fechas si hay uno activo, y al salir no altera ni el rango ni la ruta fijada.
+En la interfaz, la Entrega 2 se llama **"Filtrar por ubicación"** y es una **capa encima** del estado de la Entrega 1: usa el rango de fechas si hay uno activo, y al salir no altera ni el rango ni la ruta fijada.
 
 ---
 
@@ -95,30 +96,30 @@ En la interfaz, el modo lugar es una **capa encima** del estado de la Entrega 1:
    - Si Desde es futura, se muestra un error y no se aplica ([:39](disenop2web/src/components/FiltroFechas.jsx#L39)).
    - Si Hasta es futura, se ajusta a la hora actual y se avisa "Hasta se ajustó a la hora actual" ([:45-47](disenop2web/src/components/FiltroFechas.jsx#L45-L47)).
    - Si Desde ≥ Hasta, se muestra un error ([:52](disenop2web/src/components/FiltroFechas.jsx#L52)).
-3. `onAplicar({desde, hasta})` ([:58](disenop2web/src/components/FiltroFechas.jsx#L58)) llega a `aplicarRango` ([App.jsx:400](disenop2web/src/App.jsx#L400)). Esta función quita la ruta fijada, vacía la lista y hace `setRango`.
+3. `onAplicar({desde, hasta})` ([:58](disenop2web/src/components/FiltroFechas.jsx#L58)) llega a `aplicarRango` ([App.jsx:405](disenop2web/src/App.jsx#L405)). Esta función quita la ruta fijada, vacía la lista y hace `setRango`.
 
 ### 2.2 Petición HTTP
 
-4. El efecto del historial ([App.jsx:237-282](disenop2web/src/App.jsx#L237-L282)) se vuelve a ejecutar porque cambió `rango`.
-   - `pedirJSON("historial-ubicaciones", {device_id, desde, hasta})` ([:243](disenop2web/src/App.jsx#L243)).
+4. El efecto del historial ([App.jsx:238-283](disenop2web/src/App.jsx#L238-L283)) se vuelve a ejecutar porque cambió `rango`.
+   - `pedirJSON("historial-ubicaciones", {device_id, desde, hasta})` ([:244](disenop2web/src/App.jsx#L244)).
    - La URL se construye con `URLSearchParams` ([api.js:6-9](disenop2web/src/utils/api.js#L6-L9)), que codifica el espacio de la fecha.
    - Si la respuesta no es 2xx, se lanza el mensaje del backend ([api.js:19-22](disenop2web/src/utils/api.js#L19-L22)) y nunca se trata un error como si fueran datos.
-5. **Con un rango activo no se consulta periódicamente** ([App.jsx:271](disenop2web/src/App.jsx#L271)). Como Hasta nunca es futura, el rango ya terminó y no pueden llegar puntos nuevos. En modo en vivo sí hay un `setInterval` cada 10 s ([:277](disenop2web/src/App.jsx#L277)).
+5. **Con un rango activo no se consulta periódicamente** ([App.jsx:272](disenop2web/src/App.jsx#L272)). Como Hasta nunca es futura, el rango ya terminó y no pueden llegar puntos nuevos. En modo en vivo sí hay un `setInterval` cada 10 s ([:278](disenop2web/src/App.jsx#L278)).
 
 ### 2.3 Backend
 
-6. `historial_ubicaciones()` ([servidorweb.py:107](servidorweb.py#L107)):
-   - `leer_rango` ([validacion.py:38](validacion.py#L38)):
-     - formato exacto con `strptime` ([:30](validacion.py#L30));
-     - `desde` y `hasta` deben venir juntos ([:49](validacion.py#L49));
-     - `desde < hasta` ([:53](validacion.py#L53)).
-     - Cualquier fallo lanza `ErrorValidacion`, que el manejador convierte en un 400 en JSON ([servidorweb.py:60-62](servidorweb.py#L60-L62)).
-   - `resolver_device_id` ([servidorweb.py:74-75](servidorweb.py#L74-L75)): usa el `device_id` recibido, o si no viene, el del registro más reciente **por `timestamp_gps`** ([repositorio.py:70-76](repositorio.py#L70-L76)), no por `id`. Con UDP, un paquete atrasado puede tener un `id` mayor y una hora GPS menor.
+6. `historial_ubicaciones()` ([servidorweb.py:125](servidorweb.py#L125)):
+   - `leer_rango` ([validacion.py:41](validacion.py#L41)):
+     - formato exacto con `strptime` ([:33](validacion.py#L33));
+     - `desde` y `hasta` deben venir juntos ([:52](validacion.py#L52));
+     - `desde < hasta` ([:56](validacion.py#L56)).
+     - Cualquier fallo lanza `ErrorValidacion`, que el manejador convierte en un 400 en JSON ([servidorweb.py:68-70](servidorweb.py#L68-L70)).
+   - `resolver_device_id` ([servidorweb.py:92-93](servidorweb.py#L92-L93)): usa el `device_id` recibido, o si no viene, el del registro más reciente **por `timestamp_gps`** ([repositorio.py:70-76](repositorio.py#L70-L76)), no por `id`. Con UDP, un paquete atrasado puede tener un `id` mayor y una hora GPS menor.
 7. El SQL de `RepositorioRDS.historial` ([repositorio.py:94](repositorio.py#L94)):
    - **Con rango:** `WHERE device_id = %s AND timestamp_gps BETWEEN %s AND %s ORDER BY timestamp_gps ASC` ([:106](repositorio.py#L106)).
    - **Sin rango** (en vivo): `timestamp_gps >= (NOW() AT TIME ZONE 'America/Bogota') - make_interval(hours => %s)` ([:116-117](repositorio.py#L116-L117)).
    - Todos los valores viajan como parámetros `%s`.
-8. `serializar()` ([servidorweb.py:50](servidorweb.py#L50)) convierte cada `datetime` a `"YYYY-MM-DD HH:MM:SS"`.
+8. `serializar()` ([servidorweb.py:58](servidorweb.py#L58)) convierte cada `datetime` a `"YYYY-MM-DD HH:MM:SS"`.
 
 ### 2.4 Separación en viajes (navegador)
 
@@ -133,21 +134,21 @@ En la interfaz, el modo lugar es una **capa encima** del estado de la Entrega 1:
 
 10. El `id` de cada viaje es el timestamp de su primer punto ([:74](disenop2web/src/utils/viajes.js#L74)), no su posición en la lista.
     - El selector usa ese `id` ([SelectorRutas.jsx:7](disenop2web/src/components/SelectorRutas.jsx#L7), [:20-25](disenop2web/src/components/SelectorRutas.jsx#L20-L25)).
-    - Si la ruta fijada desaparece del periodo, se avisa ([App.jsx:251](disenop2web/src/App.jsx#L251)) y se vuelve al modo en vivo.
+    - Si la ruta fijada desaparece del periodo, se avisa ([App.jsx:252](disenop2web/src/App.jsx#L252)) y se vuelve al modo en vivo.
 
 ### 2.5 Dibujo
 
 11. Elección de la ruta a mostrar:
-    - Se muestra la fijada o, si no hay, la última ([App.jsx:427](disenop2web/src/App.jsx#L427)).
-    - Solo la última ruta del modo en vivo está "en curso" ([:430](disenop2web/src/App.jsx#L430)). Cualquier otra termina en "Fin de ruta", nunca en "Actual".
+    - Se muestra la fijada o, si no hay, la última ([App.jsx:432](disenop2web/src/App.jsx#L432)).
+    - Solo la última ruta del modo en vivo está "en curso" ([:435](disenop2web/src/App.jsx#L435)). Cualquier otra termina en "Fin de ruta", nunca en "Actual".
 12. Elementos del mapa:
-    - La línea del recorrido ([:589](disenop2web/src/App.jsx#L589)), coloreada por CSS con `var(--accent)`.
-    - El marcador de inicio en verde ([:593](disenop2web/src/App.jsx#L593)).
-    - El marcador de fin en coral ([:596](disenop2web/src/App.jsx#L596)).
-13. **Encuadre:** `AjustarVista` ([:57](disenop2web/src/App.jsx#L57)) recibe una `key` formada por el modo y el id de la ruta ([:507](disenop2web/src/App.jsx#L507), [:584](disenop2web/src/App.jsx#L584)).
+    - La línea del recorrido ([:594](disenop2web/src/App.jsx#L594)), coloreada por CSS con `var(--accent)`.
+    - El marcador de inicio en verde ([:598](disenop2web/src/App.jsx#L598)).
+    - El marcador de fin en coral ([:601](disenop2web/src/App.jsx#L601)).
+13. **Encuadre:** `AjustarVista` ([:58](disenop2web/src/App.jsx#L58)) recibe una `key` formada por el modo y el id de la ruta ([:512](disenop2web/src/App.jsx#L512), [:589](disenop2web/src/App.jsx#L589)).
     - React solo lo vuelve a montar, y por lo tanto solo encuadra con `fitBounds`, cuando cambia la ruta mostrada. Una actualización periódica no mueve el mapa.
-    - `fitBounds` usa un relleno que evita la columna de paneles ([:65](disenop2web/src/App.jsx#L65)).
-14. **Estado vacío:** "No hay registros en ese rango de fechas." ([:547](disenop2web/src/App.jsx#L547)).
+    - `fitBounds` usa un relleno que evita la columna de paneles ([:66](disenop2web/src/App.jsx#L66)).
+14. **Estado vacío:** "No hay registros en ese rango de fechas." ([:552](disenop2web/src/App.jsx#L552)).
 
 ---
 
@@ -207,22 +208,30 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 
 **En el navegador**
 
-1. **"¿Cuándo pasó por aquí?"** activa el modo lugar.
+1. **"Filtrar por ubicación"** activa el filtro. El lugar se puede elegir de tres formas:
+   - **Buscando una dirección o un sitio,** por ejemplo "Frisby calle 64" o "universidad del norte":
+     - `BuscadorLugar` ([BuscadorLugar.jsx:16](disenop2web/src/components/BuscadorLugar.jsx#L16)) pide `buscar-lugar` ([:27](disenop2web/src/components/BuscadorLugar.jsx#L27)).
+     - El backend valida el texto (3 a 100 caracteres, [validacion.py:112](validacion.py#L112)) y consulta Photon; si Photon no encuentra nada, consulta Nominatim ([geocodificacion.py:101-112](geocodificacion.py#L101-L112)).
+     - Se quedan solo los resultados dentro del área de Barranquilla ([:121](geocodificacion.py#L121)), y aparece la lista para elegir.
+     - Solo se busca al pulsar Enter o "Buscar", nunca en cada tecla, porque la política de uso de Nominatim prohíbe el autocompletado.
+   - **Con un clic en el mapa.**
+   - **Con un lugar guardado** (idea F).
+   Elegir un resultado o un lugar guardado llama a `irALugar` ([App.jsx:355](disenop2web/src/App.jsx#L355)), que fija el lugar y encuadra el mapa. Los radios disponibles son 50, 100 y 200 m ([lugar.js:4](disenop2web/src/utils/lugar.js#L4)).
    - [CapaLugar.jsx:22](disenop2web/src/components/CapaLugar.jsx#L22) pone el cursor de mira.
    - El clic en el mapa solo actúa en este modo ([:26-28](disenop2web/src/components/CapaLugar.jsx#L26-L28)).
    - El marcador es arrastrable ([:62](disenop2web/src/components/CapaLugar.jsx#L62)).
    - El círculo se dibuja con `var(--accent)` semitransparente ([:52](disenop2web/src/components/CapaLugar.jsx#L52)).
-2. **Clic en el mapa:** `fijarLugar` ([App.jsx:362](disenop2web/src/App.jsx#L362)).
-3. **Consulta:** la **clave de consulta** ([App.jsx:287](disenop2web/src/App.jsx#L287)) reúne lugar, radio, rango activo y dispositivo.
-   - El efecto pide `pasos-por-lugar` ([:302](disenop2web/src/App.jsx#L302)).
-   - El resultado se guarda junto con la clave que lo produjo, así que nunca se muestra el resultado de un lugar anterior ([:314](disenop2web/src/App.jsx#L314)).
+2. **Clic en el mapa:** `fijarLugar` ([App.jsx:367](disenop2web/src/App.jsx#L367)).
+3. **Consulta:** la **clave de consulta** ([App.jsx:288](disenop2web/src/App.jsx#L288)) reúne lugar, radio, rango activo y dispositivo.
+   - El efecto pide `pasos-por-lugar` ([:303](disenop2web/src/App.jsx#L303)).
+   - El resultado se guarda junto con la clave que lo produjo, así que nunca se muestra el resultado de un lugar anterior ([:315](disenop2web/src/App.jsx#L315)).
 
 **En el backend**
 
-4. `pasos_por_lugar()` ([servidorweb.py:131](servidorweb.py#L131)):
-   - `leer_lugar` ([validacion.py:101](validacion.py#L101)): `lat` y `lon` obligatorios; `radio` de 20 a 2000 m.
+4. `pasos_por_lugar()` ([servidorweb.py:149](servidorweb.py#L149)):
+   - `leer_lugar` ([validacion.py:104](validacion.py#L104)): `lat` y `lon` obligatorios; `radio` de 20 a 2000 m.
    - Mismo `leer_rango` y mismo dispositivo que la Entrega 1.
-   - Sin rango, se usan los últimos 30 días en hora de Bogotá ([servidorweb.py:14](servidorweb.py#L14), [:137-139](servidorweb.py#L137-L139)).
+   - Sin rango, se usan los últimos 30 días en hora de Bogotá ([servidorweb.py:22](servidorweb.py#L22), [:155-157](servidorweb.py#L155-L157)).
 5. `segmentos_cerca` ([repositorio.py:122](repositorio.py#L122)):
    - Un **CTE** calcula `LAG()`/`LEAD()` sobre **todos** los puntos del dispositivo en la ventana ([:136-147](repositorio.py#L136-L147)), con `WINDOW w AS (ORDER BY timestamp_gps)`. Así, cada punto se une con su siguiente punto **real**.
    - **Después** se filtra por caja envolvente ([:151](repositorio.py#L151)): se conservan los segmentos cuya caja (`GREATEST`/`LEAST` de sus extremos) toca la caja del círculo ([analisis_lugar.py:108-113](analisis_lugar.py#L108-L113)).
@@ -235,16 +244,16 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
    - Suma el **tiempo realmente dentro** del círculo ([:207](analisis_lugar.py#L207)).
    - Es "parada" si ese tiempo llega a 5 min ([:234](analisis_lugar.py#L234)); si no, "paso".
    - Se eligió así y no por `salida − entrada`, porque dos cruces rápidos separados 5 min no son una parada ([tests/test_analisis_lugar.py:126](tests/test_analisis_lugar.py#L126)).
-8. **Respuesta:** `{lugar, rango, total, pasos:[{entrada, salida, duracion_s, momento_mas_cercano, distancia_minima_m, puntos, tipo}]}`, en orden cronológico ([servidorweb.py:148](servidorweb.py#L148)).
+8. **Respuesta:** `{lugar, rango, total, pasos:[{entrada, salida, duracion_s, momento_mas_cercano, distancia_minima_m, puntos, tipo}]}`, en orden cronológico ([servidorweb.py:166](servidorweb.py#L166)).
 
 **De vuelta en el navegador**
 
-9. [ModoLugar.jsx:55](disenop2web/src/components/ModoLugar.jsx#L55) muestra el rango consultado, y [:67-68](disenop2web/src/components/ModoLugar.jsx#L67-L68) dice "El vehículo pasó N veces…" o el mensaje de estado vacío.
-10. **Clic en un paso:** `seleccionarPaso` ([App.jsx:380](disenop2web/src/App.jsx#L380)).
-    - Pide el historial de [entrada − 10 min, salida + 10 min] ([:388-389](disenop2web/src/App.jsx#L388-L389)).
+9. [ModoLugar.jsx:62](disenop2web/src/components/ModoLugar.jsx#L62) muestra el rango consultado, y [:74-75](disenop2web/src/components/ModoLugar.jsx#L74-L75) dice "El vehículo pasó N veces…" o el mensaje de estado vacío.
+10. **Clic en un paso:** `seleccionarPaso` ([App.jsx:385](disenop2web/src/App.jsx#L385)).
+    - Pide el historial de [entrada − 10 min, salida + 10 min] ([:393-394](disenop2web/src/App.jsx#L393-L394)).
     - `tramoEntre` ([lugar.js:14](disenop2web/src/utils/lugar.js#L14)) calcula el tramo dentro del círculo con los puntos de entrada y salida interpolados, y se dibuja grueso ([CapaLugar.jsx:46](disenop2web/src/components/CapaLugar.jsx#L46)).
     - Sus extremos quedan a 50,0 m del centro: el frontend interpola igual que el backend.
-11. **"Salir del modo lugar"** ([App.jsx:372](disenop2web/src/App.jsx#L372)) limpia solo el estado del lugar.
+11. **"Salir del filtro por ubicación"** ([App.jsx:377](disenop2web/src/App.jsx#L377)) limpia solo el estado del lugar.
 
 **El modo demo** implementa `segmentos_cerca` en memoria ([repositorio.py:199-206](repositorio.py#L199-L206)) con las mismas funciones `filas_con_vecinos` y `filtrar_por_caja`, así que la geometría es idéntica en los dos modos.
 
@@ -259,7 +268,7 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 | Base de datos | `timestamp_gps` es un `timestamp` sin zona, en hora de Bogotá | — |
 | SQL | "Ahora" es `NOW() AT TIME ZONE 'America/Bogota'`, del mismo tipo que la columna | [repositorio.py:116](repositorio.py#L116) |
 | Python | `ahora_bogota()` con desfase fijo −05:00 | [tiempo_bogota.py:13](tiempo_bogota.py#L13), [:19](tiempo_bogota.py#L19) |
-| JSON | Siempre `"YYYY-MM-DD HH:MM:SS"`, sin zona | [tiempo_bogota.py:24](tiempo_bogota.py#L24), [servidorweb.py:50](servidorweb.py#L50) |
+| JSON | Siempre `"YYYY-MM-DD HH:MM:SS"`, sin zona | [tiempo_bogota.py:24](tiempo_bogota.py#L24), [servidorweb.py:58](servidorweb.py#L58) |
 | Navegador (entrada) | Se agrega `-05:00` explícito: `new Date("…T…-05:00")` | [tiempo.js:10-14](disenop2web/src/utils/tiempo.js#L10-L14) |
 | Navegador (salida) | `Intl.DateTimeFormat` con `timeZone: "America/Bogota"` | [tiempo.js:18](disenop2web/src/utils/tiempo.js#L18) y siguientes |
 | Navegador ("hoy") | Fecha de Bogotá, no del navegador | [tiempo.js:68](disenop2web/src/utils/tiempo.js#L68) |
@@ -284,15 +293,15 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 
    | Parámetro | Regla | Línea |
    |---|---|---|
-   | `desde`, `hasta` | Formato exacto con `strptime` (rechaza el 30 de febrero) | [:30](validacion.py#L30) |
-   | `horas` | Entero entre 1 y 720 | [:67](validacion.py#L67) |
-   | `device_id` | `[\w-]{1,64}`, el mismo conjunto de caracteres que acepta el sniffer | [:20](validacion.py#L20) |
-   | Coordenadas y radio | Finitos y dentro de su rango (rechaza `NaN`/`inf`) | [:96](validacion.py#L96) |
+   | `desde`, `hasta` | Formato exacto con `strptime` (rechaza el 30 de febrero) | [:33](validacion.py#L33) |
+   | `horas` | Entero entre 1 y 720 | [:70](validacion.py#L70) |
+   | `device_id` | `[\w-]{1,64}`, el mismo conjunto de caracteres que acepta el sniffer | [:23](validacion.py#L23) |
+   | Coordenadas y radio | Finitos y dentro de su rango (rechaza `NaN`/`inf`) | [:99](validacion.py#L99) |
 
    Pruebas: [tests/test_historial.py:46](tests/test_historial.py#L46) y [tests/test_api_lugar.py:47](tests/test_api_lugar.py#L47).
 3. **Errores sin filtrar detalles internos.**
-   - Si la base de datos falla, se responde un 503 con un mensaje genérico; el detalle va solo al log del servidor ([servidorweb.py:66-69](servidorweb.py#L66-L69), prueba [tests/test_historial.py:111](tests/test_historial.py#L111)).
-   - Los errores de validación son 400 en español ([servidorweb.py:60-62](servidorweb.py#L60-L62)).
+   - Si la base de datos falla, se responde un 503 con un mensaje genérico; el detalle va solo al log del servidor ([servidorweb.py:74-77](servidorweb.py#L74-L77), prueba [tests/test_historial.py:111](tests/test_historial.py#L111)).
+   - Los errores de validación son 400 en español ([servidorweb.py:68-70](servidorweb.py#L68-L70)).
    - Las conexiones se cierran siempre, en un `finally` ([repositorio.py:68](repositorio.py#L68)).
 4. **Credenciales en `.env`.**
    - Se leen con `os.getenv` ([repositorio.py:40-50](repositorio.py#L40-L50)).
@@ -300,7 +309,12 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
    - La conexión usa `sslmode=verify-full`.
    - `.env-template` documenta las variables sin sus valores.
 5. **Modo demo aislado.** Con `MODO_DEMO=1`, `psycopg2` ni siquiera se importa ([repositorio.py:54](repositorio.py#L54)). Una prueba lo verifica en un intérprete donde importarlo falla a propósito ([tests/test_demo.py:153](tests/test_demo.py#L153)).
-6. **Frontend.**
+6. **Búsqueda de direcciones.**
+   - El texto del usuario solo viaja como parámetro codificado (`urlencode`) hacia dos servidores **fijos** en el código ([geocodificacion.py:29-30](geocodificacion.py#L29-L30)). Nunca forma parte del host ni de la ruta, así que el endpoint no puede usarse para que el servidor haga peticiones a otros sitios (SSRF).
+   - La aplicación se identifica ante los servicios con un `User-Agent` propio ([:21](geocodificacion.py#L21)), como exige la política de Nominatim.
+   - Si los servicios fallan o responden con un formato inesperado, la API responde un 502 con un mensaje en español, nunca un 500 ([servidorweb.py:82-87](servidorweb.py#L82-L87)).
+   - Las pruebas simulan las respuestas y no dependen de internet ([tests/test_busqueda.py](tests/test_busqueda.py)).
+7. **Frontend.**
    - React escapa todo el texto mostrado, así que un nombre como `<script>` nunca se ejecuta.
    - Lo que viene de la URL ([estadoUrl.js:15-18](disenop2web/src/utils/estadoUrl.js#L15-L18)) y de `localStorage` ([lugaresGuardados.js:14](disenop2web/src/utils/lugaresGuardados.js#L14)) se valida como entrada externa.
 
@@ -310,12 +324,12 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 
 | Idea | Qué hace | Dónde |
 |---|---|---|
-| **A. Estadísticas** | Distancia (Haversine), duración, velocidad promedio y máxima. La máxima usa ventanas de 30 s o más en línea recta, para no confundir el ruido del GPS con picos (con 10 s daba 64,7 km/h en datos que nunca superan 60) | [estadisticas.js:6](disenop2web/src/utils/estadisticas.js#L6), [:29-37](disenop2web/src/utils/estadisticas.js#L29-L37); [App.jsx:474](disenop2web/src/App.jsx#L474) |
+| **A. Estadísticas** | Distancia (Haversine), duración, velocidad promedio y máxima. La máxima usa ventanas de 30 s o más en línea recta, para no confundir el ruido del GPS con picos (con 10 s daba 64,7 km/h en datos que nunca superan 60) | [estadisticas.js:6](disenop2web/src/utils/estadisticas.js#L6), [:29-37](disenop2web/src/utils/estadisticas.js#L29-L37); [App.jsx:479](disenop2web/src/App.jsx#L479) |
 | **B. Reproducir** | Play/Pausa, barra de tiempo, 10x/60x/300x y hora simulada. El marcador es un `L.circleMarker` movido con `setLatLng` dentro de `requestAnimationFrame`, así que no re-renderiza `App`. La posición se interpola con búsqueda binaria | [Reproductor.jsx:31](disenop2web/src/components/Reproductor.jsx#L31), [:50](disenop2web/src/components/Reproductor.jsx#L50), [:58-69](disenop2web/src/components/Reproductor.jsx#L58-L69); [viajes.js:124](disenop2web/src/utils/viajes.js#L124) |
-| **C. Paradas** | Tramos de 5 min o más dentro de 50 m de un punto **ancla**, marcados con "⏸ N min" | [paradas.js:16-25](disenop2web/src/utils/paradas.js#L16-L25); [App.jsx:482](disenop2web/src/App.jsx#L482) |
-| **D. Enlace** | Rango, lugar, radio y ruta en la URL (`replaceState`), restaurados y validados al abrirla. "Copiar enlace" usa `navigator.clipboard` y, sin HTTPS, `execCommand` | [estadoUrl.js:27](disenop2web/src/utils/estadoUrl.js#L27), [:56](disenop2web/src/utils/estadoUrl.js#L56), [:78](disenop2web/src/utils/estadoUrl.js#L78); [App.jsx:106](disenop2web/src/App.jsx#L106), [:177](disenop2web/src/App.jsx#L177) |
-| **E. Clic en la lista** | Vuela al punto, lo resalta y pausa el centrado. La lista es `React.memo` | [ListaPuntos.jsx:53](disenop2web/src/components/ListaPuntos.jsx#L53); [App.jsx:524](disenop2web/src/App.jsx#L524) |
-| **F. Lugares guardados** | Guarda lugares con nombre en `localStorage`, con `try/catch` y validación; se consultan con un clic | [lugaresGuardados.js:28](disenop2web/src/utils/lugaresGuardados.js#L28), [:42](disenop2web/src/utils/lugaresGuardados.js#L42); [App.jsx:326](disenop2web/src/App.jsx#L326), [:353](disenop2web/src/App.jsx#L353) |
+| **C. Paradas** | Tramos de 5 min o más dentro de 50 m de un punto **ancla**, marcados con "⏸ N min" | [paradas.js:16-25](disenop2web/src/utils/paradas.js#L16-L25); [App.jsx:487](disenop2web/src/App.jsx#L487) |
+| **D. Enlace** | Rango, lugar, radio y ruta en la URL (`replaceState`), restaurados y validados al abrirla. "Copiar enlace" usa `navigator.clipboard` y, sin HTTPS, `execCommand` | [estadoUrl.js:27](disenop2web/src/utils/estadoUrl.js#L27), [:56](disenop2web/src/utils/estadoUrl.js#L56), [:78](disenop2web/src/utils/estadoUrl.js#L78); [App.jsx:107](disenop2web/src/App.jsx#L107), [:178](disenop2web/src/App.jsx#L178) |
+| **E. Clic en la lista** | Vuela al punto, lo resalta y pausa el centrado. La lista es `React.memo` | [ListaPuntos.jsx:53](disenop2web/src/components/ListaPuntos.jsx#L53); [App.jsx:529](disenop2web/src/App.jsx#L529) |
+| **F. Lugares guardados** | Guarda lugares con nombre en `localStorage`, con `try/catch` y validación; se consultan con un clic | [lugaresGuardados.js:28](disenop2web/src/utils/lugaresGuardados.js#L28), [:42](disenop2web/src/utils/lugaresGuardados.js#L42); [App.jsx:327](disenop2web/src/App.jsx#L327), [:363](disenop2web/src/App.jsx#L363) |
 
 ### Interfaz del mapa (FASE 5)
 
@@ -342,11 +356,11 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 | 2:00 | Play a 60x | "Reproduce el recorrido; en la parada el marcador se queda quieto unos 8 segundos reales." |
 | 2:20 | Desde = hace 9 días, Hasta = hoy 23:59, Aplicar | "Hasta es futura, así que se ajusta a la hora actual y avisa. El selector tiene todas las rutas del periodo." |
 | 2:40 | Elegir la ruta de hace 8 días | "Aquí hubo un salto de GPS a 6 km: se descartó y la línea no salta al mar." |
-| 3:00 | **Entrega 2:** "¿Cuándo pasó por aquí?", clic en Uninorte, radio 50 m | "Consulta los pasos por el círculo con LEAD en SQL e intersección segmento–círculo en Python." |
+| 3:00 | **Entrega 2:** "Filtrar por ubicación", buscar "universidad del norte", elegir el primer resultado y poner radio 50 m | "Consulta los pasos por el círculo con LEAD en SQL e intersección segmento–círculo en Python." |
 | 3:30 | Señalar el paso de hace 5 días (6 s) | "Este cruce fue a 60 km/h: ningún punto quedó a menos de 50 m (el más cercano, a 83 m), pero el segmento sí atraviesa el círculo. Contando solo puntos, no aparecería." |
 | 4:00 | Clic en el paso "Parada" | "Carga ±10 minutos alrededor y resalta el tramo dentro del círculo, con la entrada y la salida interpoladas." |
 | 4:30 | Guardar "Uninorte" y pulsar "Copiar enlace" | "El lugar queda en localStorage, y el enlace guarda rango, lugar y radio en la URL." |
-| 4:50 | "Salir del modo lugar" | "Vuelve exactamente al estado anterior." |
+| 4:50 | "Salir del filtro por ubicación" | "Vuelve exactamente al estado anterior." |
 
 ---
 
@@ -356,7 +370,7 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
    `NOW()` es un instante con zona, y la columna no tiene zona. PostgreSQL interpretaba la columna en UTC, así que la ventana de 24 h cubría en realidad 19 h de Bogotá. `NOW() AT TIME ZONE 'America/Bogota'` da la hora "de reloj" de Bogotá, del mismo tipo que la columna. → [repositorio.py:116](repositorio.py#L116)
 
 2. **¿Cómo evitan la inyección SQL?**
-   Todos los valores van como parámetros `%s`, que psycopg2 escapa. Además, `device_id` se valida con una expresión regular, y hay pruebas que verifican que los valores no aparecen en el texto del SQL. → [repositorio.py:106](repositorio.py#L106), [validacion.py:20](validacion.py#L20), [tests/test_historial.py:161](tests/test_historial.py#L161)
+   Todos los valores van como parámetros `%s`, que psycopg2 escapa. Además, `device_id` se valida con una expresión regular, y hay pruebas que verifican que los valores no aparecen en el texto del SQL. → [repositorio.py:106](repositorio.py#L106), [validacion.py:23](validacion.py#L23), [tests/test_historial.py:161](tests/test_historial.py#L161)
 
 3. **¿Por qué la hora es correcta aunque el navegador esté en otro país?**
    Al leer, se agrega `-05:00` explícito, y al mostrar se formatea con `timeZone: "America/Bogota"`. Nunca se usa `getHours()`, que depende de la zona del navegador. → [tiempo.js:14](disenop2web/src/utils/tiempo.js#L14), [:18](disenop2web/src/utils/tiempo.js#L18)
@@ -386,7 +400,7 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
     Las detecciones a 10 min o menos forman un paso. Es parada si el tiempo *dentro* del círculo suma 5 min o más; no se usa entrada−salida, porque dos cruces rápidos no son una parada. → [analisis_lugar.py:197-207](analisis_lugar.py#L197-L207), [:234](analisis_lugar.py#L234)
 
 12. **Con un rango de fechas activo, ¿por qué no se actualiza cada 10 s?**
-    Hasta nunca es futura (se ajusta a "ahora"), así que el rango ya terminó y no pueden llegar puntos nuevos. → [App.jsx:271](disenop2web/src/App.jsx#L271)
+    Hasta nunca es futura (se ajusta a "ahora"), así que el rango ya terminó y no pueden llegar puntos nuevos. → [App.jsx:272](disenop2web/src/App.jsx#L272)
 
 13. **¿Cómo probaron sin tocar la base de datos compartida?**
     Con `MODO_DEMO=1` se usa un repositorio en memoria con datos determinísticos (semilla fija), con los mismos endpoints. Hay 74 pruebas con pytest, ninguna usa la base real. → [repositorio.py:30](repositorio.py#L30), [datos_demo.py:18](datos_demo.py#L18), [tests/test_demo.py:153](tests/test_demo.py#L153)
@@ -395,7 +409,7 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
     Todo movimiento del código se marca en un `WeakSet` hasta su `moveend`; un `zoomstart` sin marca es del usuario. → [mapa.js:12-29](disenop2web/src/utils/mapa.js#L12-L29), [CentradoAutomatico.jsx:21-24](disenop2web/src/components/CentradoAutomatico.jsx#L21-L24)
 
 15. **¿Qué pasa si la base de datos se cae?**
-    El backend responde un 503 en JSON con un mensaje genérico y cierra la conexión en un `finally`. El frontend revisa `response.ok` y muestra el mensaje sin romper el mapa. → [servidorweb.py:66-69](servidorweb.py#L66-L69), [repositorio.py:68](repositorio.py#L68), [api.js:19-22](disenop2web/src/utils/api.js#L19-L22)
+    El backend responde un 503 en JSON con un mensaje genérico y cierra la conexión en un `finally`. El frontend revisa `response.ok` y muestra el mensaje sin romper el mapa. → [servidorweb.py:74-77](servidorweb.py#L74-L77), [repositorio.py:68](repositorio.py#L68), [api.js:19-22](disenop2web/src/utils/api.js#L19-L22)
 
 ---
 
@@ -426,6 +440,12 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 - **Solo se consulta un dispositivo** (el del registro más reciente); no hay selector de dispositivo en la interfaz, y el enlace compartible no incluye `device_id`.
 - **`CORS(app)` acepta cualquier origen.** En producción el frontend y la API comparten origen, así que podría restringirse.
 - **El frontend no tiene pruebas automatizadas** (no se agregaron dependencias). La lógica de `utils/` se verificó con scripts de Node sobre los datos demo.
+
+**Búsqueda de direcciones**
+
+- **Depende de los datos de OpenStreetMap.** Por ejemplo, "Frisby calle 64" encuentra un Frisby de la Calle 106, probablemente porque el de la Calle 64 no está registrado en el mapa. Por eso se muestran varios resultados para elegir, y siempre se puede marcar el lugar en el mapa.
+- **Las direcciones con nomenclatura colombiana** ("Cra 51B # 79-10") se resuelven mal: OpenStreetMap ubica bien la calle, pero no el número de placa.
+- **Necesita internet y depende de dos servicios gratuitos públicos,** que pueden fallar o limitar peticiones. La caché ([geocodificacion.py:100](geocodificacion.py#L100)) evita repetir búsquedas iguales. Mejora: un servicio comercial de geocodificación (como Google Places), que exigiría una clave de API.
 
 **Despliegue**
 
