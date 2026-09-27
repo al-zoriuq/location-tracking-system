@@ -136,24 +136,41 @@ body {
 
 /* ============ Controls column (left, over the map) ============
    Every floating card lives in this single flex column, so cards stack
-   instead of overlapping each other. The column itself ignores the mouse
-   (pointer-events: none) so the empty space still pans the map. */
+   instead of overlapping each other. The column is only as tall as its
+   cards (capped by max-height), so it never covers empty map, and its own
+   scrollbar stays usable. (An earlier version used pointer-events: none on
+   a full-height column, which also disabled its scrollbar.) */
 .controles {
   position: absolute;
   top: 16px;
   left: 16px;
-  bottom: 16px;
   width: 300px;
+  max-height: calc(100% - 32px);
   z-index: 10; /* above the map tiles and Leaflet controls */
   display: flex;
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
-  pointer-events: none;
+  overscroll-behavior: contain; /* scrolling the panels never scrolls the page */
+  padding-right: 4px; /* room for the scrollbar next to the cards */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.controles::-webkit-scrollbar {
+  width: 8px;
+}
+
+.controles::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.controles::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
 }
 
 .controles > * {
-  pointer-events: auto;
   flex-shrink: 0;
 }
 
@@ -456,7 +473,6 @@ body {
     top: 12px;
     left: 12px;
     right: 56px;
-    bottom: auto;
     width: auto;
     max-height: 55%;
   }
