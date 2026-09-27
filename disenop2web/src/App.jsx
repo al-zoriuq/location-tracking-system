@@ -143,10 +143,20 @@ function App() {
   const [centradoActivo, setCentradoActivo] = useState(true);
   const [pausaHasta, setPausaHasta] = useState(null);
   const [ahoraTick, setAhoraTick] = useState(0);
-  // Phones only: fold the controls column to free the map
+  // "Ocultar paneles": hides the controls column and the point list so
+  // only the map remains (desktop and phone)
   const [panelesVisibles, setPanelesVisibles] = useState(true);
   // Leaflet map instance (MapContainer ref), for moves started outside the map
   const [mapa, setMapa] = useState(null);
+
+  // Hiding/showing the point list changes the map container's width. Leaflet
+  // does not notice size changes by itself (it would leave grey, unloaded
+  // strips), so it must re-measure once the new layout is painted.
+  useEffect(() => {
+    if (!mapa) return;
+    const cuadro = requestAnimationFrame(() => mapa.invalidateSize());
+    return () => cancelAnimationFrame(cuadro);
+  }, [mapa, panelesVisibles]);
   // Idea E: sidebar point highlighted on the map (its timestamp_gps)
   const [puntoResaltado, setPuntoResaltado] = useState(null);
   // Idea B: true while the route is being played back
@@ -638,14 +648,14 @@ function App() {
           </MapContainer>
 
           <div className={`controles ${panelesVisibles ? "" : "controles-plegados"}`}>
-            {/* Only visible on phones (CSS): folds the column to free the map */}
+            {/* Hides every panel so only the map remains */}
             <button
               type="button"
               className="boton boton-paneles"
               aria-expanded={panelesVisibles}
               onClick={() => setPanelesVisibles(!panelesVisibles)}
             >
-              {panelesVisibles ? "Ocultar paneles ▴" : "Mostrar paneles ▾"}
+              {panelesVisibles ? "✕ Ocultar paneles" : "☰ Mostrar paneles"}
             </button>
 
             {location && (
@@ -821,13 +831,15 @@ function App() {
           </div>
         </div>
 
-        <ListaPuntos
-          titulo={modoLugar ? "Puntos del paso" : "Puntos de la ruta"}
-          puntos={puntosLista}
-          claseFinal={viajeEnCurso && !modoLugar ? "current" : "end"}
-          resaltado={puntoResaltado}
-          onElegir={irAPunto}
-        />
+        {panelesVisibles && (
+          <ListaPuntos
+            titulo={modoLugar ? "Puntos del paso" : "Puntos de la ruta"}
+            puntos={puntosLista}
+            claseFinal={viajeEnCurso && !modoLugar ? "current" : "end"}
+            resaltado={puntoResaltado}
+            onElegir={irAPunto}
+          />
+        )}
       </div>
     </div>
   );

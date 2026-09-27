@@ -45,7 +45,9 @@ export function zonaLibre(map) {
   const completa = { x0: 0, y0: 0, x1: ancho, y1: alto };
 
   const columna = contenedor.parentElement?.querySelector(".controles");
-  if (!columna) return completa;
+  // Panels hidden ("Ocultar paneles"): only a small button remains, the
+  // whole map is free
+  if (!columna || columna.classList.contains("controles-plegados")) return completa;
 
   // Union of the visible cards (the column box itself spans the full height
   // even when its cards are short)

@@ -477,13 +477,8 @@ body {
     max-height: 55%;
   }
 
-  .boton-paneles {
-    display: block;
-  }
-
-  /* Folded: only the toggle button stays */
-  .controles-plegados > :not(.boton-paneles) {
-    display: none;
+  .controles-plegados {
+    right: auto; /* folded: just the small button, not a full-width bar */
   }
 }
 
@@ -756,11 +751,21 @@ body {
   color: var(--text-dim);
 }
 
-/* Hidden on desktop; shown by the phone media query */
+/* "Ocultar / Mostrar paneles": always the first item of the column */
 .boton-paneles {
-  display: none;
   flex: none;
+  align-self: flex-start;
   background: var(--panel);
+  box-shadow: 0 10px 20px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* Folded: only the toggle button stays, the column shrinks to it */
+.controles-plegados {
+  width: auto;
+}
+
+.controles-plegados > :not(.boton-paneles) {
+  display: none;
 }
 
 /* ============ Idea A: route statistics ============ */
