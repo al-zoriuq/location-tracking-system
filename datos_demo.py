@@ -9,6 +9,7 @@ timestamp_gps column.
 """
 import bisect
 import math
+import os
 import random
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -236,6 +237,29 @@ AMPLITUD_M = 143.0               # speed oscillates ~±11 km/h (21-43 km/h)
 PERIODO_S = 300.0
 _EPOCA = datetime(2000, 1, 1)    # Bogota wall-clock origin for session numbering
 
+
+@lru_cache(maxsize=8)
+def _leer_inicio_vivo(texto):
+    """Parses DEMO_INICIO_VIVO once per distinct value (warns once if invalid)."""
+    try:
+        return datetime.strptime(texto, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        print(f"DEMO_INICIO_VIVO inválido ({texto!r}); se usa el origen por defecto")
+        return None
+
+
+def _epoca_vivo():
+    """Origin of the live sessions: a session starts there and every 2 h after.
+
+    Default: 2000-01-01 00:00, so sessions start at even hours. Optional
+    environment variable DEMO_INICIO_VIVO="YYYY-MM-DD HH:MM:SS" (Bogota) moves
+    the origin, so a new live route starts exactly at that moment. It is a
+    fixed timestamp, not "now at startup": every Gunicorn worker reads the
+    same value and therefore generates exactly the same points.
+    """
+    texto = os.getenv("DEMO_INICIO_VIVO", "").strip().strip('"')
+    return (_leer_inicio_vivo(texto) if texto else None) or _EPOCA
+
 _CIRCUITOS = (Recorrido(CIRCUITO_NORTE, cerrado=True), Recorrido(CIRCUITO_SUR, cerrado=True))
 
 
@@ -255,12 +279,13 @@ def _posicion_viva(sesion, tau):
 
 def _viaje_en_vivo(ahora):
     """Rows of the live sessions of today (from 05:00) up to 'ahora'."""
-    sesion_actual = int((ahora - _EPOCA).total_seconds()) // SESION_S
+    epoca = _epoca_vivo()
+    sesion_actual = int((ahora - epoca).total_seconds()) // SESION_S
     limite = datetime(ahora.year, ahora.month, ahora.day, INICIO_VIVO_HORA)
     filas = []
     sesion = sesion_actual
     while True:
-        inicio = _EPOCA + timedelta(seconds=sesion * SESION_S)
+        inicio = epoca + timedelta(seconds=sesion * SESION_S)
         if sesion != sesion_actual and inicio < limite:
             break
         fin = min(ahora, inicio + timedelta(seconds=CONDUCCION_S))

@@ -165,3 +165,38 @@ def test_modo_demo_no_necesita_psycopg2_ni_certificado(tmp_path):
                                env=entorno, capture_output=True, text=True)
     assert resultado.returncode == 0, resultado.stderr
     assert "ok" in resultado.stdout
+
+
+def _inicio_sesion_actual(puntos):
+    """Timestamp where the last live session starts (after the last > 60 s gap)."""
+    principal = _principal(puntos)
+    inicio = principal[0]["timestamp_gps"]
+    for a, b in zip(principal, principal[1:]):
+        if (b["timestamp_gps"] - a["timestamp_gps"]).total_seconds() > 60:
+            inicio = b["timestamp_gps"]
+    return inicio
+
+
+def test_sin_variable_las_sesiones_empiezan_en_hora_par(monkeypatch):
+    monkeypatch.delenv("DEMO_INICIO_VIVO", raising=False)
+    assert _inicio_sesion_actual(datos_demo.puntos_demo(AHORA)) == datetime(2026, 9, 24, 14, 0, 0)
+
+
+def test_demo_inicio_vivo_arranca_una_ruta_en_ese_momento(monkeypatch):
+    inicio = AHORA - timedelta(minutes=5)  # 15:32:20
+    monkeypatch.setenv("DEMO_INICIO_VIVO", inicio.strftime("%Y-%m-%d %H:%M:%S"))
+    puntos = datos_demo.puntos_demo(AHORA)
+    assert _inicio_sesion_actual(puntos) == inicio
+    # One point every 10 s from the start up to now: 5 min -> 31 points
+    en_vivo = [p for p in _principal(puntos) if p["timestamp_gps"] >= inicio]
+    assert len(en_vivo) == 31
+
+
+def test_demo_inicio_vivo_acepta_comillas(monkeypatch):
+    monkeypatch.setenv("DEMO_INICIO_VIVO", '"2026-09-24 15:30:00"')
+    assert _inicio_sesion_actual(datos_demo.puntos_demo(AHORA)) == datetime(2026, 9, 24, 15, 30, 0)
+
+
+def test_demo_inicio_vivo_invalido_usa_el_origen_por_defecto(monkeypatch):
+    monkeypatch.setenv("DEMO_INICIO_VIVO", "mañana temprano")
+    assert _inicio_sesion_actual(datos_demo.puntos_demo(AHORA)) == datetime(2026, 9, 24, 14, 0, 0)

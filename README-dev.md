@@ -96,3 +96,16 @@ Generados por `datos_demo.py` con semilla fija (siempre los mismos para una mism
 | Vehículo "en vivo" (sesiones de 2 h que empiezan en horas pares, desde las 06:00 de hoy; circuitos norte y sur alternados) | hoy, hasta la hora actual |
 
 Los horarios son de Bogotá, sin zona horaria, igual que `timestamp_gps` en la base real.
+
+### Hacer que una ruta en vivo empiece en un momento exacto
+
+Por defecto, el vehículo "en vivo" empieza una ruta nueva cada 2 h en punto (horas pares).
+Con la variable opcional `DEMO_INICIO_VIVO` (hora de Bogotá) una ruta empieza exactamente
+en ese momento, y las siguientes cada 2 h a partir de ahí:
+
+```powershell
+$env:DEMO_INICIO_VIVO = "2026-09-27 11:45:00"
+```
+
+En el servidor va en el `.env` (con comillas, por el espacio): `DEMO_INICIO_VIVO="2026-09-27 11:45:00"`.
+Es una hora fija, no "ahora": así todos los workers de Gunicorn generan los mismos puntos.

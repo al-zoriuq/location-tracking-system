@@ -404,7 +404,7 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
     Hasta nunca es futura (se ajusta a "ahora"), así que el rango ya terminó y no pueden llegar puntos nuevos. → [App.jsx:282](disenop2web/src/App.jsx#L282)
 
 13. **¿Cómo probaron sin tocar la base de datos compartida?**
-    Con `MODO_DEMO=1` se usa un repositorio en memoria con datos determinísticos (semilla fija), con los mismos endpoints. Hay 74 pruebas con pytest, ninguna usa la base real. → [repositorio.py:30](repositorio.py#L30), [datos_demo.py:18](datos_demo.py#L18), [tests/test_demo.py:153](tests/test_demo.py#L153)
+    Con `MODO_DEMO=1` se usa un repositorio en memoria con datos determinísticos (semilla fija), con los mismos endpoints. Hay 74 pruebas con pytest, ninguna usa la base real. → [repositorio.py:30](repositorio.py#L30), [datos_demo.py:19](datos_demo.py#L19), [tests/test_demo.py:153](tests/test_demo.py#L153)
 
 14. **¿Cómo sabe el centrado si el zoom lo hizo el usuario?**
     Todo movimiento del código se marca en un `WeakSet` hasta su `moveend`; un `zoomstart` sin marca es del usuario. → [mapa.js:12-29](disenop2web/src/utils/mapa.js#L12-L29), [CentradoAutomatico.jsx:21-24](disenop2web/src/components/CentradoAutomatico.jsx#L21-L24)
