@@ -1,7 +1,5 @@
 # Location & GPS Tracking System — CI/CD, Infrastructure & Multi-Node Deployment Audit
 
-> 🇬🇧 English overview of the application (features, API, local setup, tests, sample data): [README.en.md](README.en.md)
-
 Este repositorio contiene la arquitectura full-stack, la automatización de despliegue y la definición del esquema de base de datos para el **GPS Location Tracking System**.
 
 Este documento detalla el ciclo de vida completo de despliegue, la configuración de despliegue continuo multi-servidor (CI/CD) vía GitHub Actions, la configuración del servidor web (Nginx + Gunicorn + Certbot), la alineación del esquema de base de datos (PostgreSQL) y la integración del build del frontend.
