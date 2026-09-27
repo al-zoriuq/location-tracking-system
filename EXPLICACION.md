@@ -96,15 +96,15 @@ En la interfaz, la Entrega 2 se llama **"Filtrar por ubicación"** y es una **ca
    - Si Desde es futura, se muestra un error y no se aplica ([:39](disenop2web/src/components/FiltroFechas.jsx#L39)).
    - Si Hasta es futura, se ajusta a la hora actual y se avisa "Hasta se ajustó a la hora actual" ([:45-47](disenop2web/src/components/FiltroFechas.jsx#L45-L47)).
    - Si Desde ≥ Hasta, se muestra un error ([:52](disenop2web/src/components/FiltroFechas.jsx#L52)).
-3. `onAplicar({desde, hasta})` ([:58](disenop2web/src/components/FiltroFechas.jsx#L58)) llega a `aplicarRango` ([App.jsx:405](disenop2web/src/App.jsx#L405)). Esta función quita la ruta fijada, vacía la lista y hace `setRango`.
+3. `onAplicar({desde, hasta})` ([:58](disenop2web/src/components/FiltroFechas.jsx#L58)) llega a `aplicarRango` ([App.jsx:415](disenop2web/src/App.jsx#L415)). Esta función quita la ruta fijada, vacía la lista y hace `setRango`.
 
 ### 2.2 Petición HTTP
 
-4. El efecto del historial ([App.jsx:238-283](disenop2web/src/App.jsx#L238-L283)) se vuelve a ejecutar porque cambió `rango`.
-   - `pedirJSON("historial-ubicaciones", {device_id, desde, hasta})` ([:244](disenop2web/src/App.jsx#L244)).
+4. El efecto del historial ([App.jsx:248-293](disenop2web/src/App.jsx#L248-L293)) se vuelve a ejecutar porque cambió `rango`.
+   - `pedirJSON("historial-ubicaciones", {device_id, desde, hasta})` ([:254](disenop2web/src/App.jsx#L254)).
    - La URL se construye con `URLSearchParams` ([api.js:6-9](disenop2web/src/utils/api.js#L6-L9)), que codifica el espacio de la fecha.
    - Si la respuesta no es 2xx, se lanza el mensaje del backend ([api.js:19-22](disenop2web/src/utils/api.js#L19-L22)) y nunca se trata un error como si fueran datos.
-5. **Con un rango activo no se consulta periódicamente** ([App.jsx:272](disenop2web/src/App.jsx#L272)). Como Hasta nunca es futura, el rango ya terminó y no pueden llegar puntos nuevos. En modo en vivo sí hay un `setInterval` cada 10 s ([:278](disenop2web/src/App.jsx#L278)).
+5. **Con un rango activo no se consulta periódicamente** ([App.jsx:282](disenop2web/src/App.jsx#L282)). Como Hasta nunca es futura, el rango ya terminó y no pueden llegar puntos nuevos. En modo en vivo sí hay un `setInterval` cada 10 s ([:288](disenop2web/src/App.jsx#L288)).
 
 ### 2.3 Backend
 
@@ -134,21 +134,21 @@ En la interfaz, la Entrega 2 se llama **"Filtrar por ubicación"** y es una **ca
 
 10. El `id` de cada viaje es el timestamp de su primer punto ([:74](disenop2web/src/utils/viajes.js#L74)), no su posición en la lista.
     - El selector usa ese `id` ([SelectorRutas.jsx:7](disenop2web/src/components/SelectorRutas.jsx#L7), [:20-25](disenop2web/src/components/SelectorRutas.jsx#L20-L25)).
-    - Si la ruta fijada desaparece del periodo, se avisa ([App.jsx:252](disenop2web/src/App.jsx#L252)) y se vuelve al modo en vivo.
+    - Si la ruta fijada desaparece del periodo, se avisa ([App.jsx:262](disenop2web/src/App.jsx#L262)) y se vuelve al modo en vivo.
 
 ### 2.5 Dibujo
 
 11. Elección de la ruta a mostrar:
-    - Se muestra la fijada o, si no hay, la última ([App.jsx:432](disenop2web/src/App.jsx#L432)).
-    - Solo la última ruta del modo en vivo está "en curso" ([:435](disenop2web/src/App.jsx#L435)). Cualquier otra termina en "Fin de ruta", nunca en "Actual".
+    - Se muestra la fijada o, si no hay, la última ([App.jsx:442](disenop2web/src/App.jsx#L442)).
+    - Solo la última ruta del modo en vivo está "en curso" ([:445](disenop2web/src/App.jsx#L445)). Cualquier otra termina en "Fin de ruta", nunca en "Actual".
 12. Elementos del mapa:
-    - La línea del recorrido ([:594](disenop2web/src/App.jsx#L594)), coloreada por CSS con `var(--accent)`.
-    - El marcador de inicio en verde ([:598](disenop2web/src/App.jsx#L598)).
-    - El marcador de fin en coral ([:601](disenop2web/src/App.jsx#L601)).
-13. **Encuadre:** `AjustarVista` ([:58](disenop2web/src/App.jsx#L58)) recibe una `key` formada por el modo y el id de la ruta ([:512](disenop2web/src/App.jsx#L512), [:589](disenop2web/src/App.jsx#L589)).
+    - La línea del recorrido ([:604](disenop2web/src/App.jsx#L604)), coloreada por CSS con `var(--accent)`.
+    - El marcador de inicio en verde ([:608](disenop2web/src/App.jsx#L608)).
+    - El marcador de fin en coral ([:611](disenop2web/src/App.jsx#L611)).
+13. **Encuadre:** `AjustarVista` ([:58](disenop2web/src/App.jsx#L58)) recibe una `key` formada por el modo y el id de la ruta ([:522](disenop2web/src/App.jsx#L522), [:599](disenop2web/src/App.jsx#L599)).
     - React solo lo vuelve a montar, y por lo tanto solo encuadra con `fitBounds`, cuando cambia la ruta mostrada. Una actualización periódica no mueve el mapa.
     - `fitBounds` usa un relleno que evita la columna de paneles ([:66](disenop2web/src/App.jsx#L66)).
-14. **Estado vacío:** "No hay registros en ese rango de fechas." ([:552](disenop2web/src/App.jsx#L552)).
+14. **Estado vacío:** "No hay registros en ese rango de fechas." ([:562](disenop2web/src/App.jsx#L562)).
 
 ---
 
@@ -216,15 +216,15 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
      - Solo se busca al pulsar Enter o "Buscar", nunca en cada tecla, porque la política de uso de Nominatim prohíbe el autocompletado.
    - **Con un clic en el mapa.**
    - **Con un lugar guardado** (idea F).
-   Elegir un resultado o un lugar guardado llama a `irALugar` ([App.jsx:355](disenop2web/src/App.jsx#L355)), que fija el lugar y encuadra el mapa. Los radios disponibles son 50, 100 y 200 m ([lugar.js:4](disenop2web/src/utils/lugar.js#L4)).
+   Elegir un resultado o un lugar guardado llama a `irALugar` ([App.jsx:365](disenop2web/src/App.jsx#L365)), que fija el lugar y encuadra el mapa. Los radios disponibles son 50, 100 y 200 m ([lugar.js:4](disenop2web/src/utils/lugar.js#L4)).
    - [CapaLugar.jsx:22](disenop2web/src/components/CapaLugar.jsx#L22) pone el cursor de mira.
    - El clic en el mapa solo actúa en este modo ([:26-28](disenop2web/src/components/CapaLugar.jsx#L26-L28)).
    - El marcador es arrastrable ([:62](disenop2web/src/components/CapaLugar.jsx#L62)).
    - El círculo se dibuja con `var(--accent)` semitransparente ([:52](disenop2web/src/components/CapaLugar.jsx#L52)).
-2. **Clic en el mapa:** `fijarLugar` ([App.jsx:367](disenop2web/src/App.jsx#L367)).
-3. **Consulta:** la **clave de consulta** ([App.jsx:288](disenop2web/src/App.jsx#L288)) reúne lugar, radio, rango activo y dispositivo.
-   - El efecto pide `pasos-por-lugar` ([:303](disenop2web/src/App.jsx#L303)).
-   - El resultado se guarda junto con la clave que lo produjo, así que nunca se muestra el resultado de un lugar anterior ([:315](disenop2web/src/App.jsx#L315)).
+2. **Clic en el mapa:** `fijarLugar` ([App.jsx:377](disenop2web/src/App.jsx#L377)).
+3. **Consulta:** la **clave de consulta** ([App.jsx:298](disenop2web/src/App.jsx#L298)) reúne lugar, radio, rango activo y dispositivo.
+   - El efecto pide `pasos-por-lugar` ([:313](disenop2web/src/App.jsx#L313)).
+   - El resultado se guarda junto con la clave que lo produjo, así que nunca se muestra el resultado de un lugar anterior ([:325](disenop2web/src/App.jsx#L325)).
 
 **En el backend**
 
@@ -249,11 +249,11 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 **De vuelta en el navegador**
 
 9. [ModoLugar.jsx:62](disenop2web/src/components/ModoLugar.jsx#L62) muestra el rango consultado, y [:74-75](disenop2web/src/components/ModoLugar.jsx#L74-L75) dice "El vehículo pasó N veces…" o el mensaje de estado vacío.
-10. **Clic en un paso:** `seleccionarPaso` ([App.jsx:385](disenop2web/src/App.jsx#L385)).
-    - Pide el historial de [entrada − 10 min, salida + 10 min] ([:393-394](disenop2web/src/App.jsx#L393-L394)).
+10. **Clic en un paso:** `seleccionarPaso` ([App.jsx:395](disenop2web/src/App.jsx#L395)).
+    - Pide el historial de [entrada − 10 min, salida + 10 min] ([:403-404](disenop2web/src/App.jsx#L403-L404)).
     - `tramoEntre` ([lugar.js:14](disenop2web/src/utils/lugar.js#L14)) calcula el tramo dentro del círculo con los puntos de entrada y salida interpolados, y se dibuja grueso ([CapaLugar.jsx:46](disenop2web/src/components/CapaLugar.jsx#L46)).
     - Sus extremos quedan a 50,0 m del centro: el frontend interpola igual que el backend.
-11. **"Salir del filtro por ubicación"** ([App.jsx:377](disenop2web/src/App.jsx#L377)) limpia solo el estado del lugar.
+11. **"Salir del filtro por ubicación"** ([App.jsx:387](disenop2web/src/App.jsx#L387)) limpia solo el estado del lugar.
 
 **El modo demo** implementa `segmentos_cerca` en memoria ([repositorio.py:199-206](repositorio.py#L199-L206)) con las mismas funciones `filas_con_vecinos` y `filtrar_por_caja`, así que la geometría es idéntica en los dos modos.
 
@@ -324,12 +324,12 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
 
 | Idea | Qué hace | Dónde |
 |---|---|---|
-| **A. Estadísticas** | Distancia (Haversine), duración, velocidad promedio y máxima. La máxima usa ventanas de 30 s o más en línea recta, para no confundir el ruido del GPS con picos (con 10 s daba 64,7 km/h en datos que nunca superan 60) | [estadisticas.js:6](disenop2web/src/utils/estadisticas.js#L6), [:29-37](disenop2web/src/utils/estadisticas.js#L29-L37); [App.jsx:479](disenop2web/src/App.jsx#L479) |
+| **A. Estadísticas** | Distancia (Haversine), duración, velocidad promedio y máxima. La máxima usa ventanas de 30 s o más en línea recta, para no confundir el ruido del GPS con picos (con 10 s daba 64,7 km/h en datos que nunca superan 60) | [estadisticas.js:6](disenop2web/src/utils/estadisticas.js#L6), [:29-37](disenop2web/src/utils/estadisticas.js#L29-L37); [App.jsx:489](disenop2web/src/App.jsx#L489) |
 | **B. Reproducir** | Play/Pausa, barra de tiempo, 10x/60x/300x y hora simulada. El marcador es un `L.circleMarker` movido con `setLatLng` dentro de `requestAnimationFrame`, así que no re-renderiza `App`. La posición se interpola con búsqueda binaria | [Reproductor.jsx:31](disenop2web/src/components/Reproductor.jsx#L31), [:50](disenop2web/src/components/Reproductor.jsx#L50), [:58-69](disenop2web/src/components/Reproductor.jsx#L58-L69); [viajes.js:124](disenop2web/src/utils/viajes.js#L124) |
-| **C. Paradas** | Tramos de 5 min o más dentro de 50 m de un punto **ancla**, marcados con "⏸ N min" | [paradas.js:16-25](disenop2web/src/utils/paradas.js#L16-L25); [App.jsx:487](disenop2web/src/App.jsx#L487) |
-| **D. Enlace** | Rango, lugar, radio y ruta en la URL (`replaceState`), restaurados y validados al abrirla. "Copiar enlace" usa `navigator.clipboard` y, sin HTTPS, `execCommand` | [estadoUrl.js:27](disenop2web/src/utils/estadoUrl.js#L27), [:56](disenop2web/src/utils/estadoUrl.js#L56), [:78](disenop2web/src/utils/estadoUrl.js#L78); [App.jsx:107](disenop2web/src/App.jsx#L107), [:178](disenop2web/src/App.jsx#L178) |
-| **E. Clic en la lista** | Vuela al punto, lo resalta y pausa el centrado. La lista es `React.memo` | [ListaPuntos.jsx:53](disenop2web/src/components/ListaPuntos.jsx#L53); [App.jsx:529](disenop2web/src/App.jsx#L529) |
-| **F. Lugares guardados** | Guarda lugares con nombre en `localStorage`, con `try/catch` y validación; se consultan con un clic | [lugaresGuardados.js:28](disenop2web/src/utils/lugaresGuardados.js#L28), [:42](disenop2web/src/utils/lugaresGuardados.js#L42); [App.jsx:327](disenop2web/src/App.jsx#L327), [:363](disenop2web/src/App.jsx#L363) |
+| **C. Paradas** | Tramos de 5 min o más dentro de 50 m de un punto **ancla**, marcados con "⏸ N min" | [paradas.js:16-25](disenop2web/src/utils/paradas.js#L16-L25); [App.jsx:497](disenop2web/src/App.jsx#L497) |
+| **D. Enlace** | Rango, lugar, radio y ruta en la URL (`replaceState`), restaurados y validados al abrirla. "Copiar enlace" usa `navigator.clipboard` y, sin HTTPS, `execCommand` | [estadoUrl.js:27](disenop2web/src/utils/estadoUrl.js#L27), [:56](disenop2web/src/utils/estadoUrl.js#L56), [:78](disenop2web/src/utils/estadoUrl.js#L78); [App.jsx:107](disenop2web/src/App.jsx#L107), [:188](disenop2web/src/App.jsx#L188) |
+| **E. Clic en la lista** | Vuela al punto, lo resalta y pausa el centrado. La lista es `React.memo` | [ListaPuntos.jsx:53](disenop2web/src/components/ListaPuntos.jsx#L53); [App.jsx:539](disenop2web/src/App.jsx#L539) |
+| **F. Lugares guardados** | Guarda lugares con nombre en `localStorage`, con `try/catch` y validación; se consultan con un clic | [lugaresGuardados.js:28](disenop2web/src/utils/lugaresGuardados.js#L28), [:42](disenop2web/src/utils/lugaresGuardados.js#L42); [App.jsx:337](disenop2web/src/App.jsx#L337), [:373](disenop2web/src/App.jsx#L373) |
 
 ### Interfaz del mapa (FASE 5)
 
@@ -338,7 +338,8 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
   - Hace `panTo` sin cambiar el zoom, y solo cuando el punto sale del 60 % central de la zona libre ([CentradoAutomatico.jsx:35-37](disenop2web/src/components/CentradoAutomatico.jsx#L35-L37)).
   - Arrastrar o hacer zoom lo pausa 15 s ([:21-24](disenop2web/src/components/CentradoAutomatico.jsx#L21-L24)).
   - Los movimientos del código se marcan en un `WeakSet` para no confundirlos con los del usuario ([mapa.js:12-29](disenop2web/src/utils/mapa.js#L12-L29)).
-- **Zona libre.** Todo centrado y encuadre usa la parte del mapa que no tapa la columna de paneles ([mapa.js:41](disenop2web/src/utils/mapa.js#L41)), tanto en escritorio (columna a la izquierda) como en celular (columna arriba y plegable).
+- **Zona libre.** Todo centrado y encuadre usa la parte del mapa que no tapa la columna de paneles ([mapa.js:41](disenop2web/src/utils/mapa.js#L41)), tanto en escritorio (columna a la izquierda) como en celular (columna arriba).
+- **"Ocultar paneles".** Oculta la columna y la lista de puntos para ver solo el mapa, en escritorio y en celular. Como el mapa cambia de tamaño, se llama a `map.invalidateSize()` para que Leaflet lo vuelva a medir.
 
 ---
 
@@ -400,7 +401,7 @@ Es decir, el vehículo entra en x = −50 m y sale en x = +50 m.
     Las detecciones a 10 min o menos forman un paso. Es parada si el tiempo *dentro* del círculo suma 5 min o más; no se usa entrada−salida, porque dos cruces rápidos no son una parada. → [analisis_lugar.py:197-207](analisis_lugar.py#L197-L207), [:234](analisis_lugar.py#L234)
 
 12. **Con un rango de fechas activo, ¿por qué no se actualiza cada 10 s?**
-    Hasta nunca es futura (se ajusta a "ahora"), así que el rango ya terminó y no pueden llegar puntos nuevos. → [App.jsx:272](disenop2web/src/App.jsx#L272)
+    Hasta nunca es futura (se ajusta a "ahora"), así que el rango ya terminó y no pueden llegar puntos nuevos. → [App.jsx:282](disenop2web/src/App.jsx#L282)
 
 13. **¿Cómo probaron sin tocar la base de datos compartida?**
     Con `MODO_DEMO=1` se usa un repositorio en memoria con datos determinísticos (semilla fija), con los mismos endpoints. Hay 74 pruebas con pytest, ninguna usa la base real. → [repositorio.py:30](repositorio.py#L30), [datos_demo.py:18](datos_demo.py#L18), [tests/test_demo.py:153](tests/test_demo.py#L153)
