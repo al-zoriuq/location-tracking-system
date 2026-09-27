@@ -627,7 +627,7 @@ body {
 
 .radios {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   margin-bottom: 8px;
 }
@@ -954,4 +954,68 @@ button.sidebar-item:focus-visible {
 
 .guardar-lugar .boton {
   flex: none;
+}
+
+/* ============ Location filter: address / place search ============ */
+.buscador {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.buscador-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+
+.buscador-form .boton {
+  flex: none;
+}
+
+.buscador-resultados {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.buscador-resultado {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: var(--font-display);
+  cursor: pointer;
+}
+
+.buscador-resultado:hover,
+.buscador-resultado:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.buscador-nombre {
+  font-size: 12px;
+}
+
+.buscador-detalle,
+.buscador-fuente {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.buscador-fuente {
+  margin: 0;
 }

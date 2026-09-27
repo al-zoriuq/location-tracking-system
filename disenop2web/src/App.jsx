@@ -12,6 +12,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import CapaLugar from "./components/CapaLugar";
+import BuscadorLugar from "./components/BuscadorLugar";
 import CentradoAutomatico from "./components/CentradoAutomatico";
 import EstadisticasRuta from "./components/EstadisticasRuta";
 import FiltroFechas from "./components/FiltroFechas";
@@ -123,11 +124,11 @@ function App() {
   const [lugaresGuardados, setLugaresGuardados] = useState(() => leerLugares());
   const [errorLugares, setErrorLugares] = useState(null);
 
-  // Entrega 2 ("¿Cuándo pasó por aquí?") is an overlay on top of the state
+  // Entrega 2 ("Filtrar por ubicación") is an overlay on top of the state
   // above: it never changes rango or the pinned trip, so leaving it brings
   // back exactly what was on screen before.
   const [modoLugar, setModoLugar] = useState(estadoInicial.lugar !== null);
-  const [lugar, setLugar] = useState(estadoInicial.lugar); // {lat, lon}
+  const [lugar, setLugar] = useState(estadoInicial.lugar); // {lat, lon, nombre?}
   const [radioLugar, setRadioLugar] = useState(estadoInicial.radio ?? 100);
   // Answer tagged with the query key that produced it: {clave, datos, error}
   const [resultadoLugar, setResultadoLugar] = useState(null);
@@ -348,15 +349,19 @@ function App() {
     actualizarLugares(lugaresGuardados.filter((l) => l.nombre !== nombre));
   }
 
-  // One click: enter place mode with that place and radius (the query runs
-  // by itself because the query key changes) and frame it on the map
-  function elegirLugarGuardado(guardado) {
+  // Place chosen from outside the map (search result or saved place): enter
+  // place mode with it (the query runs by itself because the query key
+  // changes) and frame it on the map. `radio` is kept if not given.
+  function irALugar(nuevo, radio) {
     limpiarPaso();
-    const nuevo = { lat: guardado.lat, lon: guardado.lon };
     setLugar(nuevo);
     setLugarAEncuadrar(nuevo);
-    setRadioLugar(guardado.radio);
+    if (radio) setRadioLugar(radio);
     setModoLugar(true);
+  }
+
+  function elegirLugarGuardado(guardado) {
+    irALugar({ lat: guardado.lat, lon: guardado.lon, nombre: guardado.nombre }, guardado.radio);
   }
 
   function fijarLugar(nuevoLugar) {
@@ -691,7 +696,7 @@ function App() {
                   className="boton boton-primario boton-ancho"
                   onClick={() => setModoLugar(true)}
                 >
-                  ¿Cuándo pasó por aquí?
+                  Filtrar por ubicación
                 </button>
                 <LugaresGuardados
                   lugares={lugaresGuardados}
@@ -715,6 +720,7 @@ function App() {
                 pasoSeleccionado={pasoSeleccionado}
                 onSeleccionarPaso={seleccionarPaso}
                 onSalir={salirModoLugar}
+                buscador={<BuscadorLugar onElegir={(nuevo) => irALugar(nuevo)} />}
                 guardados={
                   <LugaresGuardados
                     lugares={lugaresGuardados}

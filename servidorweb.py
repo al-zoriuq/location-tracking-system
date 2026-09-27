@@ -6,9 +6,17 @@ import os
 from dotenv import load_dotenv
 
 from analisis_lugar import analizar_pasos, caja_circulo
+from geocodificacion import ErrorGeocodificacion, buscar_lugares
 from repositorio import ErrorBaseDatos, crear_repositorio, modo_demo_activo
 from tiempo_bogota import ahora_bogota, formatear
-from validacion import ErrorValidacion, leer_device_id, leer_horas, leer_lugar, leer_rango
+from validacion import (
+    ErrorValidacion,
+    leer_busqueda,
+    leer_device_id,
+    leer_horas,
+    leer_lugar,
+    leer_rango,
+)
 
 # Default period for Entrega 2 when no date range is given
 DIAS_POR_DEFECTO_LUGAR = 30
@@ -67,6 +75,16 @@ def error_validacion(error):
 def error_base_datos(error):
     app.logger.error("Error de base de datos: %s", error)
     return jsonify({"error": "No se pudo consultar la base de datos."}), 503
+
+
+# Place search services unreachable -> 502 (bad gateway: an upstream failed)
+@app.errorhandler(ErrorGeocodificacion)
+def error_geocodificacion(error):
+    app.logger.error("Error de geocodificación: %s", error)
+    return jsonify({
+        "error": "No se pudo buscar la dirección en este momento. "
+                 "Intenta de nuevo o marca el lugar en el mapa."
+    }), 502
 
 
 # The device to query: the one requested, or else the one that sent the most
@@ -151,6 +169,22 @@ def pasos_por_lugar():
         "device_id": device_id,
         "total": len(pasos),
         "pasos": [serializar(p) for p in pasos],
+    })
+
+
+# API - PLACE SEARCH (location filter)
+
+# Free text ("frisby calle 64", "universidad del norte") -> candidate places
+# in Barranquilla, via OpenStreetMap geocoders (see geocodificacion.py).
+# Query param: q (3 to 100 characters).
+@app.route("/api/buscar-lugar")
+def buscar_lugar():
+
+    texto = leer_busqueda(request.args)
+
+    return jsonify({
+        "consulta": texto,
+        "resultados": buscar_lugares(texto),
     })
 
 

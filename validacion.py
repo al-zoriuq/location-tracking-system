@@ -16,6 +16,9 @@ RADIO_MIN_M = 20
 RADIO_MAX_M = 2000
 RADIO_POR_DEFECTO_M = 100
 
+BUSQUEDA_MIN = 3
+BUSQUEDA_MAX = 100
+
 # Same character set the sniffer accepts for the device id: [\w-]+
 PATRON_DEVICE_ID = re.compile(r"[\w-]{1,64}")
 
@@ -104,3 +107,13 @@ def leer_lugar(args):
     lon = _leer_numero(args, "lon", -180, 180)
     radio = _leer_numero(args, "radio", RADIO_MIN_M, RADIO_MAX_M, RADIO_POR_DEFECTO_M)
     return lat, lon, radio
+
+
+def leer_busqueda(args):
+    """Reads the free-text place search 'q' (3 to 100 characters)."""
+    texto = " ".join(args.get("q", "").split())  # collapse repeated spaces
+    if len(texto) < BUSQUEDA_MIN:
+        raise ErrorValidacion(f"Escribe al menos {BUSQUEDA_MIN} caracteres para buscar.")
+    if len(texto) > BUSQUEDA_MAX:
+        raise ErrorValidacion(f"La búsqueda no puede tener más de {BUSQUEDA_MAX} caracteres.")
+    return texto

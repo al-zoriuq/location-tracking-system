@@ -6,7 +6,8 @@ const fechaCorta = (texto) => {
   return `${formatearFecha(fecha)} ${formatearHora(fecha).slice(0, 5)}`;
 };
 
-// Panel of Entrega 2: radius picker, queried period and the list of passes.
+// Panel of Entrega 2 ("Filtrar por ubicación"): place search, radius picker,
+// queried period and the list of passes.
 function ModoLugar({
   lugar,
   radio,
@@ -18,15 +19,20 @@ function ModoLugar({
   pasoSeleccionado,
   onSeleccionarPaso,
   onSalir,
+  buscador, // address/place search box, rendered first
   guardados, // idea F: saved places block, rendered under the radius picker
 }) {
   const pasos = resultado?.pasos ?? [];
 
   return (
     <div className="card modo-lugar-panel">
-      <p className="card-title">¿Cuándo pasó por aquí?</p>
+      <p className="card-title">Filtrar por ubicación</p>
 
-      {!lugar && <p className="mensaje">Haz clic en el mapa para elegir el lugar.</p>}
+      {buscador}
+
+      {!lugar && (
+        <p className="mensaje">Busca una dirección o haz clic en el mapa para elegir el lugar.</p>
+      )}
 
       <div className="radios" role="group" aria-label="Radio de búsqueda">
         {RADIOS_M.map((r) => (
@@ -46,7 +52,8 @@ function ModoLugar({
 
       {lugar && (
         <p className="filtro-estado">
-          Lugar: {lugar.lat.toFixed(5)}, {lugar.lon.toFixed(5)} (arrastra el marcador para moverlo)
+          Lugar: {lugar.nombre ? `${lugar.nombre} · ` : ""}
+          {lugar.lat.toFixed(5)}, {lugar.lon.toFixed(5)} (arrastra el marcador para moverlo)
         </p>
       )}
 
@@ -105,7 +112,7 @@ function ModoLugar({
 
       <div className="botones">
         <button type="button" className="boton" onClick={onSalir}>
-          Salir del modo lugar
+          Salir del filtro por ubicación
         </button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { aTextoBogota, parsearFechaBogota } from "./tiempo";
 import { posicionEnInstante } from "./viajes";
 
-export const RADIOS_M = [50, 100, 200, 500];
+export const RADIOS_M = [50, 100, 200];
 export const MARGEN_PASO_MS = 10 * 60 * 1000; // history shown around a pass: ±10 min
 
 // "YYYY-MM-DD HH:MM:SS" (Bogota) shifted by some milliseconds
