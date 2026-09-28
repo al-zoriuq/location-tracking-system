@@ -1,4 +1,5 @@
 import "./App.css";
+import { formatearHoraCorta } from "./utils/tiempo.js";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
@@ -527,15 +528,17 @@ function App() {
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
+  // Default end of the range: right now (the server rejects future dates)
+  const [ahoraH, ahoraM] = formatearHoraCorta(new Date()).split(":").map(Number);
   const [filtroAbierto, setFiltroAbierto] = useState(false);
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [horaDesde, setHoraDesde] = useState(12);
   const [minDesde, setMinDesde] = useState(0);
   const [meridianoDesde, setMeridianoDesde] = useState("AM");
   const [fechaHasta, setFechaHasta] = useState(hoy);
-  const [horaHasta, setHoraHasta] = useState(11);
-  const [minHasta, setMinHasta] = useState(59);
-  const [meridianoHasta, setMeridianoHasta] = useState("PM");
+  const [horaHasta, setHoraHasta] = useState(ahoraH % 12 || 12);
+  const [minHasta, setMinHasta] = useState(ahoraM);
+  const [meridianoHasta, setMeridianoHasta] = useState(ahoraH >= 12 ? "PM" : "AM");
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
   // null = automatic; true/false = the user's choice in the filter panel
@@ -806,16 +809,14 @@ function App() {
       try {
         let url = import.meta.env.BASE_URL + "api/historial-ubicaciones";
         if (rangoActivo) {
-          const ampliar = rangoActivo.completar ? MARGEN_RANGO_H * 3600 * 1000 : 0;
-          const desdeTxt = ampliar ? aTextoBogota(aMsBogota(rangoActivo.desde) - ampliar) : rangoActivo.desde;
-          const hastaTxt = ampliar ? aTextoBogota(aMsBogota(rangoActivo.hasta) + ampliar) : rangoActivo.hasta;
-          url += `?desde=${encodeURIComponent(desdeTxt)}&hasta=${encodeURIComponent(hastaTxt)}`;
+          url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
+          // The server widens the range, clamped to its own "now", when asked
+          if (rangoActivo.completar) url += `&margen_horas=${MARGEN_RANGO_H}`;
         } else if (modoVivo && !completo && ultimoTs) {
-          // Incremental: only what is newer than the last point we hold
-          // (one minute of overlap; duplicates are dropped when merging).
+          // Incremental: only the points after the newest one we hold, minus one
+          // minute of overlap (duplicates are dropped when merging). No upper bound.
           const desdeTxt = aTextoBogota(aMsBogota(ultimoTs) - 60 * 1000);
-          const hastaTxt = aTextoBogota(Date.now() + 3600 * 1000);
-          url += `?desde=${encodeURIComponent(desdeTxt)}&hasta=${encodeURIComponent(hastaTxt)}`;
+          url += `?despues_de=${encodeURIComponent(desdeTxt)}`;
         } else {
           const horas = lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H;
           url += `?horas=${horas}`;
