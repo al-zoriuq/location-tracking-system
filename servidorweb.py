@@ -235,7 +235,7 @@ def historial_ubicaciones():
                 longitud,
                 timestamp_gps
             FROM ubicaciones
-            WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
+            WHERE timestamp_gps >= (NOW() AT TIME ZONE 'America/Bogota') - (%s || ' hours')::interval
               AND device_id = %s
             ORDER BY timestamp_gps ASC
         """, (horas, device_id))
@@ -247,7 +247,7 @@ def historial_ubicaciones():
                 longitud,
                 timestamp_gps
             FROM ubicaciones
-            WHERE timestamp_gps >= NOW() - (%s || ' hours')::interval
+            WHERE timestamp_gps >= (NOW() AT TIME ZONE 'America/Bogota') - (%s || ' hours')::interval
               AND device_id = (
                   SELECT device_id FROM ubicaciones ORDER BY id DESC LIMIT 1
               )
