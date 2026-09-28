@@ -1,4 +1,7 @@
 import "./App.css";
+import PopupPosicion from "./PopupPosicion.jsx";
+import { velocidadActual } from "./velocidad.js";
+import { calcularEstadisticas } from "./utils/estadisticas.js";
 import MarcadoresParada from "./MarcadoresParada.jsx";
 import { normalizarPunto } from "./utils/viajes.js";
 import { detectarParadas } from "./utils/paradas.js";
@@ -12,7 +15,7 @@ import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -23,6 +26,7 @@ const DESFASE_ZONA = "-05:00";
 const OPCIONES_ZONA = { timeZone: ZONA };
 const OPCIONES_HORA_CORTA = { timeZone: ZONA, hour: "2-digit", minute: "2-digit" };
 
+// Current position while data keeps arriving: a pulsing dot
 const iconoActual = L.divIcon({
   className: "",
   html: '<div class="marker-current"></div>',
@@ -30,20 +34,38 @@ const iconoActual = L.divIcon({
   iconAnchor: [9, 9],
 });
 
+// Current position when the last point is old (the device stopped reporting): still and dim
+const iconoActualInactivo = L.divIcon({
+  className: "",
+  html: '<div class="marker-current inactivo"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+// Start of a route: a play triangle on green. The shape, not only the colour,
+// tells it apart from the end flag and from the current-position dot.
 const iconoInicio = L.divIcon({
   className: "",
-  html: '<div class="marker-start"></div>',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  html:
+    '<div class="marker-start">' +
+    '<svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">' +
+    '<path d="M2.6 1.3 L8.4 5 L2.6 8.7 Z" fill="currentColor"/></svg></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
 });
 
 // End of a past route: same size as the start marker, different color, so a
 // finished trip reads start -> end at a glance.
+// End of a finished route: a flag on coral, so a trip reads start -> end at a glance.
 const iconoFin = L.divIcon({
   className: "",
-  html: '<div class="marker-end"></div>',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  html:
+    '<div class="marker-end">' +
+    '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">' +
+    '<path d="M3 1.5 V10.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>' +
+    '<path d="M3.6 2 H9.6 L8.1 4.4 L9.6 6.8 H3.6 Z" fill="currentColor"/></svg></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
 });
 
 // A "trip" is considered finished if this much time passes with no new GPS
@@ -636,10 +658,21 @@ function App() {
   const puntosRutaMostrada = rutas[indiceMostrado] || [];
 
   // Stops of the route on screen: at least 5 min within 50 m (see utils/paradas.js)
-  const paradas = useMemo(
-    () => detectarParadas(puntosRutaMostrada.map(normalizarPunto)),
-    [puntosRutaMostrada]
+  const puntosNorm = useMemo(() => puntosRutaMostrada.map(normalizarPunto), [puntosRutaMostrada]);
+  const paradas = useMemo(() => detectarParadas(puntosNorm), [puntosNorm]);
+
+  // Distance, duration and speeds of the route on screen (for the popup)
+  const estadisticasRuta = useMemo(
+    () => (puntosNorm.length > 1 ? calcularEstadisticas([puntosNorm]) : null),
+    [puntosNorm]
   );
+
+  // Live = following the newest route and its last point is under 2 minutes old
+  const ultimaLectura = puntosNorm[puntosNorm.length - 1];
+  const enVivo =
+    siguiendoActual && Boolean(ultimaLectura) && Date.now() - ultimaLectura.fecha.getTime() <= 120000;
+  // A speed only means something while the device is reporting
+  const velocidadActualKmh = enVivo ? velocidadActual(puntosNorm) : null;
 
   // Keep the chosen route stable while the live window slides: it is
   // remembered by the timestamp of its first point, because its position in
@@ -1315,6 +1348,16 @@ function App() {
                 </div>
               )}
 
+              {velocidadActualKmh !== null && (
+                <div
+                  className="velocidad-chip"
+                  title="Velocidad estimada con los &uacute;ltimos puntos"
+                  aria-label={`Velocidad estimada: ${Math.round(velocidadActualKmh)} km/h`}
+                >
+                  <b>{Math.round(velocidadActualKmh)}</b> km/h
+                </div>
+              )}
+
               <button
                 className={`fab ${capasAbierto ? "activo" : ""}`}
                 onClick={() => setCapasAbierto(!capasAbierto)}
@@ -1394,8 +1437,24 @@ function App() {
               {ruta.length > 0 && (
                 <Marker
                   position={ruta[ruta.length - 1]}
-                  icon={siguiendoActual ? iconoActual : iconoFin}
-                />
+                  icon={siguiendoActual ? (enVivo ? iconoActual : iconoActualInactivo) : iconoFin}
+                >
+                  <Popup className="popup-oscuro" autoPanPaddingTopLeft={[16, margenSuperior]}>
+                    <PopupPosicion
+                      titulo={
+                        siguiendoActual
+                          ? enVivo
+                            ? "Posici\u00f3n actual"
+                            : "\u00daltima posici\u00f3n conocida"
+                          : "Fin de la ruta"
+                      }
+                      punto={ultimaLectura}
+                      velocidadKmh={velocidadActualKmh}
+                      estadisticas={estadisticasRuta}
+                      paradas={paradas.length}
+                    />
+                  </Popup>
+                </Marker>
               )}
             <AjustarTamano zonaRef={zonaRef} />
             <MarcadoresVisitas
