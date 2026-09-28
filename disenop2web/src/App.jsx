@@ -5,7 +5,6 @@ import { calcularEstadisticas } from "./utils/estadisticas.js";
 import MarcadoresParada from "./MarcadoresParada.jsx";
 import { normalizarPunto } from "./utils/viajes.js";
 import { detectarParadas } from "./utils/paradas.js";
-import { descartarSaltosAislados } from "./saltos.js";
 import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
 import PanelVisitas from "./PanelVisitas.jsx";
 import { calcularVisitas } from "./visitas.js";
@@ -604,11 +603,7 @@ function App() {
   const fechaGPS = location ? parsearFechaGPS(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
 
-  // A single stray GPS point must not cut a route in three (see saltos.js)
-  const todasLasRutas = useMemo(
-    () => dividirEnRutas(descartarSaltosAislados(historial)),
-    [historial]
-  );
+  const todasLasRutas = useMemo(() => dividirEnRutas(historial), [historial]);
 
   // A route "matches" a place if any of its points falls inside that
   // place's bounding box (city/town box, or the small radius box built
