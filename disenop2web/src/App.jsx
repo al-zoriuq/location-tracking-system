@@ -1,4 +1,5 @@
 import "./App.css";
+import SelectorRuta from "./SelectorRuta.jsx";
 import { formatearHoraCorta } from "./utils/tiempo.js";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
@@ -602,6 +603,21 @@ function App() {
   const indiceMostrado = siguiendoActual ? rutas.length - 1 : indiceRuta;
   const puntosRutaMostrada = rutas[indiceMostrado] || [];
 
+  // Keep the chosen route stable while the live window slides: it is
+  // remembered by the timestamp of its first point, because its position in
+  // the list changes when old routes fall out of the window.
+  const idRutaElegida = useRef(null);
+  useEffect(() => {
+    idRutaElegida.current =
+      indiceRuta === null ? null : (rutas[indiceRuta]?.[0]?.timestamp_gps ?? null);
+  }, [indiceRuta]);
+  useEffect(() => {
+    const id = idRutaElegida.current;
+    if (id === null) return;
+    const nuevo = rutas.findIndex((r) => r[0].timestamp_gps === id);
+    setIndiceRuta(nuevo === -1 || nuevo >= rutas.length - 1 ? null : nuevo);
+  }, [rutas]);
+
   const ruta = puntosRutaMostrada.map((punto) => [
     Number(punto.latitud),
     Number(punto.longitud),
@@ -736,6 +752,31 @@ function App() {
   const verRutaAnterior = () => {
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
+
+  const verRutaSiguiente = () => {
+    const siguiente = indiceMostrado + 1;
+    setIndiceRuta(siguiente >= rutas.length - 1 ? null : siguiente);
+  };
+
+  // The newest route is always "following the live position" (null)
+  const irARuta = (indice) => {
+    setIndiceRuta(indice >= rutas.length - 1 ? null : indice);
+  };
+
+  // One entry per route for the route picker
+  const opcionesRutas = useMemo(() => {
+    const hora = (f) =>
+      f.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "2-digit", minute: "2-digit" });
+    return rutas.map((puntos) => {
+      const inicio = parsearFechaGPS(puntos[0].timestamp_gps);
+      const fin = parsearFechaGPS(puntos[puntos.length - 1].timestamp_gps);
+      return {
+        fecha: inicio.toLocaleDateString("es-CO", OPCIONES_ZONA),
+        horario: `${hora(inicio)} - ${hora(fin)}`,
+        puntos: puntos.length,
+      };
+    });
+  }, [rutas]);
 
   const volverARutaActual = () => {
     setIndiceRuta(null);
@@ -953,10 +994,24 @@ function App() {
                   >
                     ← <span className="nav-texto">Anterior</span>
                   </button>
-                  <span className="nav-etiqueta">{etiquetaRuta}</span>
-                  {!siguiendoActual && (
+                  <SelectorRuta
+                    etiqueta={etiquetaRuta}
+                    opciones={opcionesRutas}
+                    indice={indiceMostrado}
+                    onElegir={irARuta}
+                  />
+                  <button
+                    className="nav-btn"
+                    onClick={verRutaSiguiente}
+                    disabled={siguiendoActual}
+                    aria-label="Ruta siguiente"
+                  >
+                    <span className="nav-texto">Siguiente</span> &rarr;
+                  </button>
+                  {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
+                  {indiceMostrado < rutas.length - 2 && (
                     <button className="nav-btn primario" onClick={volverARutaActual} aria-label="Ruta actual">
-                      <span className="nav-texto">Actual</span> →
+                      <span className="nav-texto">Actual</span> &raquo;
                     </button>
                   )}
                 </div>
