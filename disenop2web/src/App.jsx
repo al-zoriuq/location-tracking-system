@@ -1,4 +1,7 @@
 import "./App.css";
+import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
+import PanelVisitas from "./PanelVisitas.jsx";
+import { calcularVisitas } from "./visitas.js";
 import SelectorRuta from "./SelectorRuta.jsx";
 import { formatearHoraCorta } from "./utils/tiempo.js";
 import Toasts from "./Toasts.jsx";
@@ -525,6 +528,9 @@ function App() {
   const [capasAbierto, setCapasAbierto] = useState(false);
   const [panelExpandido, setPanelExpandido] = useState(false);
   const [filtrosVisibles, setFiltrosVisibles] = useState(false);
+  const [visitaSel, setVisitaSel] = useState(null);
+  const [vueloA, setVueloA] = useState(null);
+  const [margenSuperior, setMargenSuperior] = useState(0);
   const { toasts, cerrar, registrarFallo, registrarExito } = useToasts();
 
   // Date/time range filter state
@@ -762,6 +768,45 @@ function App() {
   const irARuta = (indice) => {
     setIndiceRuta(indice >= rutas.length - 1 ? null : indice);
   };
+
+  // ----- Visits to the searched place -----
+  const visitas = useMemo(() => calcularVisitas(rutas, lugarActivo), [rutas, lugarActivo]);
+
+  // The selection belongs to the place it was made on, so a new search never
+  // inherits a stale highlight
+  const visitaElegida =
+    visitaSel &&
+    visitaSel.lugar === lugarActivo?.nombre &&
+    visitas.some((v) => v.id === visitaSel.id)
+      ? visitaSel.id
+      : null;
+
+  const elegirVisita = (visita) => {
+    setVisitaSel({ lugar: lugarActivo?.nombre, id: visita.id });
+    if (visita.indiceRuta !== indiceMostrado) irARuta(visita.indiceRuta);
+    setVueloA({ centro: [visita.cercano.lat, visita.cercano.lon], n: Date.now() });
+  };
+
+  // Height of the panels floating over the top of the map, so popups and
+  // flights keep clear of them
+  useEffect(() => {
+    const zona = zonaRef.current;
+    const capa = zona ? zona.querySelector(".capa-superior") : null;
+    if (!zona || !capa) return undefined;
+    const medir = () => {
+      const tope = capa.getBoundingClientRect().top;
+      let bajo = 0;
+      for (const hijo of capa.children) {
+        bajo = Math.max(bajo, hijo.getBoundingClientRect().bottom - tope);
+      }
+      setMargenSuperior(Math.round(bajo));
+    };
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(zona);
+    for (const hijo of capa.children) observador.observe(hijo);
+    return () => observador.disconnect();
+  }, [hayUbicacion, compacto]);
 
   // One entry per route for the route picker
   const opcionesRutas = useMemo(() => {
@@ -1184,6 +1229,11 @@ function App() {
                   <span className={`legend-dot ${siguiendoActual ? "current" : "end"}`}></span>
                   {siguiendoActual ? " Actual" : " Fin de ruta"}
                 </div>
+                {visitas.length > 0 && (
+                  <div className="legend-item">
+                    <span className="legend-dot visita"></span> Pas&oacute; por el lugar
+                  </div>
+                )}
               </div>
             )}
 
@@ -1219,10 +1269,25 @@ function App() {
                 />
               )}
             <AjustarTamano zonaRef={zonaRef} />
+            <MarcadoresVisitas
+                visitas={visitas}
+                indiceRuta={indiceMostrado}
+                seleccionada={visitaElegida}
+                onIrARuta={elegirVisita}
+                margenSuperior={margenSuperior}
+              />
+              <VolarA destino={vueloA} margenSuperior={margenSuperior} />
             </MapContainer>
             </div>
 
             <aside className="sidebar">
+              <PanelVisitas
+                visitas={visitas}
+                nombreLugar={lugarActivo ? lugarActivo.nombre : ""}
+                rangoActivo={rangoActivo}
+                seleccionada={visitaElegida}
+                onElegir={elegirVisita}
+              />
               <p className="sidebar-title">
                 Historial de puntos ({historialReciente.length})
               </p>
