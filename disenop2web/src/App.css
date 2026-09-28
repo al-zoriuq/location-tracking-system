@@ -1024,3 +1024,25 @@ body {
     width: 100%;
   }
 }
+
+/* ============ "Complete edge routes" checkbox in the date filter ============ */
+.filtro-completar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.filtro-completar input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.filtro-completar em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+}

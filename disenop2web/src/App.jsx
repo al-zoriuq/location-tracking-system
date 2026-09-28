@@ -47,6 +47,16 @@ const MARGEN_VIVO_H = 72;
 const VENTANA_LUGAR_H = 720; // 30 days
 // The backend stores GPS timestamps as Bogota wall-clock time, without zone.
 const DESFASE_BOGOTA = "-05:00";
+// A range of at least this many hours completes the routes on its edges by
+// default; the user can change it with the checkbox in the filter panel.
+const UMBRAL_COMPLETAR_H = 24;
+// When completing, the range is requested this many hours wider on each side.
+const MARGEN_RANGO_H = 72;
+
+// "YYYY-MM-DD HH:MM:SS" (Bogota wall clock, as the backend sends it) <-> ms
+const aMsBogota = (texto) => new Date(texto.replace(" ", "T") + DESFASE_BOGOTA).getTime();
+const aTextoBogota = (ms) =>
+  new Date(ms).toLocaleString("sv-SE", { timeZone: "America/Bogota" });
 const RADIO_TIERRA_M = 6371000;
 // Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
@@ -476,6 +486,8 @@ function App() {
   const [meridianoHasta, setMeridianoHasta] = useState("PM");
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
+  // null = automatic; true/false = the user's choice in the filter panel
+  const [completarManual, setCompletarManual] = useState(null);
 
   // Location filter state
   const [busquedaLugar, setBusquedaLugar] = useState("");
@@ -492,17 +504,32 @@ function App() {
   // place's bounding box (city/town box, or the small radius box built
   // around a single-point address).
   const rutas = useMemo(() => {
-    if (!lugarActivo) {
-      if (rangoActivo) return todasLasRutas;
+    let base = todasLasRutas;
+
+    if (rangoActivo) {
+      // Completing: keep whole routes that have a point inside the range.
+      // Not completing: the points were requested for the exact range, so the
+      // routes are already cut at its edges.
+      if (rangoActivo.completar) {
+        base = base.filter((puntos) =>
+          puntos.some(
+            (p) => p.timestamp_gps >= rangoActivo.desde && p.timestamp_gps <= rangoActivo.hasta
+          )
+        );
+      }
+    } else if (!lugarActivo) {
       // Live mode: keep the routes that still have a point inside the live
       // window, and show them complete (never cut at the window edge).
       const corte = Date.now() - VENTANA_VIVO_H * 3600 * 1000;
-      return todasLasRutas.filter((puntos) => {
-        const ultimo = puntos[puntos.length - 1].timestamp_gps;
-        return new Date(ultimo.replace(" ", "T") + DESFASE_BOGOTA).getTime() >= corte;
-      });
+      base = base.filter(
+        (puntos) => aMsBogota(puntos[puntos.length - 1].timestamp_gps) >= corte
+      );
     }
-    return todasLasRutas.filter((puntos) =>
+
+    if (!lugarActivo) return base;
+
+    // A route matches a place if any of its points falls inside the box.
+    return base.filter((puntos) =>
       puntos.some((p) => {
         const lat = Number(p.latitud);
         const lon = Number(p.longitud);
@@ -643,13 +670,24 @@ function App() {
     return hora12 === 12 ? 12 : hora12 + 12;
   };
 
-  const aplicarFiltro = () => {
+  const rangoDelFormulario = () => {
     const h1 = a24Horas(horaDesde, meridianoDesde);
     const h2 = a24Horas(horaHasta, meridianoHasta);
-    setRangoActivo({
+    return {
       desde: `${fechaDesde} ${dosDigitos(h1)}:${dosDigitos(minDesde)}:00`,
       hasta: `${fechaHasta} ${dosDigitos(h2)}:${dosDigitos(minHasta)}:59`,
-    });
+    };
+  };
+
+  // Automatic default: complete the routes when the typed range is long
+  const { desde: formDesde, hasta: formHasta } = rangoDelFormulario();
+  const completarAuto =
+    (aMsBogota(formHasta) - aMsBogota(formDesde)) / 3600000 >= UMBRAL_COMPLETAR_H;
+  const completarEfectivo = completarManual ?? completarAuto;
+
+  const aplicarFiltro = () => {
+    setRangoActivo({ ...rangoDelFormulario(), completar: completarEfectivo });
+    setCompletarManual(null);
     setIndiceRuta(null);
     setFiltroAbierto(false);
   };
@@ -685,7 +723,10 @@ function App() {
       try {
         let url = import.meta.env.BASE_URL + "api/historial-ubicaciones";
         if (rangoActivo) {
-          url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
+          const ampliar = rangoActivo.completar ? MARGEN_RANGO_H * 3600 * 1000 : 0;
+          const desdeTxt = ampliar ? aTextoBogota(aMsBogota(rangoActivo.desde) - ampliar) : rangoActivo.desde;
+          const hastaTxt = ampliar ? aTextoBogota(aMsBogota(rangoActivo.hasta) + ampliar) : rangoActivo.hasta;
+          url += `?desde=${encodeURIComponent(desdeTxt)}&hasta=${encodeURIComponent(hastaTxt)}`;
         } else {
           const horas = lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H;
           url += `?horas=${horas}`;
@@ -830,6 +871,18 @@ function App() {
                     />
                   </div>
                 </div>
+
+                <label className="filtro-completar">
+                  <input
+                    type="checkbox"
+                    checked={completarEfectivo}
+                    onChange={() => setCompletarManual(!completarEfectivo)}
+                  />
+                  <span>
+                    Completar rutas en los bordes
+                    {completarManual === null && <em> (automático)</em>}
+                  </span>
+                </label>
 
                 <div className="filtro-acciones">
                   <button onClick={() => setFiltroAbierto(false)}>Cancelar</button>
