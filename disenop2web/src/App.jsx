@@ -57,6 +57,31 @@ const MARGEN_RANGO_H = 72;
 const aMsBogota = (texto) => new Date(texto.replace(" ", "T") + DESFASE_BOGOTA).getTime();
 const aTextoBogota = (ms) =>
   new Date(ms).toLocaleString("sv-SE", { timeZone: "America/Bogota" });
+
+// In live mode the history is loaded once and then topped up with only the new
+// points. A full reload happens every RECARGA_COMPLETA_MS as a safety net.
+const RECARGA_COMPLETA_MS = 5 * 60 * 1000;
+
+// Merges freshly fetched rows into the history already on screen, keyed by
+// timestamp_gps, and drops rows older than the cutoff. Returns the same array
+// when nothing changed, so React does not recompute the routes.
+function fusionarHistorial(previo, nuevos, corteMs) {
+  const porHora = new Map(previo.map((f) => [f.timestamp_gps, f]));
+  let cambio = false;
+  for (const f of nuevos) {
+    if (!porHora.has(f.timestamp_gps)) {
+      porHora.set(f.timestamp_gps, f);
+      cambio = true;
+    }
+  }
+  const fusionado = [...porHora.values()].filter(
+    (f) => aMsBogota(f.timestamp_gps) >= corteMs
+  );
+  if (!cambio && fusionado.length === previo.length) return previo;
+  return fusionado.sort((a, b) =>
+    a.timestamp_gps < b.timestamp_gps ? -1 : a.timestamp_gps > b.timestamp_gps ? 1 : 0
+  );
+}
 const RADIO_TIERRA_M = 6371000;
 // Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
@@ -719,7 +744,11 @@ function App() {
       }
     };
 
-    const obtenerHistorial = async () => {
+    const modoVivo = !rangoActivo && !lugarActivo;
+    let ultimoTs = null; // newest timestamp_gps we hold (live mode)
+    let ultimaCompletaMs = 0; // when the last full load happened
+
+    const obtenerHistorial = async (completo = true) => {
       try {
         let url = import.meta.env.BASE_URL + "api/historial-ubicaciones";
         if (rangoActivo) {
@@ -727,38 +756,69 @@ function App() {
           const desdeTxt = ampliar ? aTextoBogota(aMsBogota(rangoActivo.desde) - ampliar) : rangoActivo.desde;
           const hastaTxt = ampliar ? aTextoBogota(aMsBogota(rangoActivo.hasta) + ampliar) : rangoActivo.hasta;
           url += `?desde=${encodeURIComponent(desdeTxt)}&hasta=${encodeURIComponent(hastaTxt)}`;
+        } else if (modoVivo && !completo && ultimoTs) {
+          // Incremental: only what is newer than the last point we hold
+          // (one minute of overlap; duplicates are dropped when merging).
+          const desdeTxt = aTextoBogota(aMsBogota(ultimoTs) - 60 * 1000);
+          const hastaTxt = aTextoBogota(Date.now() + 3600 * 1000);
+          url += `?desde=${encodeURIComponent(desdeTxt)}&hasta=${encodeURIComponent(hastaTxt)}`;
         } else {
           const horas = lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H;
           url += `?horas=${horas}`;
         }
         const response = await fetch(url);
         if (!response.ok) {
-          setHistorial([]);
+          if (completo) setHistorial([]);
           return;
         }
         const data = await response.json();
-        setHistorial(Array.isArray(data) ? data : []);
+        const filas = Array.isArray(data) ? data : [];
+
+        if (modoVivo && !completo) {
+          if (filas.length) {
+            const ultimo = filas[filas.length - 1].timestamp_gps;
+            if (!ultimoTs || ultimo > ultimoTs) ultimoTs = ultimo;
+          }
+          setHistorial((previo) =>
+            fusionarHistorial(previo, filas, Date.now() - MARGEN_VIVO_H * 3600 * 1000)
+          );
+        } else {
+          ultimoTs = filas.length ? filas[filas.length - 1].timestamp_gps : null;
+          ultimaCompletaMs = Date.now();
+          setHistorial(filas);
+        }
       } catch (error) {
         console.error("Error obteniendo historial:", error);
-        setHistorial([]);
+        if (completo) setHistorial([]);
       }
     };
 
     obtenerUbicacion();
-    obtenerHistorial();
+    obtenerHistorial(true);
 
     // A fully past range can't receive new points, so stop polling the
     // history for it (the live marker keeps updating regardless).
-    const rangoEsPasado =
-      rangoActivo &&
-      new Date(rangoActivo.hasta.replace(" ", "T") + DESFASE_ZONA) < new Date();
+    const rangoEsPasado = rangoActivo && aMsBogota(rangoActivo.hasta) < Date.now();
 
-    const intervalo = setInterval(() => {
+    const tick = () => {
+      // Nothing to refresh while the tab is in the background
+      if (document.hidden) return;
       obtenerUbicacion();
-      if (!rangoEsPasado && !lugarActivo) obtenerHistorial();
-    }, 10000);
+      if (lugarActivo || rangoEsPasado) return;
+      const tocaCompleta = Date.now() - ultimaCompletaMs >= RECARGA_COMPLETA_MS;
+      obtenerHistorial(!modoVivo || tocaCompleta);
+    };
 
-    return () => clearInterval(intervalo);
+    const intervalo = setInterval(tick, 10000);
+    const alCambiarVisibilidad = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", alCambiarVisibilidad);
+
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
+    };
   }, [rangoActivo, lugarActivo]);
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
