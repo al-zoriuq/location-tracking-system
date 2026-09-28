@@ -1492,3 +1492,32 @@ body {
   padding: 5px 10px;
   cursor: pointer;
 }
+
+/* ============ Place history check: suggestion chips and messages ============ */
+.chip-estado {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.chip-con-historial { color: var(--status-fresh); border-color: rgba(74, 222, 128, 0.45); }
+.chip-sin-historial { color: var(--text-dim); }
+
+.lugar-mensaje {
+  margin: 0;
+  max-width: 100%;
+  padding: 6px 10px;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.4;
+  backdrop-filter: blur(4px);
+}

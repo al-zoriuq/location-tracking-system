@@ -512,6 +512,18 @@ function AjustarTamano({ zonaRef }) {
   return null;
 }
 
+// Asks the backend if the device has EVER been inside the place's bounding
+// box (whole history, not just the loaded date range). Resolves {visitado}.
+function consultarLugarVisitado(lugar) {
+  const parametros = new URLSearchParams({
+    lat_min: lugar.lat_min,
+    lat_max: lugar.lat_max,
+    lon_min: lugar.lon_min,
+    lon_max: lugar.lon_max,
+  });
+  return pedirJSON(import.meta.env.BASE_URL + `api/lugar-visitado?${parametros}`);
+}
+
 function App() {
   const [location, setLocation] = useState(null);
   const [historial, setHistorial] = useState([]);
@@ -531,7 +543,12 @@ function App() {
   const [visitaSel, setVisitaSel] = useState(null);
   const [vueloA, setVueloA] = useState(null);
   const [margenSuperior, setMargenSuperior] = useState(0);
-  const { toasts, cerrar, registrarFallo, registrarExito } = useToasts();
+  const [lugarSinHistorial, setLugarSinHistorial] = useState(null); // name of a place never visited
+  const [sinResultadosLugar, setSinResultadosLugar] = useState(false);
+  const [historialCargado, setHistorialCargado] = useState(false);
+  // Guards against out-of-order answers when a place is picked twice quickly
+  const eleccionActual = useRef(0);
+  const { toasts, cerrar, mostrar, registrarFallo, registrarExito } = useToasts();
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
@@ -653,18 +670,39 @@ function App() {
   useEffect(() => {
     if (busquedaLugar.trim().length < 3) {
       setSugerenciasLugar([]);
-      return;
+      setSinResultadosLugar(false);
+      setBuscandoLugar(false);
+      return undefined;
     }
 
+    let cancelado = false;
     setBuscandoLugar(true);
+    setSinResultadosLugar(false);
     const timer = setTimeout(async () => {
       try {
         const data = await pedirJSON(
           import.meta.env.BASE_URL + `api/buscar-lugar?q=${encodeURIComponent(busquedaLugar)}`
         );
-        setSugerenciasLugar(Array.isArray(data) ? data : []);
+        if (cancelado) return;
+        const lugares = Array.isArray(data) ? data : [];
+        setSugerenciasLugar(lugares);
+        setSinResultadosLugar(lugares.length === 0);
         registrarExito("busqueda", MENSAJE_RECUPERADA);
+
+        // Mark each suggestion with / without history as the answers arrive.
+        // A failed check only leaves that suggestion unmarked: picking it asks again.
+        lugares.forEach((lugar, i) => {
+          consultarLugarVisitado(lugar)
+            .then(({ visitado }) => {
+              if (cancelado) return;
+              setSugerenciasLugar((lista) =>
+                lista.map((l, k) => (k === i ? { ...l, visitado } : l))
+              );
+            })
+            .catch((error) => console.error("Error comprobando el historial del lugar:", error));
+        });
       } catch (error) {
+        if (cancelado) return;
         const { clave, mensaje } = describirFallo(
           error,
           "busqueda",
@@ -673,24 +711,54 @@ function App() {
         registrarFallo("busqueda", clave, mensaje);
         setSugerenciasLugar([]);
       } finally {
-        setBuscandoLugar(false);
+        if (!cancelado) setBuscandoLugar(false);
       }
     }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
   }, [busquedaLugar]);
 
-  const elegirLugar = (lugar) => {
-    setLugarActivo(lugar);
+  const elegirLugar = async (lugar) => {
+    const eleccion = ++eleccionActual.current;
     setBusquedaLugar(lugar.nombre);
     setSugerenciasLugar([]);
+    setSinResultadosLugar(false);
+    setLugarSinHistorial(null);
     setIndiceRuta(null);
+
+    try {
+      const { visitado } = await consultarLugarVisitado(lugar);
+      if (eleccion !== eleccionActual.current) return;
+
+      if (visitado) {
+        setLugarActivo(lugar);
+      } else {
+        setLugarActivo(null);
+        setLugarSinHistorial(lugar.nombre);
+        mostrar("Este lugar nunca se ha visitado.", "aviso");
+      }
+    } catch (error) {
+      console.error("Error comprobando el historial del lugar:", error);
+      if (eleccion !== eleccionActual.current) return;
+      const { mensaje } = describirFallo(
+        error,
+        "lugar",
+        "No se pudo comprobar si el lugar se ha visitado. Intenta de nuevo en unos segundos."
+      );
+      mostrar(mensaje, "error");
+    }
   };
 
   const quitarLugar = () => {
+    eleccionActual.current += 1;
     setLugarActivo(null);
+    setLugarSinHistorial(null);
     setBusquedaLugar("");
     setSugerenciasLugar([]);
+    setSinResultadosLugar(false);
     setIndiceRuta(null);
   };
 
@@ -786,6 +854,16 @@ function App() {
     if (visita.indiceRuta !== indiceMostrado) irARuta(visita.indiceRuta);
     setVueloA({ centro: [visita.cercano.lat, visita.cercano.lon], n: Date.now() });
   };
+
+  // Why there is nothing to show for the chosen place. Never leave it empty
+  // without a reason: either it was never visited, or only outside the dates.
+  const mensajeLugar = lugarSinHistorial
+    ? "Este lugar nunca se ha visitado."
+    : lugarActivo && historialCargado && rutas.length === 0
+      ? rangoActivo
+        ? "Se ha visitado antes, pero no en el rango de fechas seleccionado."
+        : "Se ha visitado antes, pero no en los \u00faltimos 30 d\u00edas."
+      : null;
 
   // Height of the panels floating over the top of the map, so popups and
   // flights keep clear of them
@@ -888,6 +966,8 @@ function App() {
     };
 
     const modoVivo = !rangoActivo && !lugarActivo;
+    let cancelado = false; // a newer run of this effect supersedes this one
+    setHistorialCargado(false);
     let ultimoTs = null; // newest timestamp_gps we hold (live mode)
     let ultimaCompletaMs = 0; // when the last full load happened
 
@@ -908,8 +988,10 @@ function App() {
           url += `?horas=${horas}`;
         }
         const data = await pedirJSON(url);
+        if (cancelado) return;
         const filas = Array.isArray(data) ? data : [];
         registrarExito("historial", MENSAJE_RECUPERADA);
+        setHistorialCargado(true);
 
         if (modoVivo && !completo) {
           if (filas.length) {
@@ -925,6 +1007,7 @@ function App() {
           setHistorial(filas);
         }
       } catch (error) {
+        if (cancelado) return;
         const { clave, mensaje } = describirFallo(error, "historial");
         registrarFallo("historial", clave, mensaje);
         // A rejected request (e.g. an invalid range) leaves nothing valid to show;
@@ -958,6 +1041,7 @@ function App() {
     document.addEventListener("visibilitychange", alCambiarVisibilidad);
 
     return () => {
+      cancelado = true;
       clearInterval(intervalo);
       document.removeEventListener("visibilitychange", alCambiarVisibilidad);
     };
@@ -1144,6 +1228,9 @@ function App() {
                   onChange={(e) => {
                     setBusquedaLugar(e.target.value);
                     if (lugarActivo) setLugarActivo(null);
+                    // Editing the text drops the previous verdict and any pending pick
+                    eleccionActual.current += 1;
+                    setLugarSinHistorial(null);
                   }}
                 />
                 {lugarActivo && (
@@ -1157,12 +1244,27 @@ function App() {
                     {sugerenciasLugar.map((s, i) => (
                       <button key={i} className="sugerencia-item" onClick={() => elegirLugar(s)}>
                         {s.nombre}
+                        {s.visitado === false && (
+                          <span className="chip-estado chip-sin-historial">Sin historial</span>
+                        )}
+                        {s.visitado === true && (
+                          <span className="chip-estado chip-con-historial">Con historial</span>
+                        )}
                       </button>
                     ))}
                   </div>
                 )}
                 {buscandoLugar && <span className="buscando-lugar">Buscando...</span>}
+              {!buscandoLugar && sinResultadosLugar && (
+                  <span className="buscando-lugar">No se encontr&oacute; ning&uacute;n lugar con ese nombre.</span>
+                )}
               </div>
+
+              {mensajeLugar && (
+                <p className="lugar-mensaje" role="status">
+                  {mensajeLugar}
+                </p>
+              )}
             </div>
 
             </div>
