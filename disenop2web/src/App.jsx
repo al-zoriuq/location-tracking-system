@@ -1,4 +1,7 @@
 import "./App.css";
+import Toasts from "./Toasts.jsx";
+import { useToasts } from "./useToasts.js";
+import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -482,6 +485,28 @@ function RuedaOpciones({ opciones, valor, onChange }) {
   );
 }
 
+// Leaflet only re-measures its container on window resizes. The map zone can
+// also change size on its own (compact mode, scrollbars, the history list), so
+// re-measure whenever the zone changes; otherwise the new area stays gray.
+function AjustarTamano({ zonaRef }) {
+  const map = useMap();
+  useEffect(() => {
+    const el = zonaRef.current;
+    if (!el) return undefined;
+    let cuadro = 0;
+    const observador = new ResizeObserver(() => {
+      cancelAnimationFrame(cuadro);
+      cuadro = requestAnimationFrame(() => map.invalidateSize({ animate: false }));
+    });
+    observador.observe(el);
+    return () => {
+      cancelAnimationFrame(cuadro);
+      observador.disconnect();
+    };
+  }, [map, zonaRef]);
+  return null;
+}
+
 function App() {
   const [location, setLocation] = useState(null);
   const [historial, setHistorial] = useState([]);
@@ -497,6 +522,8 @@ function App() {
   const [snapCargando, setSnapCargando] = useState(false);
   const [capasAbierto, setCapasAbierto] = useState(false);
   const [panelExpandido, setPanelExpandido] = useState(false);
+  const [filtrosVisibles, setFiltrosVisibles] = useState(false);
+  const { toasts, cerrar, registrarFallo, registrarExito } = useToasts();
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
@@ -579,6 +606,25 @@ function App() {
 
   const historialReciente = [...puntosRutaMostrada].reverse();
 
+  // The layout follows the real size of the map zone, not the device type:
+  // a narrow or short zone switches to the compact overlays.
+  const zonaRef = useRef(null);
+  const [compacto, setCompacto] = useState(false);
+  const [bajo, setBajo] = useState(false);
+  const hayUbicacion = Boolean(location);
+  useEffect(() => {
+    const el = zonaRef.current;
+    if (!el) return undefined;
+    const medir = () => {
+      setCompacto(el.clientWidth < 640 || el.clientHeight < 460);
+      setBajo(el.clientHeight < 380);
+    };
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [hayUbicacion]);
+
   useEffect(() => {
     if (busquedaLugar.trim().length < 3) {
       setSugerenciasLugar([]);
@@ -588,13 +634,18 @@ function App() {
     setBuscandoLugar(true);
     const timer = setTimeout(async () => {
       try {
-        const resp = await fetch(
+        const data = await pedirJSON(
           import.meta.env.BASE_URL + `api/buscar-lugar?q=${encodeURIComponent(busquedaLugar)}`
         );
-        const data = await resp.json();
         setSugerenciasLugar(Array.isArray(data) ? data : []);
+        registrarExito("busqueda", MENSAJE_RECUPERADA);
       } catch (error) {
-        console.error("Error buscando lugar:", error);
+        const { clave, mensaje } = describirFallo(
+          error,
+          "busqueda",
+          "No se pudo buscar el lugar. Intenta de nuevo."
+        );
+        registrarFallo("busqueda", clave, mensaje);
         setSugerenciasLugar([]);
       } finally {
         setBuscandoLugar(false);
@@ -731,16 +782,19 @@ function App() {
   useEffect(() => {
     const obtenerUbicacion = async () => {
       try {
-        const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
-        if (!response.ok) {
+        const data = await pedirJSON(import.meta.env.BASE_URL + "api/ultima-ubicacion");
+        setLocation(data);
+        registrarExito("ubicacion", MENSAJE_RECUPERADA);
+      } catch (error) {
+        // 404 = the table is still empty: not a failure, there is just nothing to show
+        if (error instanceof ErrorApi && error.tipo === "vacio") {
           setLocation(null);
+          registrarExito("ubicacion");
           return;
         }
-        const data = await response.json();
-        setLocation(data);
-      } catch (error) {
-        console.error("Error obteniendo ubicación:", error);
-        setLocation(null);
+        const { clave, mensaje } = describirFallo(error, "ubicacion");
+        registrarFallo("ubicacion", clave, mensaje);
+        // On a network or server failure the last known position stays on screen
       }
     };
 
@@ -766,13 +820,9 @@ function App() {
           const horas = lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H;
           url += `?horas=${horas}`;
         }
-        const response = await fetch(url);
-        if (!response.ok) {
-          if (completo) setHistorial([]);
-          return;
-        }
-        const data = await response.json();
+        const data = await pedirJSON(url);
         const filas = Array.isArray(data) ? data : [];
+        registrarExito("historial", MENSAJE_RECUPERADA);
 
         if (modoVivo && !completo) {
           if (filas.length) {
@@ -788,8 +838,13 @@ function App() {
           setHistorial(filas);
         }
       } catch (error) {
-        console.error("Error obteniendo historial:", error);
-        if (completo) setHistorial([]);
+        const { clave, mensaje } = describirFallo(error, "historial");
+        registrarFallo("historial", clave, mensaje);
+        // A rejected request (e.g. an invalid range) leaves nothing valid to show;
+        // network and server failures keep what is already on screen.
+        if (completo && error instanceof ErrorApi && error.tipo === "solicitud") {
+          setHistorial([]);
+        }
       }
     };
 
@@ -825,6 +880,7 @@ function App() {
 
   return (
     <div className="app">
+      <Toasts toasts={toasts} onCerrar={cerrar} />
       <div className="topbar">
         <div className="brand">
           GPSLink <span>· {nombre}</span>
@@ -838,6 +894,8 @@ function App() {
       <div className="main">
         {location ? (
           <>
+            <div className={`mapa-zona ${compacto ? "compacto" : ""} ${bajo ? "bajo" : ""}`} ref={zonaRef}>
+            <div className="capa-superior">
             <div className={`panel ${panelExpandido ? "expandido" : ""}`}>
               <button
                 className="panel-resumen"
@@ -872,7 +930,18 @@ function App() {
               </div>
             </div>
 
-            <div className="superior">
+            <div className={`superior ${filtrosVisibles ? "filtros-visibles" : ""}`}>
+              <button
+                className={`filtros-toggle-compacto ${rangoActivo || lugarActivo ? "activo" : ""}`}
+                onClick={() => {
+                  setFiltrosVisibles(!filtrosVisibles);
+                  setFiltroAbierto(false);
+                }}
+                aria-expanded={filtrosVisibles}
+              >
+                Filtros
+                {(rangoActivo || lugarActivo) && <span className="punto-filtro" />}
+              </button>
               {ruta.length > 0 && (
                 <div className="nav-rutas">
                   <button
@@ -995,6 +1064,8 @@ function App() {
               </div>
             </div>
 
+            </div>
+
             <div className="controles-mapa fab-columna">
               {capasAbierto && (
                 <div className="capas-menu">
@@ -1091,7 +1162,9 @@ function App() {
                   icon={siguiendoActual ? iconoActual : iconoFin}
                 />
               )}
+            <AjustarTamano zonaRef={zonaRef} />
             </MapContainer>
+            </div>
 
             <aside className="sidebar">
               <p className="sidebar-title">

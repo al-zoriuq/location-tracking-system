@@ -380,46 +380,9 @@ body {
 }
 
 /* ============ Mobile / narrow-screen adjustments ============ */
-@media (max-width: 900px) {
-  /* Stack the sidebar below the map instead of beside it */
-  .main {
-    flex-direction: column;
-  }
 
-  .sidebar {
-    width: 100%;
-    max-height: 240px; /* cap its height so the map keeps most of the screen */
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
 
-  /* No sidebar beside the map anymore, so no offset needed */
-  .controles-mapa {
-    right: 20px;
-  }
-}
 
-@media (max-width: 640px) {
-  .panel {
-    left: 12px;
-    right: 12px;
-    top: 12px;
-    width: auto; /* let the panel stretch full width on small screens */
-  }
-
-  /* Legend moves up here, so the toggles stack above it */
-  .controles-mapa {
-    bottom: 12px;
-    right: 12px;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  .legend {
-    left: 12px;
-    bottom: 12px;
-  }
-}
 
 /* ============ Date/time range filter ============ */
 .filtro-fecha {
@@ -759,20 +722,7 @@ body {
 
 /* Mobile: the history list sits below the map with a fixed height, so the
    map overlays are lifted by that same amount to stay over the map. */
-@media (max-width: 900px) {
-  .sidebar {
-    height: 240px;
-  }
 
-  .controles-mapa {
-    bottom: calc(240px + 28px);
-    right: 12px;
-  }
-
-  .legend {
-    bottom: calc(240px + 12px);
-  }
-}
 
 /* ============ Top column: route navigation + filter, stacked ============ */
 .superior {
@@ -838,86 +788,7 @@ body {
   display: none;
 }
 
-@media (max-width: 640px) {
-  .panel {
-    padding: 0;
-  }
 
-  .panel-resumen {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    background: none;
-    border: none;
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    padding: 11px 14px;
-    cursor: pointer;
-  }
-
-  .panel-resumen .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .panel-resumen-texto {
-    flex: 1;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .panel-detalle {
-    display: none;
-    padding: 0 16px 14px;
-  }
-
-  .panel.expandido .panel-detalle {
-    display: block;
-  }
-
-  /* When expanded, the panel temporarily covers the column below it */
-  .panel.expandido {
-    z-index: 1100;
-  }
-
-  .superior {
-    top: 68px;
-    width: calc(100% - 24px);
-  }
-
-  .nav-rutas {
-    width: 100%;
-    justify-content: space-between;
-    padding: 6px 8px;
-  }
-
-  .nav-etiqueta {
-    flex: 1;
-    white-space: normal;
-    text-align: center;
-    font-size: 12px;
-  }
-
-  /* Arrows only on phones; the words take too much room */
-  .nav-texto {
-    display: none;
-  }
-
-  .nav-btn {
-    padding: 8px 12px;
-    font-size: 15px;
-  }
-
-  .map .leaflet-top.leaflet-left {
-    top: 190px;
-  }
-}
 
 /* ============ Location search + filter chips ============ */
 .filtros-chips {
@@ -1045,4 +916,367 @@ body {
   font-style: normal;
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* ============ Responsive layout (single source of truth) ============ */
+/* The map and everything floating over it live in .mapa-zona, so overlays are
+   positioned against the map itself, never against map + history list.
+   .mapa-zona.compacto is set from JS by measuring the zone (ResizeObserver):
+   the layout follows the real available space, not the device type. */
+
+.app { height: 100%; }
+@supports (height: 100dvh) {
+  .app { height: 100dvh; }
+}
+
+.main {
+  flex-direction: row;
+  min-width: 0;
+}
+
+.mapa-zona {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  flex: none;
+  height: auto;
+  min-height: 0;
+  z-index: 0;
+}
+
+.sidebar {
+  flex: 0 0 auto;
+  width: clamp(220px, 26vw, 340px);
+  min-height: 0;
+}
+
+/* Portrait and narrow: history goes below the map */
+@media (max-width: 900px) and (orientation: portrait) {
+  .main { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    height: clamp(120px, 32vh, 300px);
+    height: clamp(120px, 32dvh, 300px);
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* Top overlays flow in one wrapping row, so they can never overlap */
+.capa-superior {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 8px 12px;
+  pointer-events: none;
+}
+
+.capa-superior > * { pointer-events: auto; }
+
+.capa-superior > .panel {
+  position: relative;
+  top: auto;
+  left: auto;
+  z-index: auto;
+  flex: 0 0 auto;
+}
+
+.capa-superior > .superior {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  z-index: auto;
+  margin-inline: auto;
+}
+
+/* The open date filter is a sheet that always fits inside the map zone */
+.superior .filtro-fecha {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(380px, calc(100% - 24px));
+  min-width: 0;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  z-index: 60;
+}
+
+/* Bottom corners, sitting above Leaflet's attribution strip */
+.controles-mapa {
+  right: 12px;
+  bottom: 34px;
+  z-index: 30;
+}
+
+.legend {
+  left: 12px;
+  bottom: 16px;
+  z-index: 30;
+}
+
+/* Zoom buttons centered on the left edge: independent of any panel height */
+.map .leaflet-top.leaflet-left {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Compact mode: narrow (< 640 px) or short (< 460 px) map zone */
+.mapa-zona.compacto .capa-superior {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.mapa-zona.compacto .capa-superior > .panel,
+.mapa-zona.compacto .capa-superior > .superior {
+  width: min(100%, 460px);
+  margin-inline: 0;
+}
+
+.mapa-zona.compacto .panel { padding: 0; }
+
+.mapa-zona.compacto .panel-resumen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+
+.mapa-zona.compacto .panel-resumen .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mapa-zona.compacto .panel-resumen-texto {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapa-zona.compacto .panel-detalle {
+  display: none;
+  padding: 0 16px 14px;
+}
+
+.mapa-zona.compacto .panel.expandido .panel-detalle { display: block; }
+
+.mapa-zona.compacto .nav-rutas {
+  width: 100%;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+
+.mapa-zona.compacto .nav-etiqueta {
+  flex: 1;
+  white-space: normal;
+  text-align: center;
+  font-size: 12px;
+}
+
+.mapa-zona.compacto .nav-texto { display: none; }
+
+.mapa-zona.compacto .nav-btn {
+  padding: 8px 12px;
+  font-size: 15px;
+}
+
+.mapa-zona.compacto .buscador-lugar { width: 100%; }
+
+/* Touch screens: bigger targets, and 16 px inputs so iOS does not auto-zoom */
+@media (pointer: coarse) {
+  .chip-quitar { width: 40px; height: 40px; }
+  .filtro-toggle, .nav-btn { min-height: 40px; }
+  .buscador-input { min-height: 42px; font-size: 16px; }
+  .sugerencia-item { padding: 12px; }
+  .filtro-fecha input[type="date"] { min-height: 40px; font-size: 16px; }
+  .fab { width: 52px; height: 52px; }
+}
+
+/* ============ Compact zones: secondary filters behind one button ============ */
+/* Anchored controls (zoom, buttons, legend) and the top stack used to fight
+   over a short map zone. In compact mode the buscador and the date filter
+   collapse behind a single "Filtros" button, and the zoom moves to the
+   bottom-left corner, out of the way of the top stack. */
+
+.filtros-toggle-compacto { display: none; }
+
+.punto-filtro {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-fresh);
+}
+
+.mapa-zona.compacto .filtros-toggle-compacto {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  order: 2;
+  align-self: flex-start;
+  min-height: 34px;
+  padding: 6px 12px;
+  background: rgba(20, 16, 32, 0.88);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.mapa-zona.compacto .filtros-toggle-compacto.activo {
+  background: rgba(179, 127, 235, 0.22);
+}
+
+.mapa-zona.compacto .superior .nav-rutas { order: 1; }
+
+.mapa-zona.compacto .superior .filtros-chips,
+.mapa-zona.compacto .superior .buscador-lugar {
+  display: none;
+  order: 3;
+}
+
+.mapa-zona.compacto .superior.filtros-visibles .filtros-chips,
+.mapa-zona.compacto .superior.filtros-visibles .buscador-lugar {
+  display: flex;
+}
+
+/* Zoom at the bottom-left; the legend shifts right to make room */
+.mapa-zona.compacto .map .leaflet-top.leaflet-left {
+  top: auto;
+  bottom: 16px;
+  transform: none;
+}
+
+.mapa-zona.compacto .legend { left: 56px; }
+
+/* Very short zones (< 320 px): one wrapping row, drop the legend */
+.mapa-zona.bajo .capa-superior {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+}
+
+.mapa-zona.bajo .capa-superior > .panel {
+  width: auto;
+  max-width: 100%;
+  flex: 1 1 200px;
+}
+
+.mapa-zona.bajo .capa-superior > .superior {
+  width: auto;
+  flex: 2 1 260px;
+  margin-inline: 0;
+  gap: 6px;
+}
+
+.mapa-zona.bajo .legend { display: none; }
+.mapa-zona.bajo .fab { width: 40px; height: 40px; }
+.mapa-zona.bajo .controles-mapa { bottom: 28px; }
+
+/* ============ Short windows: a minimum usable map; below it the page scrolls ============ */
+.app { overflow-y: auto; }
+.main { min-height: auto; }
+.mapa-zona { min-height: 300px; }
+
+/* "bajo" (< 380 px tall) keeps the compact column, just tighter */
+.mapa-zona.bajo .capa-superior {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+}
+
+.mapa-zona.bajo .capa-superior > .panel,
+.mapa-zona.bajo .capa-superior > .superior {
+  width: min(100%, 460px);
+  flex: none;
+}
+
+/* ============ Toasts (error / recovery / info messages) ============ */
+.toasts {
+  position: fixed;
+  top: 64px;
+  right: 12px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  animation: toast-entrada 0.2s ease-out;
+}
+
+.toast-mensaje { margin: 0; flex: 1; line-height: 1.4; }
+
+.toast-cerrar {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.toast-error { border-left-color: var(--marker-end); }
+.toast-exito { border-left-color: var(--status-fresh); }
+.toast-aviso { border-left-color: var(--status-medium); }
+.toast-info { border-left-color: var(--accent); }
+
+@keyframes toast-entrada {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+@media (pointer: coarse) { .toast-cerrar { min-width: 40px; min-height: 40px; } }
+@media (max-width: 640px) {
+  .toasts { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; }
 }
