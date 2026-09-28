@@ -1,4 +1,7 @@
 import "./App.css";
+import MarcadoresParada from "./MarcadoresParada.jsx";
+import { normalizarPunto } from "./utils/viajes.js";
+import { detectarParadas } from "./utils/paradas.js";
 import { descartarSaltosAislados } from "./saltos.js";
 import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
 import PanelVisitas from "./PanelVisitas.jsx";
@@ -544,6 +547,7 @@ function App() {
   const [visitaSel, setVisitaSel] = useState(null);
   const [vueloA, setVueloA] = useState(null);
   const [margenSuperior, setMargenSuperior] = useState(0);
+  const [paradasVisibles, setParadasVisibles] = useState(true);
   const [lugarSinHistorial, setLugarSinHistorial] = useState(null); // name of a place never visited
   const [sinResultadosLugar, setSinResultadosLugar] = useState(false);
   const [historialCargado, setHistorialCargado] = useState(false);
@@ -630,6 +634,12 @@ function App() {
   const siguiendoActual = indiceRuta === null;
   const indiceMostrado = siguiendoActual ? rutas.length - 1 : indiceRuta;
   const puntosRutaMostrada = rutas[indiceMostrado] || [];
+
+  // Stops of the route on screen: at least 5 min within 50 m (see utils/paradas.js)
+  const paradas = useMemo(
+    () => detectarParadas(puntosRutaMostrada.map(normalizarPunto)),
+    [puntosRutaMostrada]
+  );
 
   // Keep the chosen route stable while the live window slides: it is
   // remembered by the timestamp of its first point, because its position in
@@ -1290,6 +1300,18 @@ function App() {
                     />
                     <span className="interruptor" />
                   </label>
+                  <label className="capas-opcion">
+                    <span>
+                      Mostrar paradas
+                      {paradas.length > 0 && <em> &middot; {paradas.length}</em>}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={paradasVisibles}
+                      onChange={() => setParadasVisibles(!paradasVisibles)}
+                    />
+                    <span className="interruptor" />
+                  </label>
                 </div>
               )}
 
@@ -1384,6 +1406,7 @@ function App() {
                 margenSuperior={margenSuperior}
               />
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
+            {paradasVisibles && <MarcadoresParada paradas={paradas} />}
             </MapContainer>
             </div>
 

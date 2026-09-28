@@ -1521,3 +1521,26 @@ body {
   line-height: 1.4;
   backdrop-filter: blur(4px);
 }
+
+/* ============ Detected stops on the map ============ */
+.marker-parada {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  background: rgba(20, 16, 32, 0.92);
+  border: 1px solid var(--accent-2);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.marker-parada svg { flex-shrink: 0; color: var(--accent-2); }
+
+/* Several switches in the map options menu */
+.capas-opcion + .capas-opcion { margin-top: 12px; }
