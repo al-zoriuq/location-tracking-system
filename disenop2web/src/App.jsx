@@ -38,6 +38,15 @@ const iconoFin = L.divIcon({
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
 const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
+
+// The live view shows the last VENTANA_VIVO_H hours. History is requested with
+// a wider margin so a route that began before that window is not cut at its edge.
+const VENTANA_VIVO_H = 24;
+const MARGEN_VIVO_H = 72;
+// With a place filter and no dates, look back this far.
+const VENTANA_LUGAR_H = 720; // 30 days
+// The backend stores GPS timestamps as Bogota wall-clock time, without zone.
+const DESFASE_BOGOTA = "-05:00";
 const RADIO_TIERRA_M = 6371000;
 // Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
@@ -483,7 +492,16 @@ function App() {
   // place's bounding box (city/town box, or the small radius box built
   // around a single-point address).
   const rutas = useMemo(() => {
-    if (!lugarActivo) return todasLasRutas;
+    if (!lugarActivo) {
+      if (rangoActivo) return todasLasRutas;
+      // Live mode: keep the routes that still have a point inside the live
+      // window, and show them complete (never cut at the window edge).
+      const corte = Date.now() - VENTANA_VIVO_H * 3600 * 1000;
+      return todasLasRutas.filter((puntos) => {
+        const ultimo = puntos[puntos.length - 1].timestamp_gps;
+        return new Date(ultimo.replace(" ", "T") + DESFASE_BOGOTA).getTime() >= corte;
+      });
+    }
     return todasLasRutas.filter((puntos) =>
       puntos.some((p) => {
         const lat = Number(p.latitud);
@@ -496,7 +514,7 @@ function App() {
         );
       })
     );
-  }, [todasLasRutas, lugarActivo]);
+  }, [todasLasRutas, lugarActivo, rangoActivo]);
 
   const siguiendoActual = indiceRuta === null;
   const indiceMostrado = siguiendoActual ? rutas.length - 1 : indiceRuta;
@@ -668,6 +686,9 @@ function App() {
         let url = import.meta.env.BASE_URL + "api/historial-ubicaciones";
         if (rangoActivo) {
           url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
+        } else {
+          const horas = lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H;
+          url += `?horas=${horas}`;
         }
         const response = await fetch(url);
         if (!response.ok) {
@@ -693,11 +714,11 @@ function App() {
 
     const intervalo = setInterval(() => {
       obtenerUbicacion();
-      if (!rangoEsPasado) obtenerHistorial();
+      if (!rangoEsPasado && !lugarActivo) obtenerHistorial();
     }, 10000);
 
     return () => clearInterval(intervalo);
-  }, [rangoActivo]);
+  }, [rangoActivo, lugarActivo]);
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
 
