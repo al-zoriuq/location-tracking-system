@@ -12,6 +12,7 @@ import SelectorRuta from "./SelectorRuta.jsx";
 import { formatearHoraCorta } from "./utils/tiempo.js";
 import Reproductor from "./Reproductor.jsx";
 import SelectorFechaHora from "./SelectorFechaHora.jsx";
+import AyudaModal from "./AyudaModal.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
@@ -573,6 +574,7 @@ function App() {
   const [paradasVisibles, setParadasVisibles] = useState(true);
   const [reproductorAbierto, setReproductorAbierto] = useState(false);
   const [panelesOcultos, setPanelesOcultos] = useState(false);
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
   const [lugarSinHistorial, setLugarSinHistorial] = useState(null); // name of a place never visited
   const [sinResultadosLugar, setSinResultadosLugar] = useState(false);
   const [historialCargado, setHistorialCargado] = useState(false);
@@ -1109,11 +1111,24 @@ function App() {
           </svg>
           GPSLink <span>· {nombre}</span>
         </div>
-        <div className="status">
-          <span className={`dot dot-${estado.tier}`}></span>
-          {estado.texto}
+        <div className="topbar-derecha">
+          <div className="status">
+            <span className={`dot dot-${estado.tier}`}></span>
+            {estado.texto}
+          </div>
+          <button
+            className="btn-ayuda"
+            onClick={() => setAyudaAbierta(true)}
+            aria-haspopup="dialog"
+            aria-label="Ayuda: cómo usar esta página"
+          >
+            <span className="btn-ayuda-signo" aria-hidden="true">?</span>
+            <span className="btn-ayuda-texto">Ayuda</span>
+          </button>
         </div>
       </div>
+
+      {ayudaAbierta && <AyudaModal onCerrar={() => setAyudaAbierta(false)} />}
 
       <div className={`main ${panelesOcultos ? "sin-paneles" : ""}`}>
         {location ? (
@@ -1412,12 +1427,32 @@ function App() {
             {ruta.length > 1 && (
               <div className="legend">
                 <div className="legend-item">
-                  <span className="legend-dot start"></span> Inicio
+                  <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                    <polygon points="2,1 11,6 2,11" fill="var(--marker-start)" />
+                  </svg>
+                  Inicio
                 </div>
                 <div className="legend-item">
-                  <span className={`legend-dot ${siguiendoActual ? "current" : "end"}`}></span>
+                  {siguiendoActual ? (
+                    <span className="legend-dot current"></span>
+                  ) : (
+                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                      <line x1="2.5" y1="1" x2="2.5" y2="11" stroke="var(--marker-end)"
+                        strokeWidth="1.5" strokeLinecap="round" />
+                      <path d="M3 1.5h7l-2 2.5 2 2.5H3z" fill="var(--marker-end)" />
+                    </svg>
+                  )}
                   {siguiendoActual ? " Actual" : " Fin de ruta"}
                 </div>
+                {paradasVisibles && paradas.length > 0 && (
+                  <div className="legend-item">
+                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                      <rect x="2" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+                      <rect x="7" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+                    </svg>
+                    Parada
+                  </div>
+                )}
                 {visitas.length > 0 && (
                   <div className="legend-item">
                     <span className="legend-dot visita"></span> Pas&oacute; por el lugar
