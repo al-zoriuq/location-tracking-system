@@ -37,6 +37,7 @@ export default function AyudaModal({ onCerrar }) {
           </li>
         </ul>
         <p>Ambos filtros se pueden combinar.</p>
+        <p>En el celular, los filtros están detrás del botón «Filtros», y el selector de fecha y hora se abre como una hoja desde abajo. Al aplicar el rango o elegir un lugar, la tarjeta se cierra y el botón «Filtros» muestra un resumen de lo aplicado; tócalo para abrirla otra vez. Al filtrar, el mapa se centra en la ruta.</p>
       </section>
 
       <section>
@@ -88,9 +89,9 @@ export default function AyudaModal({ onCerrar }) {
       <section>
         <h3>Historial de puntos</h3>
         <p>
-          Está plegado para dejar espacio al mapa. Toca «Historial de puntos» para abrirlo: muestra
+          Está plegado para dejar espacio al mapa. Ábrelo con el botón de la lista: muestra
           los puntos de la ruta mostrada, del más reciente al más antiguo, con fecha, hora y
-          coordenadas. En el celular no hay barra: el botón redondo con el ícono de lista abre el historial (y las visitas de un lugar) como una hoja sobre el mapa. Se cierra tocando fuera de la hoja, su título o el mismo botón.
+          coordenadas. El botón redondo con el ícono de lista abre el historial (y las visitas de un lugar): en el celular sube como una hoja desde abajo y en pantalla ancha se abre como un panel a la derecha. Se cierra tocando fuera de la hoja, su título o el mismo botón.
         </p>
       </section>
 

@@ -190,6 +190,40 @@ async function ajustarACarretera(puntos) {
   return resultados.flat();
 }
 
+// Free margins around the map: what floats over it (top bars, position card, legend,
+// player, round buttons) is measured so the route is fitted into the visible area.
+function margenesLibres(map) {
+  const cont = map.getContainer();
+  const zona = cont.parentElement;
+  const W = cont.clientWidth;
+  const H = cont.clientHeight;
+  const base = cont.getBoundingClientRect();
+  const visible = (el) => el.getClientRects().length > 0;
+  const caja = (el) => {
+    const q = el.getBoundingClientRect();
+    return { top: q.top - base.top, bottom: q.bottom - base.top, left: q.left - base.left, right: q.right - base.left, w: q.width, h: q.height };
+  };
+  let t = 40, l = 40, b = 40, r = 40;
+  zona.querySelectorAll(".capa-superior > *").forEach((el) => {
+    if (!visible(el)) return;
+    const q = caja(el);
+    if (q.h <= 0) return;
+    if (q.left < 40 && q.w < W * 0.5) l = Math.max(l, q.right + 12);
+    else t = Math.max(t, q.bottom + 12);
+  });
+  zona.querySelectorAll(".legend, .reproductor").forEach((el) => {
+    if (!visible(el)) return;
+    b = Math.max(b, H - caja(el).top + 12);
+  });
+  zona.querySelectorAll(".controles-mapa").forEach((el) => {
+    if (!visible(el)) return;
+    r = Math.max(r, W - caja(el).left + 12);
+  });
+  if (t + b > H * 0.7) { const k = (H * 0.7) / (t + b); t *= k; b *= k; }
+  if (l + r > W * 0.7) { const k = (W * 0.7) / (l + r); l *= k; r *= k; }
+  return { l, t, r, b };
+}
+
 function AjustarVista({ puntos, resetKey }) {
   const map = useMap();
   const yaAjustado = useRef(false);
@@ -204,10 +238,13 @@ function AjustarVista({ puntos, resetKey }) {
     if (yaAjustado.current) return;
 
     if (puntos.length > 1) {
-      map.fitBounds(puntos, { padding: [60, 60] });
+      const m = margenesLibres(map);
+      map.fitBounds(puntos, { paddingTopLeft: [m.l, m.t], paddingBottomRight: [m.r, m.b] });
       yaAjustado.current = true;
     } else if (puntos.length === 1) {
-      map.setView(puntos[0], 13);
+      const m = margenesLibres(map);
+      map.setView(puntos[0], 13, { animate: false });
+      map.panBy([-(m.l - m.r) / 2, -(m.t - m.b) / 2], { animate: false });
       yaAjustado.current = true;
     }
   }, [puntos, map, resetKey]);
@@ -809,6 +846,7 @@ function App() {
 
       if (visitado) {
         setLugarActivo(lugar);
+        setFiltrosVisibles(false);
       } else {
         setLugarActivo(null);
         setLugarSinHistorial(lugar.nombre);
@@ -1021,11 +1059,31 @@ function App() {
   // "Hasta" must be strictly later than "Desde" (same-minute ranges are invalid too)
   const rangoInvalido = hastaFH <= desdeFH;
 
+  // Short text for the "Filtros" button: what is currently applied
+  const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const diaCorto = (texto) => {
+    const [, m, d] = texto.slice(0, 10).split("-");
+    return `${Number(d)} ${MESES_CORTOS[Number(m) - 1]}`;
+  };
+  const partesResumen = [];
+  if (rangoActivo) {
+    if (rangoActivo.invalido) {
+      partesResumen.push("fechas no v\u00e1lidas");
+    } else {
+      const a = diaCorto(rangoActivo.desde);
+      const b = diaCorto(rangoActivo.hasta);
+      partesResumen.push(a === b ? a : `${a} \u2013 ${b}`);
+    }
+  }
+  if (lugarActivo) partesResumen.push(lugarActivo.nombre.split(",")[0]);
+  const resumenFiltros = partesResumen.length ? " \u00b7 " + partesResumen.join(" \u00b7 ") : "";
+
   const aplicarFiltro = () => {
     setRangoActivo({ ...rangoDelFormulario(), completar: completarEfectivo, invalido: rangoInvalido });
     setCompletarManual(null);
     setIndiceRuta(null);
     setFiltroAbierto(false);
+    if (!rangoInvalido) setFiltrosVisibles(false);
   };
 
   const quitarFiltro = () => {
@@ -1216,13 +1274,19 @@ function App() {
               <button
                 className={`filtros-toggle-compacto ${rangoActivo || lugarActivo ? "activo" : ""}`}
                 onClick={() => {
+                  setCapasAbierto(false);
                   setFiltrosVisibles(!filtrosVisibles);
                   setFiltroAbierto(false);
                 }}
                 aria-expanded={filtrosVisibles}
               >
-                Filtros
+                <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polygon points="3 4 21 4 14 12.5 14 19 10 21 10 12.5 3 4" />
+                </svg>
+                <span className="filtros-toggle-texto">Filtros{resumenFiltros}</span>
                 {(rangoActivo || lugarActivo) && <span className="punto-filtro" />}
+                <span className="filtros-toggle-flecha" aria-hidden="true">{filtrosVisibles ? "\u25B4" : "\u25BE"}</span>
               </button>
               {ruta.length > 0 && (
                 <div className="nav-rutas">
@@ -1363,7 +1427,7 @@ function App() {
                 <input
                   type="text"
                   className="buscador-input"
-                  placeholder="Filtrar por ciudad o direccion"
+                  placeholder="Buscar ciudad o direcci&oacute;n"
                   value={busquedaLugar}
                   onChange={(e) => {
                     setBusquedaLugar(e.target.value);
@@ -1454,7 +1518,7 @@ function App() {
 
               <button
                 className={`fab ${capasAbierto ? "activo" : ""}`}
-                onClick={() => setCapasAbierto(!capasAbierto)}
+                onClick={() => { setFiltrosVisibles(false); setCapasAbierto(!capasAbierto); }}
                 aria-label="Opciones del mapa"
                 title="Opciones del mapa"
               >
@@ -1588,7 +1652,10 @@ function App() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
-              <AjustarVista puntos={ruta} resetKey={indiceMostrado} />
+              <AjustarVista
+                puntos={ruta}
+                resetKey={`${indiceMostrado}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}|${puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : ""}`}
+              />
 
               <SeguirPunto
                 lat={ultimoPunto ? ultimoPunto[0] : null}

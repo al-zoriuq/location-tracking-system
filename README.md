@@ -249,21 +249,17 @@ ALTER TABLE ubicaciones ADD COLUMN device_id text;
 ALTER TABLE ubicaciones ADD CONSTRAINT ubicacion_unica UNIQUE (device_id, timestamp_gps);
 ```
 
-### UTC Timezone Standardization
+### Zona horaria de los timestamps
 
-Se implementó un fix clave en `snifferwpostgresql.py` respecto al parseo de timestamps entrantes. Los paquetes GPS entrantes transmiten timestamps con offsets de zona horaria explícitos (p. ej. `-05:00`). Eliminar los metadatos de zona horaria directamente sin conversión causaba un desfase de 5 horas al ser consultados por el frontend.
-
-**Fix aplicado:**
+Los paquetes GPS traen la hora con offset explícito (p. ej. `-05:00`). El sniffer conserva la hora local y descarta el offset, sin convertir a UTC:
 
 ```python
-# Parsear el string con formato de offset (%z)
-timestamp_gps = datetime.strptime(timestamp_gps, "%Y-%m-%d %H:%M:%S.%f %z")
-
-# Convertir a UTC explícito antes de remover los metadatos de tzinfo
-timestamp_gps = timestamp_gps.astimezone(timezone.utc).replace(tzinfo=None)
+timestamp_gps = timestamp_gps.replace(tzinfo=None)
 ```
 
-Esto garantiza que tanto `timestamp_gps` como `timestamp_recepcion` se persistan en UTC real, permitiendo que el cliente frontend renderice correctamente la hora local de Colombia (`America/Bogota`).
+- `timestamp_gps` se guarda como **hora de Bogotá sin zona** (UTC−5 todo el año).
+- `timestamp_recepcion` se guarda en **UTC** (la RDS corre en UTC).
+- Toda comparación con "ahora" debe usar `NOW() AT TIME ZONE 'America/Bogota'` en el servidor, o `-05:00` al interpretar la fecha en el navegador. Comparar `timestamp_gps` con `NOW()` directamente desplaza el resultado 5 horas.
 
 ---
 
@@ -278,6 +274,14 @@ La aplicación frontend en React (`disenop2web`) cuenta con:
 - **Relative Time Calculation:** Las funciones `parsearFechaUTC` y `calcularEstado` calculan estados relativos en línea ("en línea", "hace X min") e indicadores visuales de salud (`dot-fresh`, `dot-medium`, `dot-old`).
 
 ---
+
+### Interfaz de usuario
+
+- **Rutas:** el historial se divide en viajes (más de 1 h sin datos, más de 1 km entre puntos o velocidad implícita mayor a 180 km/h). Se navega con anterior, siguiente y un selector con todas.
+- **Filtros:** rango de fecha y hora (el fin debe ser posterior al inicio, sin fechas futuras) y búsqueda de lugar, combinables. Si el filtro corta un viaje, se marca con extremos huecos y un aviso con «Ver viaje completo».
+- **Mapa:** marcadores de inicio, fin y posición actual, paradas (5 min dentro de 50 m), visitas a un lugar, reproductor del recorrido, ajuste a vías y seguimiento del punto actual.
+- **Diseño adaptable:** en pantallas pequeñas los paneles se compactan, el historial y el selector de fechas se abren como hojas inferiores y hay un botón para ocultar los paneles.
+- **Ayuda:** botón «?» en la barra superior; su texto (`AyudaModal.jsx`) debe actualizarse cuando cambie la interfaz.
 
 ## 6. Branch Management & Workflow Integration
 

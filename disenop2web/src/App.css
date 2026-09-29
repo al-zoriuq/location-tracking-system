@@ -2453,9 +2453,143 @@ html, body {
   overscroll-behavior: none;
 }
 
-/* app-altura-exacta: on touch screens .app must be exactly one visible screen tall.
-   min-height: 100vh (large viewport on iOS) made the document taller than the screen,
-   which let the page scroll and pushed the header up */
+/* altura-exacta-tactil: the visible page is exactly one screen tall (measured: 796 px);
+   the strip under the map is Safari's own toolbar area, outside the page */
 @media (pointer: coarse) {
   .app { min-height: 0; height: 100dvh; }
+}
+
+/* filtros-en-tarjeta: on small maps the open filters sit in one card, all fields 44 px tall */
+.mapa-zona.compacto .filtros-toggle-compacto { min-height: 40px; border-radius: 10px; }
+.mapa-zona.compacto .superior.filtros-visibles .filtros-toggle-compacto {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.16);
+}
+.mapa-zona.compacto .superior.filtros-visibles .filtros-fila {
+  padding: 10px;
+  gap: 8px;
+  background: rgba(20, 16, 32, 0.88);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  backdrop-filter: blur(4px);
+}
+.mapa-zona.compacto .filtros-fila .filtro-toggle,
+.mapa-zona.compacto .filtros-fila .buscador-input { min-height: 44px; }
+.mapa-zona.compacto .filtros-fila .filtro-toggle { flex: 1 1 auto; justify-content: flex-start; }
+.mapa-zona.compacto .filtros-fila .chip-quitar { width: 44px; height: 44px; }
+
+/* filtros-compacto-v2: the date panel stays in the normal flow (no backdrop-filter on the card,
+   which would make it the containing block of the absolutely positioned panel) */
+.mapa-zona.compacto .superior.filtros-visibles .filtros-fila {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(20, 16, 32, 0.94);
+}
+.mapa-zona.compacto .superior .filtro-fecha {
+  position: static;
+  transform: none;
+  z-index: auto;
+  flex: 1 1 100%;
+  width: 100%;
+  max-height: 50dvh;
+  overflow-y: auto;
+}
+.mapa-zona.compacto .filtros-fila .filtros-chips { flex: 1 1 100%; gap: 8px; }
+.mapa-zona.compacto .filtros-fila .filtros-chips .filtro-toggle { flex: 1 1 auto; }
+.mapa-zona.compacto .filtros-fila .buscador-lugar { flex: 1 1 100%; width: 100%; }
+.mapa-zona.compacto .buscador-icono { top: 14px; }
+
+/* hoja-de-fechas: on small maps the date picker is a bottom sheet with room for the calendar,
+   and the "Filtros" button matches the fields below it */
+.mapa-zona.compacto .superior .filtro-fecha {
+  position: fixed;
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: none;
+  width: auto;
+  min-width: 0;
+  max-height: 80dvh;
+  overflow-y: auto;
+  z-index: 2500;
+  box-sizing: border-box;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 16px 16px 0 0;
+  border-bottom: none;
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.55);
+}
+.mapa-zona.compacto .superior .filtros-toggle-compacto {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.mapa-zona.compacto .superior .filtros-toggle-compacto.activo { border-color: var(--accent); }
+.mapa-zona.compacto .superior .filtros-toggle-texto { flex: 1; }
+.mapa-zona.compacto .superior .filtros-toggle-flecha { color: var(--text-dim); font-size: 11px; }
+
+/* hoja-fechas-sobre-barra: keep the end of the date sheet clear of the phone's bottom bar */
+@media (pointer: coarse) {
+  .mapa-zona.compacto .superior .filtro-fecha { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* panel-lateral-historial: on wide screens the history is also opened by the round button and
+   slides in over the map from the right, so no vertical strip is needed */
+.fab-historial { display: grid; }
+.main.sin-paneles .fab-historial { display: none; }
+@media not all and (max-width: 900px) and (orientation: portrait) {
+  .main > .sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(340px, 90%);
+    z-index: 45;
+    box-shadow: -12px 0 30px rgba(0, 0, 0, 0.5);
+    transition: transform 200ms ease-out;
+  }
+  .main > .sidebar.plegado, .main > .sidebar.plegado:not(.con-visitas) {
+    width: min(340px, 90%);
+    transform: translateX(100%);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .sidebar.plegado:not(.con-visitas) .sidebar-titulo-btn { writing-mode: horizontal-tb; }
+}
+
+/* less clutter on phones: no position card while the filters card is open */
+.mapa-zona.compacto:has(.superior.filtros-visibles) .capa-superior > .panel { display: none; }
+
+/* resumen-filtros: the "Filtros" button text may carry a summary; keep it on one line */
+.mapa-zona.compacto .superior .filtros-toggle-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* historial-en-flujo: on wide screens the open history takes its own column (the map shrinks),
+   so it never covers the round buttons; folded, it takes no space */
+@media not all and (max-width: 900px) and (orientation: portrait) {
+  .main > .sidebar {
+    position: static;
+    width: clamp(240px, 26vw, 340px);
+    transform: none;
+    box-shadow: none;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .main > .sidebar.plegado,
+  .main > .sidebar.plegado:not(.con-visitas) { display: none; }
 }
