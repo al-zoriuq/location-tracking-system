@@ -2445,3 +2445,17 @@ body {
 .mapa-zona.compacto .repro-hora { font-size: 11px; }
 .mapa-zona.compacto .repro-vel { padding: 0 6px; }
 .mapa-zona.compacto .repro-btn { min-width: 30px; height: 30px; }
+
+/* sin-desplazamiento-pagina: the page is exactly one screen tall and only the inner lists scroll,
+   so lock the document itself; iOS can no longer push the header up when a text field gets focus */
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* app-altura-exacta: on touch screens .app must be exactly one visible screen tall.
+   min-height: 100vh (large viewport on iOS) made the document taller than the screen,
+   which let the page scroll and pushed the header up */
+@media (pointer: coarse) {
+  .app { min-height: 0; height: 100dvh; }
+}
