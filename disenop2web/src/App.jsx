@@ -1483,6 +1483,24 @@ function App() {
               </button>
 
               <button
+                className={`fab fab-historial ${historialAbierto ? "activo" : ""}`}
+                onClick={() => setHistorialAbierto(!historialAbierto)}
+                aria-pressed={historialAbierto}
+                aria-label="Historial de puntos"
+                title="Historial de puntos"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6" />
+                  <line x1="8" y1="12" x2="21" y2="12" />
+                  <line x1="8" y1="18" x2="21" y2="18" />
+                  <line x1="3" y1="6" x2="3.01" y2="6" />
+                  <line x1="3" y1="12" x2="3.01" y2="12" />
+                  <line x1="3" y1="18" x2="3.01" y2="18" />
+                </svg>
+              </button>
+
+              <button
                 className={`fab ${reproductorAbierto ? "activo" : ""}`}
                 onClick={() => setReproductorAbierto(!reproductorAbierto)}
                 disabled={puntosNorm.length < 2}
@@ -1625,6 +1643,9 @@ function App() {
             </MapContainer>
             </div>
 
+            {historialAbierto && (
+              <div className="hoja-fondo" onClick={() => setHistorialAbierto(false)} aria-hidden="true" />
+            )}
             <aside className={`sidebar ${historialAbierto ? "" : "plegado"} ${visitas.length > 0 ? "con-visitas" : ""}`}>
               <PanelVisitas
                 visitas={visitas}

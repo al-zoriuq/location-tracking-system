@@ -90,7 +90,7 @@ export default function AyudaModal({ onCerrar }) {
         <p>
           Está plegado para dejar espacio al mapa. Toca «Historial de puntos» para abrirlo: muestra
           los puntos de la ruta mostrada, del más reciente al más antiguo, con fecha, hora y
-          coordenadas. En pantalla ancha, plegado queda como una tira a un lado del mapa.
+          coordenadas. En el celular no hay barra: el botón redondo con el ícono de lista abre el historial (y las visitas de un lugar) como una hoja sobre el mapa. Se cierra tocando fuera de la hoja, su título o el mismo botón.
         </p>
       </section>
 

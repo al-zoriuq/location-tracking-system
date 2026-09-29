@@ -2315,3 +2315,126 @@ body {
   max-height: calc(100dvh - 300px);
   overflow-y: auto;
 }
+
+/* altura-segura-movil: on phones the browser's bottom toolbar can float over the page,
+   so use the small viewport height (toolbars visible) and keep clear of the safe area */
+/* safe-area-inferior: with viewport-fit=cover, keep the page clear of the phone's
+   floating bottom toolbar / home indicator */
+.app { box-sizing: border-box; padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* Touch phones: the browser's floating bottom bar is not reported as a safe area,
+   so reserve a fixed strip for it */
+@media (pointer: coarse) and (max-width: 900px) {
+  .app { padding-bottom: 0; --barra-inf: max(env(safe-area-inset-bottom, 0px), 32px); }
+}
+
+/* fab-historial: on narrow portrait screens the sidebar becomes a bottom sheet
+   opened by a round button, so the map keeps the full height */
+.fab-historial { display: none; }
+@media (max-width: 900px) and (orientation: portrait) {
+  .fab-historial { display: grid; }
+  .main > .sidebar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: min(62%, 460px) !important;
+    z-index: 45;
+    border-top: 1px solid var(--accent);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.5);
+    transition: transform 200ms ease-out;
+  }
+  .main > .sidebar.plegado {
+    transform: translateY(100%);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .main.sin-paneles .fab-historial { display: none; }
+}
+
+/* hoja-fondo: tapping outside the mobile bottom sheet closes it */
+.hoja-fondo { display: none; }
+@media (max-width: 900px) and (orientation: portrait) {
+  .hoja-fondo {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 44;
+    background: rgba(8, 5, 16, 0.35);
+  }
+}
+
+/* movil-compacto: legend, filter row and route title on small maps */
+.mapa-zona.compacto .legend {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 10px;
+  font-size: 11px;
+  max-width: calc(100% - 128px);
+}
+.mapa-zona.compacto .legend-item { white-space: nowrap; }
+
+.mapa-zona.compacto .filtros-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.mapa-zona.compacto .superior:not(.filtros-visibles) .filtros-fila { display: none; }
+.mapa-zona.compacto .filtros-fila .filtros-chips { flex: none; }
+.mapa-zona.compacto .filtros-fila .buscador-lugar { flex: 1 1 150px; width: auto; min-width: 0; }
+.mapa-zona.compacto .buscador-input { min-width: 0; text-overflow: ellipsis; }
+.mapa-zona.compacto .sugerencias-lugar { max-height: 30dvh; overflow-y: auto; }
+
+.mapa-zona.compacto .nav-etiqueta { min-width: 0; flex: 1 1 auto; }
+.mapa-zona.compacto .nav-selector { max-width: 100%; }
+.mapa-zona.compacto .nav-selector-texto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the route list dropdown is a child of .nav-etiqueta: it must not be clipped */
+.mapa-zona:not(.compacto) .superior .nav-etiqueta { overflow: visible; }
+
+/* sin-franja-inferior: the map runs under the phone's floating bottom bar; bottom controls
+   move up by --barra-inf instead of leaving an empty strip */
+@media (pointer: coarse) and (max-width: 900px) {
+  .main > .sidebar { padding-bottom: var(--barra-inf, 0px); box-sizing: border-box; }
+  .main .mapa-zona .controles-mapa { bottom: calc(34px + var(--barra-inf, 0px)); }
+  .main .mapa-zona .legend { bottom: calc(16px + var(--barra-inf, 0px)); }
+  .main .mapa-zona.compacto .reproductor { bottom: calc(34px + var(--barra-inf, 0px)); }
+  .mapa-zona .map .leaflet-bottom { transform: translateY(calc(-1 * var(--barra-inf, 0px))); }
+  .mapa-zona.compacto .map .leaflet-top.leaflet-left { transform: translateY(calc(-1 * var(--barra-inf, 0px))); }
+}
+
+/* orden-compacto: route bar, cut notice, "Filtros" button, then the filter fields */
+.mapa-zona.compacto .superior .nav-rutas { order: 1; }
+.mapa-zona.compacto .superior .aviso-corte { order: 1; }
+.mapa-zona.compacto .superior .filtros-toggle-compacto { order: 2; }
+.mapa-zona.compacto .superior .filtros-fila { order: 3; }
+
+/* reproductor-junto-al-zoom: on small maps the player bar starts to the right of the zoom buttons */
+.mapa-zona.compacto .reproductor {
+  left: 64px;
+  right: 76px;
+  width: auto;
+}
+
+/* reproductor-svg: drawn play/pause icons, and the player kept clear of the legend and the round buttons */
+.repro-btn { display: grid; place-items: center; padding: 0; }
+@media (max-width: 1100px) {
+  .mapa-zona:not(.compacto) .reproductor { bottom: 84px; }
+}
+.mapa-zona.compacto .reproductor { right: 88px; }
+
+/* leyenda-sobre-reproductor: in compact maps the legend stays visible and sits above the player bar */
+.mapa-zona.compacto:has(.reproductor) .legend { bottom: 140px; }
+@media (pointer: coarse) and (max-width: 900px) {
+  .main .mapa-zona.compacto:has(.reproductor) .legend {
+    bottom: calc(90px + var(--barra-inf, 0px));
+  }
+}

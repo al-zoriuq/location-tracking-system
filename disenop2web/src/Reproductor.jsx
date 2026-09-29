@@ -66,7 +66,16 @@ export default function Reproductor({ puntos, onCerrar }) {
     <div className="reproductor" role="group" aria-label="Reproductor de recorrido">
       <button type="button" className="repro-btn" onClick={alternar}
         aria-label={reproduciendo ? "Pausar" : "Reproducir"}>
-        {reproduciendo ? "\u23F8" : "\u25B6"}
+        {reproduciendo ? (
+          <svg width="14" height="14" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <rect x="2" y="1.5" width="2.8" height="9" rx="0.8" />
+            <rect x="7.2" y="1.5" width="2.8" height="9" rx="0.8" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <polygon points="3,1.5 10.5,6 3,10.5" />
+          </svg>
+        )}
       </button>
       <input type="range" className="repro-barra" min={inicio} max={fin} step={1000}
         value={Math.min(Math.max(t, inicio), fin)}
