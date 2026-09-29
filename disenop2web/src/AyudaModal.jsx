@@ -76,6 +76,10 @@ export default function AyudaModal({ onCerrar }) {
             <strong>Ojo:</strong> oculta todos los paneles y deja solo el mapa.
           </li>
           <li>
+            <strong>Lista:</strong> abre el historial de puntos (y las visitas de un lugar). Se
+            cierra con el mismo botón.
+          </li>
+          <li>
             <strong>Play:</strong> reproduce el recorrido de la ruta mostrada. La barra tiene
             pausa, un deslizador para saltar a cualquier momento y la velocidad (×60, ×300 o
             ×1200 veces el tiempo real).
