@@ -380,46 +380,9 @@ body {
 }
 
 /* ============ Mobile / narrow-screen adjustments ============ */
-@media (max-width: 900px) {
-  /* Stack the sidebar below the map instead of beside it */
-  .main {
-    flex-direction: column;
-  }
 
-  .sidebar {
-    width: 100%;
-    max-height: 240px; /* cap its height so the map keeps most of the screen */
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
 
-  /* No sidebar beside the map anymore, so no offset needed */
-  .controles-mapa {
-    right: 20px;
-  }
-}
 
-@media (max-width: 640px) {
-  .panel {
-    left: 12px;
-    right: 12px;
-    top: 12px;
-    width: auto; /* let the panel stretch full width on small screens */
-  }
-
-  /* Legend moves up here, so the toggles stack above it */
-  .controles-mapa {
-    bottom: 12px;
-    right: 12px;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  .legend {
-    left: 12px;
-    bottom: 12px;
-  }
-}
 
 /* ============ Date/time range filter ============ */
 .filtro-fecha {
@@ -759,20 +722,7 @@ body {
 
 /* Mobile: the history list sits below the map with a fixed height, so the
    map overlays are lifted by that same amount to stay over the map. */
-@media (max-width: 900px) {
-  .sidebar {
-    height: 240px;
-  }
 
-  .controles-mapa {
-    bottom: calc(240px + 28px);
-    right: 12px;
-  }
-
-  .legend {
-    bottom: calc(240px + 12px);
-  }
-}
 
 /* ============ Top column: route navigation + filter, stacked ============ */
 .superior {
@@ -838,86 +788,7 @@ body {
   display: none;
 }
 
-@media (max-width: 640px) {
-  .panel {
-    padding: 0;
-  }
 
-  .panel-resumen {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    background: none;
-    border: none;
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    padding: 11px 14px;
-    cursor: pointer;
-  }
-
-  .panel-resumen .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .panel-resumen-texto {
-    flex: 1;
-    text-align: left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .panel-detalle {
-    display: none;
-    padding: 0 16px 14px;
-  }
-
-  .panel.expandido .panel-detalle {
-    display: block;
-  }
-
-  /* When expanded, the panel temporarily covers the column below it */
-  .panel.expandido {
-    z-index: 1100;
-  }
-
-  .superior {
-    top: 68px;
-    width: calc(100% - 24px);
-  }
-
-  .nav-rutas {
-    width: 100%;
-    justify-content: space-between;
-    padding: 6px 8px;
-  }
-
-  .nav-etiqueta {
-    flex: 1;
-    white-space: normal;
-    text-align: center;
-    font-size: 12px;
-  }
-
-  /* Arrows only on phones; the words take too much room */
-  .nav-texto {
-    display: none;
-  }
-
-  .nav-btn {
-    padding: 8px 12px;
-    font-size: 15px;
-  }
-
-  .map .leaflet-top.leaflet-left {
-    top: 190px;
-  }
-}
 
 /* ============ Location search + filter chips ============ */
 .filtros-chips {
@@ -1023,4 +894,1702 @@ body {
   .buscador-lugar {
     width: 100%;
   }
+}
+
+/* ============ "Complete edge routes" checkbox in the date filter ============ */
+.filtro-completar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.filtro-completar input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.filtro-completar em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ============ Responsive layout (single source of truth) ============ */
+/* The map and everything floating over it live in .mapa-zona, so overlays are
+   positioned against the map itself, never against map + history list.
+   .mapa-zona.compacto is set from JS by measuring the zone (ResizeObserver):
+   the layout follows the real available space, not the device type. */
+
+.app { height: 100%; }
+@supports (height: 100dvh) {
+  .app { height: 100dvh; }
+}
+
+.main {
+  flex-direction: row;
+  min-width: 0;
+}
+
+.mapa-zona {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  flex: none;
+  height: auto;
+  min-height: 0;
+  z-index: 0;
+}
+
+.sidebar {
+  flex: 0 0 auto;
+  width: clamp(220px, 26vw, 340px);
+  min-height: 0;
+}
+
+/* Portrait and narrow: history goes below the map */
+@media (max-width: 900px) and (orientation: portrait) {
+  .main { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    height: clamp(120px, 32vh, 300px);
+    height: clamp(120px, 32dvh, 300px);
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* Top overlays flow in one wrapping row, so they can never overlap */
+.capa-superior {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 8px 12px;
+  pointer-events: none;
+}
+
+.capa-superior > * { pointer-events: auto; }
+
+.capa-superior > .panel {
+  position: relative;
+  top: auto;
+  left: auto;
+  z-index: auto;
+  flex: 0 0 auto;
+}
+
+.capa-superior > .superior {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  z-index: auto;
+  margin-inline: auto;
+}
+
+/* The open date filter is a sheet that always fits inside the map zone */
+.superior .filtro-fecha {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(380px, calc(100% - 24px));
+  min-width: 0;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  z-index: 60;
+}
+
+/* Bottom corners, sitting above Leaflet's attribution strip */
+.controles-mapa {
+  right: 12px;
+  bottom: 34px;
+  z-index: 30;
+}
+
+.legend {
+  left: 12px;
+  bottom: 16px;
+  z-index: 30;
+}
+
+/* Zoom buttons centered on the left edge: independent of any panel height */
+.map .leaflet-top.leaflet-left {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Compact mode: narrow (< 640 px) or short (< 460 px) map zone */
+.mapa-zona.compacto .capa-superior {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.mapa-zona.compacto .capa-superior > .panel,
+.mapa-zona.compacto .capa-superior > .superior {
+  width: min(100%, 460px);
+  margin-inline: 0;
+}
+
+.mapa-zona.compacto .panel { padding: 0; }
+
+.mapa-zona.compacto .panel-resumen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+
+.mapa-zona.compacto .panel-resumen .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mapa-zona.compacto .panel-resumen-texto {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapa-zona.compacto .panel-detalle {
+  display: none;
+  padding: 0 16px 14px;
+}
+
+.mapa-zona.compacto .panel.expandido .panel-detalle { display: block; }
+
+.mapa-zona.compacto .nav-rutas {
+  width: 100%;
+  justify-content: space-between;
+  padding: 6px 8px;
+}
+
+.mapa-zona.compacto .nav-etiqueta {
+  flex: 1;
+  white-space: normal;
+  text-align: center;
+  font-size: 12px;
+}
+
+.mapa-zona.compacto .nav-texto { display: none; }
+
+.mapa-zona.compacto .nav-btn {
+  padding: 8px 12px;
+  font-size: 15px;
+}
+
+.mapa-zona.compacto .buscador-lugar { width: 100%; }
+
+/* Touch screens: bigger targets, and 16 px inputs so iOS does not auto-zoom */
+@media (pointer: coarse) {
+  .chip-quitar { width: 40px; height: 40px; }
+  .filtro-toggle, .nav-btn { min-height: 40px; }
+  .buscador-input { min-height: 42px; font-size: 16px; }
+  .sugerencia-item { padding: 12px; }
+  .filtro-fecha input[type="date"] { min-height: 40px; font-size: 16px; }
+  .fab { width: 52px; height: 52px; }
+}
+
+/* ============ Compact zones: secondary filters behind one button ============ */
+/* Anchored controls (zoom, buttons, legend) and the top stack used to fight
+   over a short map zone. In compact mode the buscador and the date filter
+   collapse behind a single "Filtros" button, and the zoom moves to the
+   bottom-left corner, out of the way of the top stack. */
+
+.filtros-toggle-compacto { display: none; }
+
+.punto-filtro {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-fresh);
+}
+
+.mapa-zona.compacto .filtros-toggle-compacto {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  order: 2;
+  align-self: flex-start;
+  min-height: 34px;
+  padding: 6px 12px;
+  background: rgba(20, 16, 32, 0.88);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.mapa-zona.compacto .filtros-toggle-compacto.activo {
+  background: rgba(179, 127, 235, 0.22);
+}
+
+.mapa-zona.compacto .superior .nav-rutas { order: 1; }
+
+.mapa-zona.compacto .superior .filtros-chips,
+.mapa-zona.compacto .superior .buscador-lugar {
+  display: none;
+  order: 3;
+}
+
+.mapa-zona.compacto .superior.filtros-visibles .filtros-chips,
+.mapa-zona.compacto .superior.filtros-visibles .buscador-lugar {
+  display: flex;
+}
+
+/* Zoom at the bottom-left; the legend shifts right to make room */
+.mapa-zona.compacto .map .leaflet-top.leaflet-left {
+  top: auto;
+  bottom: 16px;
+  transform: none;
+}
+
+.mapa-zona.compacto .legend { left: 56px; }
+
+/* Very short zones (< 320 px): one wrapping row, drop the legend */
+.mapa-zona.bajo .capa-superior {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+}
+
+.mapa-zona.bajo .capa-superior > .panel {
+  width: auto;
+  max-width: 100%;
+  flex: 1 1 200px;
+}
+
+.mapa-zona.bajo .capa-superior > .superior {
+  width: auto;
+  flex: 2 1 260px;
+  margin-inline: 0;
+  gap: 6px;
+}
+
+.mapa-zona.bajo .legend { display: none; }
+.mapa-zona.bajo .fab { width: 40px; height: 40px; }
+.mapa-zona.bajo .controles-mapa { bottom: 28px; }
+
+/* ============ Short windows: a minimum usable map; below it the page scrolls ============ */
+/* Fixed-height layout: only the inner lists scroll. Below 520 px of window
+   height the map keeps a 300 px minimum and the page itself scrolls. */
+.main { min-height: 0; }
+.sidebar { overflow: hidden; }
+@media (max-height: 520px) {
+  .app { overflow-y: auto; }
+  .main { min-height: auto; }
+  .mapa-zona { min-height: 300px; }
+}
+
+/* "bajo" (< 380 px tall) keeps the compact column, just tighter */
+.mapa-zona.bajo .capa-superior {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+}
+
+.mapa-zona.bajo .capa-superior > .panel,
+.mapa-zona.bajo .capa-superior > .superior {
+  width: min(100%, 460px);
+  flex: none;
+}
+
+/* ============ Toasts (error / recovery / info messages) ============ */
+.toasts {
+  position: fixed;
+  top: 64px;
+  right: 12px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  animation: toast-entrada 0.2s ease-out;
+}
+
+.toast-mensaje { margin: 0; flex: 1; line-height: 1.4; }
+
+.toast-cerrar {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.toast-error { border-left-color: var(--marker-end); }
+.toast-exito { border-left-color: var(--status-fresh); }
+.toast-aviso { border-left-color: var(--status-medium); }
+.toast-info { border-left-color: var(--accent); }
+
+@keyframes toast-entrada {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+@media (pointer: coarse) { .toast-cerrar { min-width: 40px; min-height: 40px; } }
+@media (max-width: 640px) {
+  .toasts { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; }
+}
+
+/* ============ Route picker (the "Route n of m" label as a dropdown) ============ */
+.nav-etiqueta { position: relative; }
+
+.nav-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.nav-selector:hover,
+.nav-selector[aria-expanded="true"] {
+  border-color: var(--border);
+  background: rgba(179, 127, 235, 0.12);
+}
+
+.nav-selector-texto { min-width: 0; }
+.nav-selector-flecha { color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
+
+.rutas-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  width: min(340px, calc(100vw - 24px));
+  background: rgba(20, 16, 32, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  text-align: left;
+  white-space: normal;
+}
+
+.rutas-atajos {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rutas-atajos button {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.rutas-atajos button:hover { border-color: var(--accent); }
+
+.rutas-lista {
+  max-height: min(280px, 45vh);
+  max-height: min(280px, 45dvh);
+  overflow-y: auto;
+}
+
+.ruta-opcion {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ruta-opcion:last-child { border-bottom: none; }
+.ruta-opcion-numero { font-weight: 600; flex-shrink: 0; }
+
+.ruta-opcion-detalle {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.ruta-opcion-puntos { color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
+.ruta-opcion.elegida { background: rgba(179, 127, 235, 0.18); }
+
+@media (hover: hover) {
+  .ruta-opcion:hover { background: rgba(179, 127, 235, 0.12); }
+}
+
+.ruta-opcion:focus-visible,
+.nav-selector:focus-visible,
+.rutas-atajos button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .ruta-opcion { padding: 14px 12px; }
+  .nav-selector { min-height: 40px; }
+}
+
+/* ============ Place visits: list, legend, map rings and popups ============ */
+.visitas {
+  flex: none;
+  max-height: 45%;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 209, 102, 0.06);
+}
+
+.visitas-titulo { margin: 0 0 4px; font-size: 13px; color: var(--text); }
+.visitas-nota { margin: 0 0 8px; font-size: 11px; line-height: 1.4; color: var(--text-dim); }
+
+.visitas-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.visita-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.visita-dia { font-weight: 600; }
+.visita-hora { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); text-align: right; }
+.visita-detalle { grid-column: 1 / -1; font-size: 11px; color: var(--text-dim); }
+.visita-item.elegida { border-color: #ffd166; background: rgba(255, 209, 102, 0.14); }
+.visita-item:focus-visible { outline: 1px solid #ffd166; outline-offset: 1px; }
+
+@media (hover: hover) {
+  .visita-item:hover { border-color: #ffd166; }
+}
+
+@media (pointer: coarse) {
+  .visita-item { padding: 12px 10px; }
+}
+
+.legend-dot.visita {
+  background: transparent;
+  border: 2px solid #ffd166;
+  box-sizing: border-box;
+}
+
+/* Leaflet tooltips and popups follow the dark theme */
+.leaflet-tooltip.tooltip-visita {
+  background: rgba(20, 16, 32, 0.92);
+  color: var(--text);
+  border: 1px solid #ffd166;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+.leaflet-tooltip-top.tooltip-visita::before { border-top-color: #ffd166; }
+
+.popup-visita .leaflet-popup-content-wrapper,
+.popup-visita .leaflet-popup-tip {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.popup-visita .leaflet-popup-content { margin: 12px 14px; font-size: 12px; line-height: 1.5; }
+.popup-visita .leaflet-popup-close-button { color: var(--text-dim); }
+.popup-visita-dia { display: block; margin-bottom: 4px; font-size: 13px; }
+.popup-visita-fila { display: block; color: var(--text-dim); }
+.popup-visita-fila b { color: var(--text); }
+
+.popup-visita-boton {
+  margin-top: 8px;
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+/* ============ Place history check: suggestion chips and messages ============ */
+.chip-estado {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.chip-con-historial { color: var(--status-fresh); border-color: rgba(74, 222, 128, 0.45); }
+.chip-sin-historial { color: var(--text-dim); }
+
+.lugar-mensaje {
+  margin: 0;
+  max-width: 100%;
+  padding: 6px 10px;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.4;
+  backdrop-filter: blur(4px);
+}
+
+/* ============ Detected stops on the map ============ */
+.marker-parada {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  background: rgba(20, 16, 32, 0.92);
+  border: 1px solid var(--accent-2);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.marker-parada svg { flex-shrink: 0; color: var(--accent-2); }
+
+/* Several switches in the map options menu */
+.capas-opcion + .capas-opcion { margin-top: 12px; }
+
+/* ============ Route markers: start (play), end (flag), current position ============ */
+.marker-start,
+.marker-end {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  color: var(--bg);
+}
+
+.marker-start { background: var(--marker-start); box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.28); }
+.marker-end { background: var(--marker-end); box-shadow: 0 0 0 3px rgba(255, 122, 138, 0.28); }
+
+/* Last point is old: the device is not reporting, so no pulse and a dim colour */
+.marker-current.inactivo {
+  animation: none;
+  background: var(--text-dim);
+  box-shadow: 0 0 0 4px rgba(168, 151, 201, 0.25);
+}
+
+/* Dark theme for popups that show route data */
+.popup-oscuro .leaflet-popup-content-wrapper,
+.popup-oscuro .leaflet-popup-tip {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.popup-oscuro .leaflet-popup-content { margin: 12px 14px; font-size: 12px; line-height: 1.5; }
+.popup-oscuro .leaflet-popup-close-button { color: var(--text-dim); }
+
+.popup-posicion { display: flex; flex-direction: column; min-width: 190px; }
+.popup-posicion-titulo { margin-bottom: 4px; font-size: 13px; }
+.popup-posicion-fila { color: var(--text-dim); font-family: var(--font-mono); }
+.popup-posicion-fila b { color: var(--text); }
+
+.popup-posicion-estadisticas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.popup-posicion-estadisticas dt {
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.popup-posicion-estadisticas dd { margin: 0; color: var(--text); font-family: var(--font-mono); }
+
+/* Estimated speed, above the round buttons */
+.velocidad-chip {
+  padding: 4px 11px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.velocidad-chip b { color: var(--text); font-size: 15px; }
+
+/* Route player: compact bar over the map, next to the round buttons */
+.reproductor {
+  position: absolute;
+  right: 76px;
+  bottom: 34px;
+  z-index: 30;
+  width: min(520px, calc(100% - 90px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.repro-btn, .repro-vel {
+  flex: none;
+  min-width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+}
+.repro-vel { padding: 0 8px; font-family: var(--font-mono); font-size: 12px; }
+.repro-barra { flex: 1; min-width: 60px; accent-color: var(--accent); }
+.repro-hora { flex: none; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+.fab:disabled { opacity: 0.4; cursor: default; }
+
+/* Player bar goes above the legend when the map zone is compact */
+.mapa-zona.compacto .reproductor { bottom: 84px; }
+
+/* Hide panels: only the map and the round buttons stay */
+.main.sin-paneles .capa-superior,
+.main.sin-paneles .legend { display: none; }
+.main.sin-paneles .sidebar { display: none; }
+
+/* Visit popup: smaller in compact map zones */
+.mapa-zona.compacto .popup-visita .leaflet-popup-content {
+  margin: 8px 10px;
+  font-size: 11px;
+  width: 210px !important;
+}
+
+/* Date-time picker, adapted from sthefany-test (SelectorFechaHora) */
+.fh-campo,
+.fh-ahora,
+.fh-listo {
+  transition: background-color 150ms var(--ease-out, ease-out), border-color 150ms var(--ease-out, ease-out),
+    color 150ms var(--ease-out, ease-out), transform 120ms var(--ease-out, ease-out);
+}
+
+.fh-ahora:active,
+.fh-listo:active {
+  transform: scale(0.97);
+}
+
+.fh {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fh-campo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fh-campo svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.fh-valor {
+  flex: 1;
+}
+
+.fh-flecha {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.fh-campo.abierto {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.1);
+}
+
+.fh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  animation: fh-entrada 160ms var(--ease-out, ease-out);
+}
+
+.fh-mes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fh-mes-nombre {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.fh-nav {
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out, ease-out), border-color 150ms var(--ease-out, ease-out);
+}
+
+.fh-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.fh-semana,
+.fh-dias {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+}
+
+.fh-semana span {
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.fh-dia {
+  aspect-ratio: 1;
+  min-height: 36px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease-out, ease-out), transform 120ms var(--ease-out, ease-out);
+}
+
+.fh-dia:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.fh-dia.hoy {
+  border-color: var(--accent-2);
+}
+
+.fh-dia.elegido {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.fh-dia:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.fh-hora {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fh-hora-campo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fh-hora-campo span {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.fh-hora-campo select {
+  appearance: none;
+  min-height: 42px;
+  padding: 0 28px 0 12px;
+  background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%23a897c9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 11px center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.fh-hora-campo select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fh-dospuntos {
+  padding-bottom: 8px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 18px;
+}
+
+.fh-ayuda {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.fh-pie {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fh-ahora,
+.fh-listo {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fh-ahora {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.fh-listo {
+  margin-left: auto;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+@keyframes fh-entrada {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Zoom buttons in the dark theme, like the round buttons */
+.map .leaflet-bar {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.map .leaflet-bar a {
+  background-color: var(--panel);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.map .leaflet-bar a:last-child { border-bottom: none; }
+.map .leaflet-bar a:hover { background-color: rgba(179, 127, 235, 0.15); }
+.map .leaflet-bar a.leaflet-disabled { background-color: var(--panel); color: var(--text-dim); opacity: 0.5; }
+
+/* Top bar: location icon, soft gradient and a pill for the status (as in sthefany-test) */
+.topbar {
+  padding: 14px 24px;
+  background: linear-gradient(180deg, #1d1333 0%, var(--bg) 100%);
+}
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.topbar .brand span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brand-icono { color: var(--accent); flex-shrink: 0; }
+.status {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 6px 14px;
+  background: var(--glass, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+/* Stop popup */
+.popup-parada { min-width: 150px; }
+.popup-parada p { margin: 0; }
+.popup-parada-titulo { font-weight: 600; margin-bottom: 6px !important; }
+.popup-parada-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: var(--font-mono);
+}
+.popup-parada-fila span { color: var(--text-dim); }
+
+/* Help button and modal, adapted from sthefany-test */
+.topbar-derecha {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.btn-ayuda {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 18px;
+  padding: 0 12px 0 6px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-ayuda:hover {
+  background: rgba(179, 127, 235, 0.15);
+}
+
+.btn-ayuda-signo {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.modal-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 5, 16, 0.72);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: 100%;
+  max-height: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  text-align: left;
+}
+
+.modal:focus {
+  outline: none;
+}
+
+.modal-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 14px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-cabecera h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-cerrar {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-cerrar:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.modal-cuerpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 20px 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.modal-cuerpo section {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-cuerpo section:last-child {
+  border-bottom: none;
+}
+
+.modal-cuerpo h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+
+.modal-cuerpo p {
+  margin: 0;
+  color: var(--text);
+}
+
+.modal-cuerpo ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.modal-cuerpo li {
+  margin-bottom: 4px;
+}
+
+.modal-pie {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-entendido {
+  min-height: 44px;
+  padding: 0 22px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-cerrar:focus-visible,
+.modal-entendido:focus-visible,
+.btn-ayuda:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.topbar-derecha {
+  flex-shrink: 0;
+}
+
+.btn-ayuda,
+.fab,
+.fh-campo,
+.fh-ahora,
+.fh-listo {
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out),
+    color 150ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+.btn-ayuda:active,
+.fab:active,
+.fh-ahora:active,
+.fh-listo:active {
+  transform: scale(0.97);
+}
+
+@media (max-width: 640px) {
+  .btn-ayuda {
+    padding: 0 6px;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    border-radius: 22px;
+  }
+  .btn-ayuda-texto { display: none; }
+  .modal-fondo { padding: 8px; bottom: auto; height: 100vh; height: 100dvh; }
+}
+
+/* Legend icons that match the map marker shapes */
+.legend-icono { width: 12px; height: 12px; flex-shrink: 0; }
+
+/* Date range validation message */
+.filtro-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--marker-end);
+  border-radius: 8px;
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.filtro-fecha .aplicar:disabled { opacity: 0.4; cursor: default; }
+
+/* Collapsible point history */
+.sidebar-titulo-btn {
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+.sidebar-titulo-btn:hover { color: var(--text); }
+.sidebar-titulo-flecha { margin-right: 6px; }
+.sidebar-list.oculto { display: none; }
+.sidebar.plegado .sidebar-titulo-btn { border-bottom: none; }
+
+/* Folded and no place visits: thin strip (wide) or thin bar (portrait) */
+@media not all and (max-width: 900px) and (orientation: portrait) {
+  .sidebar.plegado:not(.con-visitas) { width: 44px; }
+  .sidebar.plegado:not(.con-visitas) .sidebar-titulo-btn {
+    writing-mode: vertical-rl;
+    padding: 16px 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+@media (max-width: 900px) and (orientation: portrait) {
+  .sidebar.plegado:not(.con-visitas) { height: auto; }
+  .sidebar.plegado:not(.con-visitas) .sidebar-titulo-btn { padding: 12px 20px; }
+}
+
+/* Filters: two fields of the same height in one row, each with its icon */
+.filtros-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.mapa-zona.compacto .filtros-fila { display: contents; }
+
+.filtro-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+.filtro-toggle:hover { border-color: var(--accent); }
+.filtro-toggle.activo {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.16);
+}
+.campo-icono { color: var(--accent); flex-shrink: 0; }
+
+.buscador-input { min-height: 38px; padding-left: 34px; box-sizing: border-box; }
+.buscador-icono {
+  position: absolute;
+  left: 12px;
+  top: 11px;
+  pointer-events: none;
+}
+.chip-quitar { width: 30px; height: 30px; }
+
+/* barras-primero: at medium widths the route and filter bars take the first row
+   and the position card goes below, instead of floating over the middle of the map */
+@media (max-width: 1100px) {
+  /* barras-al-lado: the card stays top-left and the bars use the remaining width beside it */
+  .mapa-zona:not(.compacto) .capa-superior > .superior {
+    flex: 1 1 0;
+    min-width: 0;
+    margin-inline: 0;
+  }
+  .mapa-zona:not(.compacto) .superior .nav-rutas { max-width: 100%; }
+  .mapa-zona:not(.compacto) .superior .nav-etiqueta { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+  .mapa-zona:not(.compacto) .superior .nav-selector-texto {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Route edge cut by the date filter: hollow circle */
+.marker-cortado {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--marker-start);
+  background: var(--bg);
+  box-sizing: content-box;
+}
+.marker-cortado.fin { border-color: var(--marker-end); }
+
+/* Notice for a route cut by the date filter */
+.aviso-corte {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ffd166;
+  border-radius: 10px;
+  background: rgba(255, 209, 102, 0.12);
+  backdrop-filter: blur(4px);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.aviso-corte svg { color: #ffd166; flex-shrink: 0; }
+.aviso-corte-btn {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #ffd166;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.aviso-corte-btn:hover { background: rgba(255, 209, 102, 0.2); }
+
+/* capa-aviso: the route list dropdown must open above the cut notice and the filters */
+.nav-rutas { position: relative; z-index: 5; }
+.aviso-corte { position: relative; z-index: 1; }
+
+/* panel-fechas-en-flujo: on wide maps the date panel opens below the route bar,
+   pushing the place search down, instead of floating over both */
+.mapa-zona:not(.compacto) .superior .filtro-fecha {
+  position: static;
+  transform: none;
+  z-index: auto;
+  width: min(380px, 100%);
+  max-height: calc(100dvh - 300px);
+  overflow-y: auto;
+}
+
+/* altura-segura-movil: on phones the browser's bottom toolbar can float over the page,
+   so use the small viewport height (toolbars visible) and keep clear of the safe area */
+/* safe-area-inferior: with viewport-fit=cover, keep the page clear of the phone's
+   floating bottom toolbar / home indicator */
+.app { box-sizing: border-box; padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* Touch phones: the browser's floating bottom bar is not reported as a safe area,
+   so reserve a fixed strip for it */
+@media (pointer: coarse) and (max-width: 900px) {
+  .app { padding-bottom: 0; --barra-inf: max(env(safe-area-inset-bottom, 0px), 16px); }
+}
+
+/* fab-historial: on narrow portrait screens the sidebar becomes a bottom sheet
+   opened by a round button, so the map keeps the full height */
+.fab-historial { display: none; }
+@media (max-width: 900px) and (orientation: portrait) {
+  .fab-historial { display: grid; }
+  .main > .sidebar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: min(62%, 460px) !important;
+    z-index: 45;
+    border-top: 1px solid var(--accent);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.5);
+    transition: transform 200ms ease-out;
+  }
+  .main > .sidebar.plegado {
+    transform: translateY(100%);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .main.sin-paneles .fab-historial { display: none; }
+}
+
+/* hoja-fondo: tapping outside the mobile bottom sheet closes it */
+.hoja-fondo { display: none; }
+@media (max-width: 900px) and (orientation: portrait) {
+  .hoja-fondo {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 44;
+    background: rgba(8, 5, 16, 0.35);
+  }
+}
+
+/* movil-compacto: legend, filter row and route title on small maps */
+.mapa-zona.compacto .legend {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 10px;
+  font-size: 11px;
+  max-width: calc(100% - 128px);
+}
+.mapa-zona.compacto .legend-item { white-space: nowrap; }
+
+.mapa-zona.compacto .filtros-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.mapa-zona.compacto .superior:not(.filtros-visibles) .filtros-fila { display: none; }
+.mapa-zona.compacto .filtros-fila .filtros-chips { flex: none; }
+.mapa-zona.compacto .filtros-fila .buscador-lugar { flex: 1 1 150px; width: auto; min-width: 0; }
+.mapa-zona.compacto .buscador-input { min-width: 0; text-overflow: ellipsis; }
+.mapa-zona.compacto .sugerencias-lugar { max-height: 30dvh; overflow-y: auto; }
+
+.mapa-zona.compacto .nav-etiqueta { min-width: 0; flex: 1 1 auto; }
+.mapa-zona.compacto .nav-selector { max-width: 100%; }
+.mapa-zona.compacto .nav-selector-texto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the route list dropdown is a child of .nav-etiqueta: it must not be clipped */
+.mapa-zona:not(.compacto) .superior .nav-etiqueta { overflow: visible; }
+
+/* sin-franja-inferior: the map runs under the phone's floating bottom bar; bottom controls
+   move up by --barra-inf instead of leaving an empty strip */
+@media (pointer: coarse) and (max-width: 900px) {
+  .main > .sidebar { padding-bottom: var(--barra-inf, 0px); box-sizing: border-box; }
+  .main .mapa-zona .controles-mapa { bottom: calc(34px + var(--barra-inf, 0px)); }
+  .main .mapa-zona .legend { bottom: calc(16px + var(--barra-inf, 0px)); }
+  .main .mapa-zona.compacto .reproductor { bottom: calc(34px + var(--barra-inf, 0px)); }
+  .mapa-zona .map .leaflet-bottom { transform: translateY(calc(-1 * var(--barra-inf, 0px))); }
+  .mapa-zona.compacto .map .leaflet-top.leaflet-left { transform: translateY(calc(-1 * var(--barra-inf, 0px))); }
+}
+
+/* orden-compacto: route bar, cut notice, "Filtros" button, then the filter fields */
+.mapa-zona.compacto .superior .nav-rutas { order: 1; }
+.mapa-zona.compacto .superior .aviso-corte { order: 1; }
+.mapa-zona.compacto .superior .filtros-toggle-compacto { order: 2; }
+.mapa-zona.compacto .superior .filtros-fila { order: 3; }
+
+/* reproductor-junto-al-zoom: on small maps the player bar starts to the right of the zoom buttons */
+.mapa-zona.compacto .reproductor {
+  left: 64px;
+  right: 76px;
+  width: auto;
+}
+
+/* reproductor-svg: drawn play/pause icons, and the player kept clear of the legend and the round buttons */
+.repro-btn { display: grid; place-items: center; padding: 0; }
+@media (max-width: 1100px) {
+  .mapa-zona:not(.compacto) .reproductor { bottom: 84px; }
+}
+.mapa-zona.compacto .reproductor { right: 88px; }
+
+/* leyenda-sobre-reproductor: in compact maps the legend stays visible and sits above the player bar */
+.mapa-zona.compacto:has(.reproductor) .legend { bottom: 140px; }
+@media (pointer: coarse) and (max-width: 900px) {
+  .main .mapa-zona.compacto:has(.reproductor) .legend {
+    bottom: calc(90px + var(--barra-inf, 0px));
+  }
+}
+
+/* reproductor-compacto-fino: on small maps the player content shrinks to fit inside its bar */
+.mapa-zona.compacto .reproductor { gap: 6px; padding: 6px 8px; }
+.mapa-zona.compacto .repro-barra { min-width: 24px; }
+.mapa-zona.compacto .repro-hora { font-size: 11px; }
+.mapa-zona.compacto .repro-vel { padding: 0 6px; }
+.mapa-zona.compacto .repro-btn { min-width: 30px; height: 30px; }
+
+/* sin-desplazamiento-pagina: the page is exactly one screen tall and only the inner lists scroll,
+   so lock the document itself; iOS can no longer push the header up when a text field gets focus */
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* altura-exacta-tactil: the visible page is exactly one screen tall (measured: 796 px);
+   the strip under the map is Safari's own toolbar area, outside the page */
+@media (pointer: coarse) {
+  .app { min-height: 0; height: 100dvh; }
+}
+
+/* filtros-en-tarjeta: on small maps the open filters sit in one card, all fields 44 px tall */
+.mapa-zona.compacto .filtros-toggle-compacto { min-height: 40px; border-radius: 10px; }
+.mapa-zona.compacto .superior.filtros-visibles .filtros-toggle-compacto {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.16);
+}
+.mapa-zona.compacto .superior.filtros-visibles .filtros-fila {
+  padding: 10px;
+  gap: 8px;
+  background: rgba(20, 16, 32, 0.88);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  backdrop-filter: blur(4px);
+}
+.mapa-zona.compacto .filtros-fila .filtro-toggle,
+.mapa-zona.compacto .filtros-fila .buscador-input { min-height: 44px; }
+.mapa-zona.compacto .filtros-fila .filtro-toggle { flex: 1 1 auto; justify-content: flex-start; }
+.mapa-zona.compacto .filtros-fila .chip-quitar { width: 44px; height: 44px; }
+
+/* filtros-compacto-v2: the date panel stays in the normal flow (no backdrop-filter on the card,
+   which would make it the containing block of the absolutely positioned panel) */
+.mapa-zona.compacto .superior.filtros-visibles .filtros-fila {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(20, 16, 32, 0.94);
+}
+.mapa-zona.compacto .superior .filtro-fecha {
+  position: static;
+  transform: none;
+  z-index: auto;
+  flex: 1 1 100%;
+  width: 100%;
+  max-height: 50dvh;
+  overflow-y: auto;
+}
+.mapa-zona.compacto .filtros-fila .filtros-chips { flex: 1 1 100%; gap: 8px; }
+.mapa-zona.compacto .filtros-fila .filtros-chips .filtro-toggle { flex: 1 1 auto; }
+.mapa-zona.compacto .filtros-fila .buscador-lugar { flex: 1 1 100%; width: 100%; }
+.mapa-zona.compacto .buscador-icono { top: 14px; }
+
+/* hoja-de-fechas: on small maps the date picker is a bottom sheet with room for the calendar,
+   and the "Filtros" button matches the fields below it */
+.mapa-zona.compacto .superior .filtro-fecha {
+  position: fixed;
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: none;
+  width: auto;
+  min-width: 0;
+  max-height: 80dvh;
+  overflow-y: auto;
+  z-index: 2500;
+  box-sizing: border-box;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 16px 16px 0 0;
+  border-bottom: none;
+  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.55);
+}
+.mapa-zona.compacto .superior .filtros-toggle-compacto {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.mapa-zona.compacto .superior .filtros-toggle-compacto.activo { border-color: var(--accent); }
+.mapa-zona.compacto .superior .filtros-toggle-texto { flex: 1; }
+.mapa-zona.compacto .superior .filtros-toggle-flecha { color: var(--text-dim); font-size: 11px; }
+
+/* hoja-fechas-sobre-barra: keep the end of the date sheet clear of the phone's bottom bar */
+@media (pointer: coarse) {
+  .mapa-zona.compacto .superior .filtro-fecha { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* panel-lateral-historial: on wide screens the history is also opened by the round button and
+   slides in over the map from the right, so no vertical strip is needed */
+.fab-historial { display: grid; }
+.main.sin-paneles .fab-historial { display: none; }
+@media not all and (max-width: 900px) and (orientation: portrait) {
+  .main > .sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(340px, 90%);
+    z-index: 45;
+    box-shadow: -12px 0 30px rgba(0, 0, 0, 0.5);
+    transition: transform 200ms ease-out;
+  }
+  .main > .sidebar.plegado, .main > .sidebar.plegado:not(.con-visitas) {
+    width: min(340px, 90%);
+    transform: translateX(100%);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .sidebar.plegado:not(.con-visitas) .sidebar-titulo-btn { writing-mode: horizontal-tb; }
+}
+
+/* less clutter on phones: no position card while the filters card is open */
+.mapa-zona.compacto:has(.superior.filtros-visibles) .capa-superior > .panel { display: none; }
+
+/* resumen-filtros: the "Filtros" button text may carry a summary; keep it on one line */
+.mapa-zona.compacto .superior .filtros-toggle-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* historial-en-flujo: on wide screens the open history takes its own column (the map shrinks),
+   so it never covers the round buttons; folded, it takes no space */
+@media not all and (max-width: 900px) and (orientation: portrait) {
+  .main > .sidebar {
+    position: static;
+    width: clamp(240px, 26vw, 340px);
+    transform: none;
+    box-shadow: none;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .main > .sidebar.plegado,
+  .main > .sidebar.plegado:not(.con-visitas) { display: none; }
 }

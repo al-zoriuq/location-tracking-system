@@ -1,6 +1,23 @@
 import "./App.css";
+import PopupPosicion from "./PopupPosicion.jsx";
+import { velocidadActual } from "./velocidad.js";
+import { calcularEstadisticas } from "./utils/estadisticas.js";
+import MarcadoresParada from "./MarcadoresParada.jsx";
+import { normalizarPunto } from "./utils/viajes.js";
+import { detectarParadas } from "./utils/paradas.js";
+import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
+import PanelVisitas from "./PanelVisitas.jsx";
+import { calcularVisitas } from "./visitas.js";
+import SelectorRuta from "./SelectorRuta.jsx";
+import { formatearHoraCorta } from "./utils/tiempo.js";
+import Reproductor from "./Reproductor.jsx";
+import SelectorFechaHora from "./SelectorFechaHora.jsx";
+import AyudaModal from "./AyudaModal.jsx";
+import Toasts from "./Toasts.jsx";
+import { useToasts } from "./useToasts.js";
+import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -11,6 +28,7 @@ const DESFASE_ZONA = "-05:00";
 const OPCIONES_ZONA = { timeZone: ZONA };
 const OPCIONES_HORA_CORTA = { timeZone: ZONA, hour: "2-digit", minute: "2-digit" };
 
+// Current position while data keeps arriving: a pulsing dot
 const iconoActual = L.divIcon({
   className: "",
   html: '<div class="marker-current"></div>',
@@ -18,26 +36,103 @@ const iconoActual = L.divIcon({
   iconAnchor: [9, 9],
 });
 
+// Current position when the last point is old (the device stopped reporting): still and dim
+const iconoActualInactivo = L.divIcon({
+  className: "",
+  html: '<div class="marker-current inactivo"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+// Start of a route: a play triangle on green. The shape, not only the colour,
+// tells it apart from the end flag and from the current-position dot.
 const iconoInicio = L.divIcon({
   className: "",
-  html: '<div class="marker-start"></div>',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  html:
+    '<div class="marker-start">' +
+    '<svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">' +
+    '<path d="M2.6 1.3 L8.4 5 L2.6 8.7 Z" fill="currentColor"/></svg></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
 });
 
 // End of a past route: same size as the start marker, different color, so a
 // finished trip reads start -> end at a glance.
+// End of a finished route: a flag on coral, so a trip reads start -> end at a glance.
 const iconoFin = L.divIcon({
   className: "",
-  html: '<div class="marker-end"></div>',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  html:
+    '<div class="marker-end">' +
+    '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">' +
+    '<path d="M3 1.5 V10.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>' +
+    '<path d="M3.6 2 H9.6 L8.1 4.4 L9.6 6.8 H3.6 Z" fill="currentColor"/></svg></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
+// A route cut by the date filter: its edge is the filter's edge, not the real start/end.
+// Hollow circles tell it apart from the start triangle and the end flag.
+const iconoInicioCortado = L.divIcon({
+  className: "",
+  html: '<div class="marker-cortado inicio"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+const iconoFinCortado = L.divIcon({
+  className: "",
+  html: '<div class="marker-cortado fin"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 });
 
 // A "trip" is considered finished if this much time passes with no new GPS
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
 const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
+
+// The live view shows the last VENTANA_VIVO_H hours. History is requested with
+// a wider margin so a route that began before that window is not cut at its edge.
+const VENTANA_VIVO_H = 24;
+const MARGEN_VIVO_H = 72;
+// With a place filter and no dates, look back this far.
+const VENTANA_LUGAR_H = 720; // 30 days
+// The backend stores GPS timestamps as Bogota wall-clock time, without zone.
+const DESFASE_BOGOTA = "-05:00";
+// A range of at least this many hours completes the routes on its edges by
+// default; the user can change it with the checkbox in the filter panel.
+const UMBRAL_COMPLETAR_H = 24;
+// When completing, the range is requested this many hours wider on each side.
+const MARGEN_RANGO_H = 72;
+
+// "YYYY-MM-DD HH:MM:SS" (Bogota wall clock, as the backend sends it) <-> ms
+const aMsBogota = (texto) => new Date(texto.replace(" ", "T") + DESFASE_BOGOTA).getTime();
+const aTextoBogota = (ms) =>
+  new Date(ms).toLocaleString("sv-SE", { timeZone: "America/Bogota" });
+
+// In live mode the history is loaded once and then topped up with only the new
+// points. A full reload happens every RECARGA_COMPLETA_MS as a safety net.
+const RECARGA_COMPLETA_MS = 5 * 60 * 1000;
+
+// Merges freshly fetched rows into the history already on screen, keyed by
+// timestamp_gps, and drops rows older than the cutoff. Returns the same array
+// when nothing changed, so React does not recompute the routes.
+function fusionarHistorial(previo, nuevos, corteMs) {
+  const porHora = new Map(previo.map((f) => [f.timestamp_gps, f]));
+  let cambio = false;
+  for (const f of nuevos) {
+    if (!porHora.has(f.timestamp_gps)) {
+      porHora.set(f.timestamp_gps, f);
+      cambio = true;
+    }
+  }
+  const fusionado = [...porHora.values()].filter(
+    (f) => aMsBogota(f.timestamp_gps) >= corteMs
+  );
+  if (!cambio && fusionado.length === previo.length) return previo;
+  return fusionado.sort((a, b) =>
+    a.timestamp_gps < b.timestamp_gps ? -1 : a.timestamp_gps > b.timestamp_gps ? 1 : 0
+  );
+}
 const RADIO_TIERRA_M = 6371000;
 // Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
@@ -95,6 +190,40 @@ async function ajustarACarretera(puntos) {
   return resultados.flat();
 }
 
+// Free margins around the map: what floats over it (top bars, position card, legend,
+// player, round buttons) is measured so the route is fitted into the visible area.
+function margenesLibres(map) {
+  const cont = map.getContainer();
+  const zona = cont.parentElement;
+  const W = cont.clientWidth;
+  const H = cont.clientHeight;
+  const base = cont.getBoundingClientRect();
+  const visible = (el) => el.getClientRects().length > 0;
+  const caja = (el) => {
+    const q = el.getBoundingClientRect();
+    return { top: q.top - base.top, bottom: q.bottom - base.top, left: q.left - base.left, right: q.right - base.left, w: q.width, h: q.height };
+  };
+  let t = 40, l = 40, b = 40, r = 40;
+  zona.querySelectorAll(".capa-superior > *").forEach((el) => {
+    if (!visible(el)) return;
+    const q = caja(el);
+    if (q.h <= 0) return;
+    if (q.left < 40 && q.w < W * 0.5) l = Math.max(l, q.right + 12);
+    else t = Math.max(t, q.bottom + 12);
+  });
+  zona.querySelectorAll(".legend, .reproductor").forEach((el) => {
+    if (!visible(el)) return;
+    b = Math.max(b, H - caja(el).top + 12);
+  });
+  zona.querySelectorAll(".controles-mapa").forEach((el) => {
+    if (!visible(el)) return;
+    r = Math.max(r, W - caja(el).left + 12);
+  });
+  if (t + b > H * 0.7) { const k = (H * 0.7) / (t + b); t *= k; b *= k; }
+  if (l + r > W * 0.7) { const k = (W * 0.7) / (l + r); l *= k; r *= k; }
+  return { l, t, r, b };
+}
+
 function AjustarVista({ puntos, resetKey }) {
   const map = useMap();
   const yaAjustado = useRef(false);
@@ -109,10 +238,13 @@ function AjustarVista({ puntos, resetKey }) {
     if (yaAjustado.current) return;
 
     if (puntos.length > 1) {
-      map.fitBounds(puntos, { padding: [60, 60] });
+      const m = margenesLibres(map);
+      map.fitBounds(puntos, { paddingTopLeft: [m.l, m.t], paddingBottomRight: [m.r, m.b] });
       yaAjustado.current = true;
     } else if (puntos.length === 1) {
-      map.setView(puntos[0], 13);
+      const m = margenesLibres(map);
+      map.setView(puntos[0], 13, { animate: false });
+      map.panBy([-(m.l - m.r) / 2, -(m.t - m.b) / 2], { animate: false });
       yaAjustado.current = true;
     }
   }, [puntos, map, resetKey]);
@@ -438,6 +570,40 @@ function RuedaOpciones({ opciones, valor, onChange }) {
   );
 }
 
+// Leaflet only re-measures its container on window resizes. The map zone can
+// also change size on its own (compact mode, scrollbars, the history list), so
+// re-measure whenever the zone changes; otherwise the new area stays gray.
+function AjustarTamano({ zonaRef }) {
+  const map = useMap();
+  useEffect(() => {
+    const el = zonaRef.current;
+    if (!el) return undefined;
+    let cuadro = 0;
+    const observador = new ResizeObserver(() => {
+      cancelAnimationFrame(cuadro);
+      cuadro = requestAnimationFrame(() => map.invalidateSize({ animate: false }));
+    });
+    observador.observe(el);
+    return () => {
+      cancelAnimationFrame(cuadro);
+      observador.disconnect();
+    };
+  }, [map, zonaRef]);
+  return null;
+}
+
+// Asks the backend if the device has EVER been inside the place's bounding
+// box (whole history, not just the loaded date range). Resolves {visitado}.
+function consultarLugarVisitado(lugar) {
+  const parametros = new URLSearchParams({
+    lat_min: lugar.lat_min,
+    lat_max: lugar.lat_max,
+    lon_min: lugar.lon_min,
+    lon_max: lugar.lon_max,
+  });
+  return pedirJSON(import.meta.env.BASE_URL + `api/lugar-visitado?${parametros}`);
+}
+
 function App() {
   const [location, setLocation] = useState(null);
   const [historial, setHistorial] = useState([]);
@@ -453,20 +619,44 @@ function App() {
   const [snapCargando, setSnapCargando] = useState(false);
   const [capasAbierto, setCapasAbierto] = useState(false);
   const [panelExpandido, setPanelExpandido] = useState(false);
+  const [filtrosVisibles, setFiltrosVisibles] = useState(false);
+  const [visitaSel, setVisitaSel] = useState(null);
+  const [vueloA, setVueloA] = useState(null);
+  const [margenSuperior, setMargenSuperior] = useState(0);
+  const [paradasVisibles, setParadasVisibles] = useState(true);
+  const [reproductorAbierto, setReproductorAbierto] = useState(false);
+  const [panelesOcultos, setPanelesOcultos] = useState(false);
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
+  const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [lugarSinHistorial, setLugarSinHistorial] = useState(null); // name of a place never visited
+  const [sinResultadosLugar, setSinResultadosLugar] = useState(false);
+  const [historialCargado, setHistorialCargado] = useState(false);
+  // Guards against out-of-order answers when a place is picked twice quickly
+  const eleccionActual = useRef(0);
+  const { toasts, cerrar, mostrar, registrarFallo, registrarExito } = useToasts();
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
+  // Default end of the range: right now (the server rejects future dates)
+  const [ahoraH, ahoraM] = formatearHoraCorta(new Date()).split(":").map(Number);
   const [filtroAbierto, setFiltroAbierto] = useState(false);
-  const [fechaDesde, setFechaDesde] = useState(hoy);
-  const [horaDesde, setHoraDesde] = useState(12);
-  const [minDesde, setMinDesde] = useState(0);
-  const [meridianoDesde, setMeridianoDesde] = useState("AM");
-  const [fechaHasta, setFechaHasta] = useState(hoy);
-  const [horaHasta, setHoraHasta] = useState(11);
-  const [minHasta, setMinHasta] = useState(59);
-  const [meridianoHasta, setMeridianoHasta] = useState("PM");
+  // Re-render every 30 s while the date panel is open, so the "now" limit of the pickers stays current
+  const [, setTickLimite] = useState(0);
+  useEffect(() => {
+    if (!filtroAbierto) return undefined;
+    const id = setInterval(() => setTickLimite((t) => t + 1), 30000);
+    return () => clearInterval(id);
+  }, [filtroAbierto]);
+  // Range as "YYYY-MM-DDTHH:mm" strings (Bogota time), one per end
+  const [desdeFH, setDesdeFH] = useState(`${hoy}T00:00`);
+  const [hastaFH, setHastaFH] = useState(
+    `${hoy}T${String(ahoraH).padStart(2, "0")}:${String(ahoraM).padStart(2, "0")}`
+  );
+  const [fhAbierto, setFhAbierto] = useState(null); // "desde" | "hasta" | null
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
+  // null = automatic; true/false = the user's choice in the filter panel
+  const [completarManual, setCompletarManual] = useState(null);
 
   // Location filter state
   const [busquedaLugar, setBusquedaLugar] = useState("");
@@ -483,8 +673,33 @@ function App() {
   // place's bounding box (city/town box, or the small radius box built
   // around a single-point address).
   const rutas = useMemo(() => {
-    if (!lugarActivo) return todasLasRutas;
-    return todasLasRutas.filter((puntos) =>
+    if (rangoActivo && rangoActivo.invalido) return [];
+    let base = todasLasRutas;
+
+    if (rangoActivo) {
+      // Completing: keep whole routes that have a point inside the range.
+      // Not completing: the points were requested for the exact range, so the
+      // routes are already cut at its edges.
+      if (rangoActivo.completar) {
+        base = base.filter((puntos) =>
+          puntos.some(
+            (p) => p.timestamp_gps >= rangoActivo.desde && p.timestamp_gps <= rangoActivo.hasta
+          )
+        );
+      }
+    } else if (!lugarActivo) {
+      // Live mode: keep the routes that still have a point inside the live
+      // window, and show them complete (never cut at the window edge).
+      const corte = Date.now() - VENTANA_VIVO_H * 3600 * 1000;
+      base = base.filter(
+        (puntos) => aMsBogota(puntos[puntos.length - 1].timestamp_gps) >= corte
+      );
+    }
+
+    if (!lugarActivo) return base;
+
+    // A route matches a place if any of its points falls inside the box.
+    return base.filter((puntos) =>
       puntos.some((p) => {
         const lat = Number(p.latitud);
         const lon = Number(p.longitud);
@@ -496,11 +711,46 @@ function App() {
         );
       })
     );
-  }, [todasLasRutas, lugarActivo]);
+  }, [todasLasRutas, lugarActivo, rangoActivo]);
 
   const siguiendoActual = indiceRuta === null;
   const indiceMostrado = siguiendoActual ? rutas.length - 1 : indiceRuta;
   const puntosRutaMostrada = rutas[indiceMostrado] || [];
+
+  // Stops of the route on screen: at least 5 min within 50 m (see utils/paradas.js)
+  const puntosNorm = useMemo(() => puntosRutaMostrada.map(normalizarPunto), [puntosRutaMostrada]);
+  const paradas = useMemo(() => detectarParadas(puntosNorm), [puntosNorm]);
+
+  // Distance, duration and speeds of the route on screen (for the popup)
+  const estadisticasRuta = useMemo(
+    () => (puntosNorm.length > 1 ? calcularEstadisticas([puntosNorm]) : null),
+    [puntosNorm]
+  );
+
+  // Live = following the newest route and its last point is under 2 minutes old
+  const ultimaLectura = puntosNorm[puntosNorm.length - 1];
+  // The end of the shown route is "the current position" only in live mode:
+  // no date range and no place filter. Otherwise it is just where that route ended.
+  const finEsActual = siguiendoActual && !rangoActivo && !lugarActivo && Boolean(ultimaLectura);
+  const enVivo =
+    finEsActual && Date.now() - ultimaLectura.fecha.getTime() <= 120000;
+  // A speed only means something while the device is reporting
+  const velocidadActualKmh = enVivo ? velocidadActual(puntosNorm) : null;
+
+  // Keep the chosen route stable while the live window slides: it is
+  // remembered by the timestamp of its first point, because its position in
+  // the list changes when old routes fall out of the window.
+  const idRutaElegida = useRef(null);
+  useEffect(() => {
+    idRutaElegida.current =
+      indiceRuta === null ? null : (rutas[indiceRuta]?.[0]?.timestamp_gps ?? null);
+  }, [indiceRuta]);
+  useEffect(() => {
+    const id = idRutaElegida.current;
+    if (id === null) return;
+    const nuevo = rutas.findIndex((r) => r[0].timestamp_gps === id);
+    setIndiceRuta(nuevo === -1 || nuevo >= rutas.length - 1 ? null : nuevo);
+  }, [rutas]);
 
   const ruta = puntosRutaMostrada.map((punto) => [
     Number(punto.latitud),
@@ -509,42 +759,118 @@ function App() {
 
   const historialReciente = [...puntosRutaMostrada].reverse();
 
+  // The layout follows the real size of the map zone, not the device type:
+  // a narrow or short zone switches to the compact overlays.
+  const zonaRef = useRef(null);
+  const [compacto, setCompacto] = useState(false);
+  const [bajo, setBajo] = useState(false);
+  const hayUbicacion = Boolean(location);
+  useEffect(() => {
+    const el = zonaRef.current;
+    if (!el) return undefined;
+    const medir = () => {
+      setCompacto(el.clientWidth < 760 || el.clientHeight < 560);
+      setBajo(el.clientHeight < 380);
+    };
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [hayUbicacion]);
+
   useEffect(() => {
     if (busquedaLugar.trim().length < 3) {
       setSugerenciasLugar([]);
-      return;
+      setSinResultadosLugar(false);
+      setBuscandoLugar(false);
+      return undefined;
     }
 
+    let cancelado = false;
     setBuscandoLugar(true);
+    setSinResultadosLugar(false);
     const timer = setTimeout(async () => {
       try {
-        const resp = await fetch(
+        const data = await pedirJSON(
           import.meta.env.BASE_URL + `api/buscar-lugar?q=${encodeURIComponent(busquedaLugar)}`
         );
-        const data = await resp.json();
-        setSugerenciasLugar(Array.isArray(data) ? data : []);
+        if (cancelado) return;
+        const lugares = Array.isArray(data) ? data : [];
+        setSugerenciasLugar(lugares);
+        setSinResultadosLugar(lugares.length === 0);
+        registrarExito("busqueda", MENSAJE_RECUPERADA);
+
+        // Mark each suggestion with / without history as the answers arrive.
+        // A failed check only leaves that suggestion unmarked: picking it asks again.
+        lugares.forEach((lugar, i) => {
+          consultarLugarVisitado(lugar)
+            .then(({ visitado }) => {
+              if (cancelado) return;
+              setSugerenciasLugar((lista) =>
+                lista.map((l, k) => (k === i ? { ...l, visitado } : l))
+              );
+            })
+            .catch((error) => console.error("Error comprobando el historial del lugar:", error));
+        });
       } catch (error) {
-        console.error("Error buscando lugar:", error);
+        if (cancelado) return;
+        const { clave, mensaje } = describirFallo(
+          error,
+          "busqueda",
+          "No se pudo buscar el lugar. Intenta de nuevo."
+        );
+        registrarFallo("busqueda", clave, mensaje);
         setSugerenciasLugar([]);
       } finally {
-        setBuscandoLugar(false);
+        if (!cancelado) setBuscandoLugar(false);
       }
     }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
   }, [busquedaLugar]);
 
-  const elegirLugar = (lugar) => {
-    setLugarActivo(lugar);
+  const elegirLugar = async (lugar) => {
+    const eleccion = ++eleccionActual.current;
     setBusquedaLugar(lugar.nombre);
     setSugerenciasLugar([]);
+    setSinResultadosLugar(false);
+    setLugarSinHistorial(null);
     setIndiceRuta(null);
+
+    try {
+      const { visitado } = await consultarLugarVisitado(lugar);
+      if (eleccion !== eleccionActual.current) return;
+
+      if (visitado) {
+        setLugarActivo(lugar);
+        setFiltrosVisibles(false);
+      } else {
+        setLugarActivo(null);
+        setLugarSinHistorial(lugar.nombre);
+        mostrar("Este lugar nunca se ha visitado.", "aviso");
+      }
+    } catch (error) {
+      console.error("Error comprobando el historial del lugar:", error);
+      if (eleccion !== eleccionActual.current) return;
+      const { mensaje } = describirFallo(
+        error,
+        "lugar",
+        "No se pudo comprobar si el lugar se ha visitado. Intenta de nuevo en unos segundos."
+      );
+      mostrar(mensaje, "error");
+    }
   };
 
   const quitarLugar = () => {
+    eleccionActual.current += 1;
     setLugarActivo(null);
+    setLugarSinHistorial(null);
     setBusquedaLugar("");
     setSugerenciasLugar([]);
+    setSinResultadosLugar(false);
     setIndiceRuta(null);
   };
 
@@ -587,6 +913,19 @@ function App() {
   // Snapped line when available, raw GPS line otherwise.
   const rutaDibujada = snapActivo && rutaAjustada ? rutaAjustada : ruta;
 
+  // A route is cut by the filter when its first/last point sits on the range edge
+  // (readings arrive every ~30 s, so 2 minutes of tolerance). Only when not completing.
+  const TOL_BORDE_MS = 2 * 60 * 1000;
+  const hayCorte =
+    Boolean(rangoActivo) && !rangoActivo.completar && !rangoActivo.invalido && puntosRutaMostrada.length > 0;
+  const cortadaInicio =
+    hayCorte &&
+    aMsBogota(puntosRutaMostrada[0].timestamp_gps) - aMsBogota(rangoActivo.desde) <= TOL_BORDE_MS;
+  const cortadaFin =
+    hayCorte &&
+    aMsBogota(rangoActivo.hasta) -
+      aMsBogota(puntosRutaMostrada[puntosRutaMostrada.length - 1].timestamp_gps) <= TOL_BORDE_MS;
+
   const etiquetaRuta = useMemo(() => {
     if (puntosRutaMostrada.length === 0) return "";
 
@@ -606,12 +945,86 @@ function App() {
             OPCIONES_HORA_CORTA
           )}`;
 
-    return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}`;
-  }, [puntosRutaMostrada, indiceMostrado, rutas.length]);
+    return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}${cortadaInicio || cortadaFin ? " · recortada" : ""}`;
+  }, [puntosRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
 
   const verRutaAnterior = () => {
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
+
+  const verRutaSiguiente = () => {
+    const siguiente = indiceMostrado + 1;
+    setIndiceRuta(siguiente >= rutas.length - 1 ? null : siguiente);
+  };
+
+  // The newest route is always "following the live position" (null)
+  const irARuta = (indice) => {
+    setIndiceRuta(indice >= rutas.length - 1 ? null : indice);
+  };
+
+  // ----- Visits to the searched place -----
+  const visitas = useMemo(() => calcularVisitas(rutas, lugarActivo), [rutas, lugarActivo]);
+
+  // The selection belongs to the place it was made on, so a new search never
+  // inherits a stale highlight
+  const visitaElegida =
+    visitaSel &&
+    visitaSel.lugar === lugarActivo?.nombre &&
+    visitas.some((v) => v.id === visitaSel.id)
+      ? visitaSel.id
+      : null;
+
+  const elegirVisita = (visita) => {
+    setVisitaSel({ lugar: lugarActivo?.nombre, id: visita.id });
+    if (visita.indiceRuta !== indiceMostrado) irARuta(visita.indiceRuta);
+    setVueloA({ centro: [visita.cercano.lat, visita.cercano.lon], n: Date.now() });
+  };
+
+  // Why there is nothing to show for the chosen place. Never leave it empty
+  // without a reason: either it was never visited, or only outside the dates.
+  const mensajeLugar = lugarSinHistorial
+    ? "Este lugar nunca se ha visitado."
+    : lugarActivo && historialCargado && rutas.length === 0
+      ? rangoActivo
+        ? "Se ha visitado antes, pero no en el rango de fechas seleccionado."
+        : "Se ha visitado antes, pero no en los \u00faltimos 30 d\u00edas."
+      : null;
+
+  // Height of the panels floating over the top of the map, so popups and
+  // flights keep clear of them
+  useEffect(() => {
+    const zona = zonaRef.current;
+    const capa = zona ? zona.querySelector(".capa-superior") : null;
+    if (!zona || !capa) return undefined;
+    const medir = () => {
+      const tope = capa.getBoundingClientRect().top;
+      let bajo = 0;
+      for (const hijo of capa.children) {
+        bajo = Math.max(bajo, hijo.getBoundingClientRect().bottom - tope);
+      }
+      setMargenSuperior(Math.round(bajo));
+    };
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(zona);
+    for (const hijo of capa.children) observador.observe(hijo);
+    return () => observador.disconnect();
+  }, [hayUbicacion, compacto]);
+
+  // One entry per route for the route picker
+  const opcionesRutas = useMemo(() => {
+    const hora = (f) =>
+      f.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "2-digit", minute: "2-digit" });
+    return rutas.map((puntos) => {
+      const inicio = parsearFechaGPS(puntos[0].timestamp_gps);
+      const fin = parsearFechaGPS(puntos[puntos.length - 1].timestamp_gps);
+      return {
+        fecha: inicio.toLocaleDateString("es-CO", OPCIONES_ZONA),
+        horario: `${hora(inicio)} - ${hora(fin)}`,
+        puntos: puntos.length,
+      };
+    });
+  }, [rutas]);
 
   const volverARutaActual = () => {
     setIndiceRuta(null);
@@ -625,15 +1038,52 @@ function App() {
     return hora12 === 12 ? 12 : hora12 + 12;
   };
 
+  // Current Bogota time as "YYYY-MM-DDTHH:mm": upper bound of the pickers
+  const ahoraFH = () => {
+    const [h, m] = formatearHoraCorta(new Date()).split(":").map(Number);
+    const dia = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
+    return `${dia}T${dosDigitos(h)}:${dosDigitos(m)}`;
+  };
+
+  const rangoDelFormulario = () => ({
+    desde: `${desdeFH.replace("T", " ")}:00`,
+    hasta: `${hastaFH.replace("T", " ")}:59`,
+  });
+
+  // Automatic default: complete the routes when the typed range is long
+  const { desde: formDesde, hasta: formHasta } = rangoDelFormulario();
+  const completarAuto =
+    (aMsBogota(formHasta) - aMsBogota(formDesde)) / 3600000 >= UMBRAL_COMPLETAR_H;
+  const completarEfectivo = completarManual ?? completarAuto;
+
+  // "Hasta" must be strictly later than "Desde" (same-minute ranges are invalid too)
+  const rangoInvalido = hastaFH <= desdeFH;
+
+  // Short text for the "Filtros" button: what is currently applied
+  const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const diaCorto = (texto) => {
+    const [, m, d] = texto.slice(0, 10).split("-");
+    return `${Number(d)} ${MESES_CORTOS[Number(m) - 1]}`;
+  };
+  const partesResumen = [];
+  if (rangoActivo) {
+    if (rangoActivo.invalido) {
+      partesResumen.push("fechas no v\u00e1lidas");
+    } else {
+      const a = diaCorto(rangoActivo.desde);
+      const b = diaCorto(rangoActivo.hasta);
+      partesResumen.push(a === b ? a : `${a} \u2013 ${b}`);
+    }
+  }
+  if (lugarActivo) partesResumen.push(lugarActivo.nombre.split(",")[0]);
+  const resumenFiltros = partesResumen.length ? " \u00b7 " + partesResumen.join(" \u00b7 ") : "";
+
   const aplicarFiltro = () => {
-    const h1 = a24Horas(horaDesde, meridianoDesde);
-    const h2 = a24Horas(horaHasta, meridianoHasta);
-    setRangoActivo({
-      desde: `${fechaDesde} ${dosDigitos(h1)}:${dosDigitos(minDesde)}:00`,
-      hasta: `${fechaHasta} ${dosDigitos(h2)}:${dosDigitos(minHasta)}:59`,
-    });
+    setRangoActivo({ ...rangoDelFormulario(), completar: completarEfectivo, invalido: rangoInvalido });
+    setCompletarManual(null);
     setIndiceRuta(null);
     setFiltroAbierto(false);
+    if (!rangoInvalido) setFiltrosVisibles(false);
   };
 
   const quitarFiltro = () => {
@@ -650,72 +1100,142 @@ function App() {
   useEffect(() => {
     const obtenerUbicacion = async () => {
       try {
-        const response = await fetch(import.meta.env.BASE_URL + "api/ultima-ubicacion");
-        if (!response.ok) {
+        const data = await pedirJSON(import.meta.env.BASE_URL + "api/ultima-ubicacion");
+        setLocation(data);
+        registrarExito("ubicacion", MENSAJE_RECUPERADA);
+      } catch (error) {
+        // 404 = the table is still empty: not a failure, there is just nothing to show
+        if (error instanceof ErrorApi && error.tipo === "vacio") {
           setLocation(null);
+          registrarExito("ubicacion");
           return;
         }
-        const data = await response.json();
-        setLocation(data);
-      } catch (error) {
-        console.error("Error obteniendo ubicación:", error);
-        setLocation(null);
+        const { clave, mensaje } = describirFallo(error, "ubicacion");
+        registrarFallo("ubicacion", clave, mensaje);
+        // On a network or server failure the last known position stays on screen
       }
     };
 
-    const obtenerHistorial = async () => {
+    const modoVivo = !rangoActivo && !lugarActivo;
+    let cancelado = false; // a newer run of this effect supersedes this one
+    setHistorialCargado(false);
+    let ultimoTs = null; // newest timestamp_gps we hold (live mode)
+    let ultimaCompletaMs = 0; // when the last full load happened
+
+    const obtenerHistorial = async (completo = true) => {
       try {
         let url = import.meta.env.BASE_URL + "api/historial-ubicaciones";
         if (rangoActivo) {
           url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
+          // The server widens the range, clamped to its own "now", when asked
+          if (rangoActivo.completar) url += `&margen_horas=${MARGEN_RANGO_H}`;
+        } else if (modoVivo && !completo && ultimoTs) {
+          // Incremental: only the points after the newest one we hold, minus one
+          // minute of overlap (duplicates are dropped when merging). No upper bound.
+          const desdeTxt = aTextoBogota(aMsBogota(ultimoTs) - 60 * 1000);
+          url += `?despues_de=${encodeURIComponent(desdeTxt)}`;
+        } else {
+          const horas = lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H;
+          url += `?horas=${horas}`;
         }
-        const response = await fetch(url);
-        if (!response.ok) {
-          setHistorial([]);
-          return;
+        const data = await pedirJSON(url);
+        if (cancelado) return;
+        const filas = Array.isArray(data) ? data : [];
+        registrarExito("historial", MENSAJE_RECUPERADA);
+        setHistorialCargado(true);
+
+        if (modoVivo && !completo) {
+          if (filas.length) {
+            const ultimo = filas[filas.length - 1].timestamp_gps;
+            if (!ultimoTs || ultimo > ultimoTs) ultimoTs = ultimo;
+          }
+          setHistorial((previo) =>
+            fusionarHistorial(previo, filas, Date.now() - MARGEN_VIVO_H * 3600 * 1000)
+          );
+        } else {
+          ultimoTs = filas.length ? filas[filas.length - 1].timestamp_gps : null;
+          ultimaCompletaMs = Date.now();
+          setHistorial(filas);
         }
-        const data = await response.json();
-        setHistorial(Array.isArray(data) ? data : []);
       } catch (error) {
-        console.error("Error obteniendo historial:", error);
-        setHistorial([]);
+        if (cancelado) return;
+        const { clave, mensaje } = describirFallo(error, "historial");
+        registrarFallo("historial", clave, mensaje);
+        // A rejected request (e.g. an invalid range) leaves nothing valid to show;
+        // network and server failures keep what is already on screen.
+        if (completo && error instanceof ErrorApi && error.tipo === "solicitud") {
+          setHistorial([]);
+        }
       }
     };
 
     obtenerUbicacion();
-    obtenerHistorial();
+    obtenerHistorial(true);
 
     // A fully past range can't receive new points, so stop polling the
     // history for it (the live marker keeps updating regardless).
-    const rangoEsPasado =
-      rangoActivo &&
-      new Date(rangoActivo.hasta.replace(" ", "T") + DESFASE_ZONA) < new Date();
+    const rangoEsPasado = rangoActivo && aMsBogota(rangoActivo.hasta) < Date.now();
 
-    const intervalo = setInterval(() => {
+    const tick = () => {
+      // Nothing to refresh while the tab is in the background
+      if (document.hidden) return;
       obtenerUbicacion();
-      if (!rangoEsPasado) obtenerHistorial();
-    }, 10000);
+      if (lugarActivo || rangoEsPasado) return;
+      const tocaCompleta = Date.now() - ultimaCompletaMs >= RECARGA_COMPLETA_MS;
+      obtenerHistorial(!modoVivo || tocaCompleta);
+    };
 
-    return () => clearInterval(intervalo);
-  }, [rangoActivo]);
+    const intervalo = setInterval(tick, 10000);
+    const alCambiarVisibilidad = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", alCambiarVisibilidad);
+
+    return () => {
+      cancelado = true;
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
+    };
+  }, [rangoActivo, lugarActivo]);
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
 
   return (
     <div className="app">
+      <Toasts toasts={toasts} onCerrar={cerrar} />
       <div className="topbar">
         <div className="brand">
+          <svg className="brand-icono" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+            <circle cx="12" cy="9.5" r="2.5" />
+          </svg>
           GPSLink <span>· {nombre}</span>
         </div>
-        <div className="status">
-          <span className={`dot dot-${estado.tier}`}></span>
-          {estado.texto}
+        <div className="topbar-derecha">
+          <div className="status">
+            <span className={`dot dot-${estado.tier}`}></span>
+            {estado.texto}
+          </div>
+          <button
+            className="btn-ayuda"
+            onClick={() => setAyudaAbierta(true)}
+            aria-haspopup="dialog"
+            aria-label="Ayuda: cómo usar esta página"
+          >
+            <span className="btn-ayuda-signo" aria-hidden="true">?</span>
+            <span className="btn-ayuda-texto">Ayuda</span>
+          </button>
         </div>
       </div>
 
-      <div className="main">
+      {ayudaAbierta && <AyudaModal onCerrar={() => setAyudaAbierta(false)} />}
+
+      <div className={`main ${panelesOcultos ? "sin-paneles" : ""}`}>
         {location ? (
           <>
+            <div className={`mapa-zona ${compacto ? "compacto" : ""} ${bajo ? "bajo" : ""}`} ref={zonaRef}>
+            <div className="capa-superior">
             <div className={`panel ${panelExpandido ? "expandido" : ""}`}>
               <button
                 className="panel-resumen"
@@ -750,7 +1270,24 @@ function App() {
               </div>
             </div>
 
-            <div className="superior">
+            <div className={`superior ${filtrosVisibles ? "filtros-visibles" : ""}`}>
+              <button
+                className={`filtros-toggle-compacto ${rangoActivo || lugarActivo ? "activo" : ""}`}
+                onClick={() => {
+                  setCapasAbierto(false);
+                  setFiltrosVisibles(!filtrosVisibles);
+                  setFiltroAbierto(false);
+                }}
+                aria-expanded={filtrosVisibles}
+              >
+                <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polygon points="3 4 21 4 14 12.5 14 19 10 21 10 12.5 3 4" />
+                </svg>
+                <span className="filtros-toggle-texto">Filtros{resumenFiltros}</span>
+                {(rangoActivo || lugarActivo) && <span className="punto-filtro" />}
+                <span className="filtros-toggle-flecha" aria-hidden="true">{filtrosVisibles ? "\u25B4" : "\u25BE"}</span>
+              </button>
               {ruta.length > 0 && (
                 <div className="nav-rutas">
                   <button
@@ -761,54 +1298,97 @@ function App() {
                   >
                     ← <span className="nav-texto">Anterior</span>
                   </button>
-                  <span className="nav-etiqueta">{etiquetaRuta}</span>
-                  {!siguiendoActual && (
+                  <SelectorRuta
+                    etiqueta={etiquetaRuta}
+                    opciones={opcionesRutas}
+                    indice={indiceMostrado}
+                    onElegir={irARuta}
+                  />
+                  <button
+                    className="nav-btn"
+                    onClick={verRutaSiguiente}
+                    disabled={siguiendoActual}
+                    aria-label="Ruta siguiente"
+                  >
+                    <span className="nav-texto">Siguiente</span> &rarr;
+                  </button>
+                  {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
+                  {indiceMostrado < rutas.length - 2 && (
                     <button className="nav-btn primario" onClick={volverARutaActual} aria-label="Ruta actual">
-                      <span className="nav-texto">Actual</span> →
+                      <span className="nav-texto">Actual</span> &raquo;
                     </button>
                   )}
                 </div>
               )}
 
+              {!filtroAbierto && rangoActivo && rangoActivo.invalido && (
+                <p className="filtro-error sin-rutas-aviso" role="alert">
+                  Las fechas no son v&aacute;lidas («Hasta» debe ser posterior a «Desde»), as&iacute; que no hay rutas que mostrar.
+                </p>
+              )}
+              {!filtroAbierto && historialCargado && rutas.length === 0 &&
+                (rangoActivo ? !rangoActivo.invalido : false) && (
+                <p className="filtro-error sin-rutas-aviso" role="status">
+                  No hay rutas que cumplan con los filtros aplicados.
+                </p>
+              )}
+              {!filtroAbierto && (cortadaInicio || cortadaFin) && (
+                <div className="aviso-corte" role="status">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 3 2 21h20L12 3z" />
+                    <line x1="12" y1="10" x2="12" y2="14" />
+                    <line x1="12" y1="17.5" x2="12" y2="17.6" />
+                  </svg>
+                  <span>
+                    Este viaje{" "}
+                    {cortadaInicio && cortadaFin
+                      ? "empez\u00f3 antes y termin\u00f3 despu\u00e9s"
+                      : cortadaInicio
+                        ? "empez\u00f3 antes"
+                        : "termin\u00f3 despu\u00e9s"}{" "}
+                    del rango elegido.
+                  </span>
+                  <button
+                    type="button"
+                    className="aviso-corte-btn"
+                    onClick={() => {
+                      setRangoActivo({ ...rangoActivo, completar: true });
+                      setIndiceRuta(null);
+                    }}
+                  >
+                    Ver viaje completo
+                  </button>
+                </div>
+              )}
+
+              <div className="filtros-fila">
               {filtroAbierto ? (
               <div className="filtro-fecha">
-                <div className="filtro-grupo">
-                  <span className="filtro-label">Desde</span>
-                  <input
-                    type="date"
-                    value={fechaDesde}
-                    onChange={(e) => setFechaDesde(e.target.value)}
-                  />
-                  <div className="rueda-grupo">
-                    <RuedaNumeros min={1} max={12} valor={horaDesde} onChange={setHoraDesde} />
-                    <span className="rueda-separador">:</span>
-                    <RuedaNumeros min={0} max={59} valor={minDesde} onChange={setMinDesde} />
-                    <RuedaOpciones
-                      opciones={["AM", "PM"]}
-                      valor={meridianoDesde}
-                      onChange={setMeridianoDesde}
-                    />
-                  </div>
-                </div>
+                <SelectorFechaHora
+                  etiqueta="Desde"
+                  valor={desdeFH}
+                  max={ahoraFH()}
+                  abierto={fhAbierto === "desde"}
+                  onAlternar={() => setFhAbierto(fhAbierto === "desde" ? null : "desde")}
+                  onChange={setDesdeFH}
+                />
 
-                <div className="filtro-grupo">
-                  <span className="filtro-label">Hasta</span>
-                  <input
-                    type="date"
-                    value={fechaHasta}
-                    onChange={(e) => setFechaHasta(e.target.value)}
-                  />
-                  <div className="rueda-grupo">
-                    <RuedaNumeros min={1} max={12} valor={horaHasta} onChange={setHoraHasta} />
-                    <span className="rueda-separador">:</span>
-                    <RuedaNumeros min={0} max={59} valor={minHasta} onChange={setMinHasta} />
-                    <RuedaOpciones
-                      opciones={["AM", "PM"]}
-                      valor={meridianoHasta}
-                      onChange={setMeridianoHasta}
-                    />
-                  </div>
-                </div>
+                <SelectorFechaHora
+                  etiqueta="Hasta"
+                  valor={hastaFH}
+                  min={desdeFH}
+                  max={ahoraFH()}
+                  abierto={fhAbierto === "hasta"}
+                  onAlternar={() => setFhAbierto(fhAbierto === "hasta" ? null : "hasta")}
+                  onChange={setHastaFH}
+                />
+
+                                {rangoInvalido && (
+                  <p className="filtro-error" role="alert">
+                    «Hasta» debe ser posterior a «Desde». Si aplicas así, no se mostrarán rutas.
+                  </p>
+                )}
 
                 <div className="filtro-acciones">
                   <button onClick={() => setFiltroAbierto(false)}>Cancelar</button>
@@ -820,8 +1400,15 @@ function App() {
               </div>
               ) : (
                 <div className="filtros-chips">
-                  <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
-                    {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
+                  <button className={`filtro-toggle ${rangoActivo ? "activo" : ""}`} onClick={() => { setFhAbierto(null); setFiltroAbierto(true); }}>
+                    <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="16" rx="3" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                      <line x1="8" y1="3" x2="8" y2="7" />
+                      <line x1="16" y1="3" x2="16" y2="7" />
+                    </svg>
+                    <span>{rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}</span>
                   </button>
                   {rangoActivo && (
                     <button className="chip-quitar" onClick={quitarFiltro} aria-label="Quitar filtro de fecha">
@@ -832,14 +1419,22 @@ function App() {
               )}
 
               <div className="buscador-lugar">
+                <svg className="campo-icono buscador-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.5" y2="16.5" />
+                </svg>
                 <input
                   type="text"
                   className="buscador-input"
-                  placeholder="Filtrar por ciudad o direccion"
+                  placeholder="Buscar ciudad o direcci&oacute;n"
                   value={busquedaLugar}
                   onChange={(e) => {
                     setBusquedaLugar(e.target.value);
                     if (lugarActivo) setLugarActivo(null);
+                    // Editing the text drops the previous verdict and any pending pick
+                    eleccionActual.current += 1;
+                    setLugarSinHistorial(null);
                   }}
                 />
                 {lugarActivo && (
@@ -853,12 +1448,31 @@ function App() {
                     {sugerenciasLugar.map((s, i) => (
                       <button key={i} className="sugerencia-item" onClick={() => elegirLugar(s)}>
                         {s.nombre}
+                        {s.visitado === false && (
+                          <span className="chip-estado chip-sin-historial">Sin historial</span>
+                        )}
+                        {s.visitado === true && (
+                          <span className="chip-estado chip-con-historial">Con historial</span>
+                        )}
                       </button>
                     ))}
                   </div>
                 )}
                 {buscandoLugar && <span className="buscando-lugar">Buscando...</span>}
+              {!buscandoLugar && sinResultadosLugar && (
+                  <span className="buscando-lugar">No se encontr&oacute; ning&uacute;n lugar con ese nombre.</span>
+                )}
               </div>
+
+              </div>
+
+              {mensajeLugar && (
+                <p className="lugar-mensaje" role="status">
+                  {mensajeLugar}
+                </p>
+              )}
+            </div>
+
             </div>
 
             <div className="controles-mapa fab-columna">
@@ -877,12 +1491,34 @@ function App() {
                     />
                     <span className="interruptor" />
                   </label>
+                  <label className="capas-opcion">
+                    <span>
+                      Mostrar paradas
+                      {paradas.length > 0 && <em> &middot; {paradas.length}</em>}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={paradasVisibles}
+                      onChange={() => setParadasVisibles(!paradasVisibles)}
+                    />
+                    <span className="interruptor" />
+                  </label>
+                </div>
+              )}
+
+              {velocidadActualKmh !== null && (
+                <div
+                  className="velocidad-chip"
+                  title="Velocidad estimada con los &uacute;ltimos puntos"
+                  aria-label={`Velocidad estimada: ${Math.round(velocidadActualKmh)} km/h`}
+                >
+                  <b>{Math.round(velocidadActualKmh)}</b> km/h
                 </div>
               )}
 
               <button
                 className={`fab ${capasAbierto ? "activo" : ""}`}
-                onClick={() => setCapasAbierto(!capasAbierto)}
+                onClick={() => { setFiltrosVisibles(false); setCapasAbierto(!capasAbierto); }}
                 aria-label="Opciones del mapa"
                 title="Opciones del mapa"
               >
@@ -893,6 +1529,52 @@ function App() {
                   <polyline points="2 12 12 17 22 12" />
                 </svg>
                 {snapActivo && <span className="fab-punto" />}
+              </button>
+
+              <button
+                className={`fab ${panelesOcultos ? "activo" : ""}`}
+                onClick={() => setPanelesOcultos(!panelesOcultos)}
+                aria-pressed={panelesOcultos}
+                aria-label={panelesOcultos ? "Mostrar paneles" : "Ocultar paneles"}
+                title={panelesOcultos ? "Mostrar paneles" : "Ocultar paneles y ver solo el mapa"}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                  <circle cx="12" cy="12" r="3" />
+                  {panelesOcultos && <line x1="3" y1="21" x2="21" y2="3" />}
+                </svg>
+              </button>
+
+              <button
+                className={`fab fab-historial ${historialAbierto ? "activo" : ""}`}
+                onClick={() => { setCapasAbierto(false); setHistorialAbierto(!historialAbierto); }}
+                aria-pressed={historialAbierto}
+                aria-label="Historial de puntos"
+                title="Historial de puntos"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6" />
+                  <line x1="8" y1="12" x2="21" y2="12" />
+                  <line x1="8" y1="18" x2="21" y2="18" />
+                  <line x1="3" y1="6" x2="3.01" y2="6" />
+                  <line x1="3" y1="12" x2="3.01" y2="12" />
+                  <line x1="3" y1="18" x2="3.01" y2="18" />
+                </svg>
+              </button>
+
+              <button
+                className={`fab ${reproductorAbierto ? "activo" : ""}`}
+                onClick={() => setReproductorAbierto(!reproductorAbierto)}
+                disabled={puntosNorm.length < 2}
+                aria-label="Reproducir recorrido"
+                title="Reproduce el recorrido de la ruta mostrada"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"
+                  stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                  <polygon points="7 4 20 12 7 20 7 4" />
+                </svg>
               </button>
 
               <button
@@ -917,12 +1599,45 @@ function App() {
             {ruta.length > 1 && (
               <div className="legend">
                 <div className="legend-item">
-                  <span className="legend-dot start"></span> Inicio
+                  <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                    <polygon points="2,1 11,6 2,11" fill="var(--marker-start)" />
+                  </svg>
+                  Inicio
                 </div>
                 <div className="legend-item">
-                  <span className={`legend-dot ${siguiendoActual ? "current" : "end"}`}></span>
-                  {siguiendoActual ? " Actual" : " Fin de ruta"}
+                  {finEsActual ? (
+                    <span className="legend-dot current"></span>
+                  ) : (
+                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                      <line x1="2.5" y1="1" x2="2.5" y2="11" stroke="var(--marker-end)"
+                        strokeWidth="1.5" strokeLinecap="round" />
+                      <path d="M3 1.5h7l-2 2.5 2 2.5H3z" fill="var(--marker-end)" />
+                    </svg>
+                  )}
+                  {finEsActual ? " Actual" : " Fin de ruta"}
                 </div>
+                {(cortadaInicio || cortadaFin) && (
+                  <div className="legend-item">
+                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                      <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                    </svg>
+                    Recortada por el filtro
+                  </div>
+                )}
+                {paradasVisibles && paradas.length > 0 && (
+                  <div className="legend-item">
+                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                      <rect x="2" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+                      <rect x="7" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+                    </svg>
+                    Parada
+                  </div>
+                )}
+                {visitas.length > 0 && (
+                  <div className="legend-item">
+                    <span className="legend-dot visita"></span> Pas&oacute; por el lugar
+                  </div>
+                )}
               </div>
             )}
 
@@ -937,7 +1652,10 @@ function App() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
-              <AjustarVista puntos={ruta} resetKey={indiceMostrado} />
+              <AjustarVista
+                puntos={ruta}
+                resetKey={`${indiceMostrado}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}|${puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : ""}`}
+              />
 
               <SeguirPunto
                 lat={ultimoPunto ? ultimoPunto[0] : null}
@@ -949,26 +1667,75 @@ function App() {
                 <Polyline positions={rutaDibujada} color="#b37feb" weight={3} opacity={0.75} />
               )}
 
-              {ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
+              {ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
 
               {ruta.length > 0 && (
                 <Marker
                   position={ruta[ruta.length - 1]}
-                  icon={siguiendoActual ? iconoActual : iconoFin}
-                />
+                  icon={finEsActual ? (enVivo ? iconoActual : iconoActualInactivo) : (cortadaFin ? iconoFinCortado : iconoFin)}
+                >
+                  <Popup className="popup-oscuro" autoPanPaddingTopLeft={[16, margenSuperior]}>
+                    <PopupPosicion
+                      titulo={
+                        finEsActual
+                          ? enVivo
+                            ? "Posici\u00f3n actual"
+                            : "\u00daltima posici\u00f3n conocida"
+                          : "Fin de la ruta"
+                      }
+                      punto={ultimaLectura}
+                      velocidadKmh={velocidadActualKmh}
+                      estadisticas={estadisticasRuta}
+                      paradas={paradas.length}
+                    />
+                  </Popup>
+                </Marker>
               )}
+            <AjustarTamano zonaRef={zonaRef} />
+            <MarcadoresVisitas
+                visitas={visitas}
+                indiceRuta={indiceMostrado}
+                seleccionada={visitaElegida}
+                onIrARuta={elegirVisita}
+                margenSuperior={margenSuperior}
+              />
+              <VolarA destino={vueloA} margenSuperior={margenSuperior} />
+            {paradasVisibles && <MarcadoresParada paradas={paradas} />}
+            {reproductorAbierto && puntosNorm.length > 1 && (
+              <Reproductor
+                puntos={puntosNorm}
+                onCerrar={() => setReproductorAbierto(false)}
+              />
+            )}
             </MapContainer>
+            </div>
 
-            <aside className="sidebar">
-              <p className="sidebar-title">
+            {historialAbierto && (
+              <div className="hoja-fondo" onClick={() => setHistorialAbierto(false)} aria-hidden="true" />
+            )}
+            <aside className={`sidebar ${historialAbierto ? "" : "plegado"} ${visitas.length > 0 ? "con-visitas" : ""}`}>
+              <PanelVisitas
+                visitas={visitas}
+                nombreLugar={lugarActivo ? lugarActivo.nombre : ""}
+                rangoActivo={rangoActivo}
+                seleccionada={visitaElegida}
+                onElegir={elegirVisita}
+              />
+              <button
+                type="button"
+                className="sidebar-title sidebar-titulo-btn"
+                onClick={() => setHistorialAbierto(!historialAbierto)}
+                aria-expanded={historialAbierto}
+              >
+                <span className="sidebar-titulo-flecha" aria-hidden="true">{historialAbierto ? "▾" : "▸"}</span>
                 Historial de puntos ({historialReciente.length})
-              </p>
-              <div className="sidebar-list">
+              </button>
+              <div className={`sidebar-list ${historialAbierto ? "" : "oculto"}`}>
                 {historialReciente.map((punto, index) => {
                   const fecha = parsearFechaGPS(punto.timestamp_gps);
                   const esInicio = index === historialReciente.length - 1;
                   const esActual = index === 0;
-                  const claseFinal = siguiendoActual ? "current" : "end";
+                  const claseFinal = finEsActual ? "current" : "end";
                   return (
                     <div className="sidebar-item" key={index}>
                       <div className="sidebar-item-header">
