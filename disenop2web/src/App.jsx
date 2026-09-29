@@ -575,6 +575,7 @@ function App() {
   const [reproductorAbierto, setReproductorAbierto] = useState(false);
   const [panelesOcultos, setPanelesOcultos] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
+  const [historialAbierto, setHistorialAbierto] = useState(false);
   const [lugarSinHistorial, setLugarSinHistorial] = useState(null); // name of a place never visited
   const [sinResultadosLugar, setSinResultadosLugar] = useState(false);
   const [historialCargado, setHistorialCargado] = useState(false);
@@ -587,6 +588,13 @@ function App() {
   // Default end of the range: right now (the server rejects future dates)
   const [ahoraH, ahoraM] = formatearHoraCorta(new Date()).split(":").map(Number);
   const [filtroAbierto, setFiltroAbierto] = useState(false);
+  // Re-render every 30 s while the date panel is open, so the "now" limit of the pickers stays current
+  const [, setTickLimite] = useState(0);
+  useEffect(() => {
+    if (!filtroAbierto) return undefined;
+    const id = setInterval(() => setTickLimite((t) => t + 1), 30000);
+    return () => clearInterval(id);
+  }, [filtroAbierto]);
   // Range as "YYYY-MM-DDTHH:mm" strings (Bogota time), one per end
   const [desdeFH, setDesdeFH] = useState(`${hoy}T00:00`);
   const [hastaFH, setHastaFH] = useState(
@@ -613,6 +621,7 @@ function App() {
   // place's bounding box (city/town box, or the small radius box built
   // around a single-point address).
   const rutas = useMemo(() => {
+    if (rangoActivo && rangoActivo.invalido) return [];
     let base = todasLasRutas;
 
     if (rangoActivo) {
@@ -668,8 +677,11 @@ function App() {
 
   // Live = following the newest route and its last point is under 2 minutes old
   const ultimaLectura = puntosNorm[puntosNorm.length - 1];
+  // The end of the shown route is "the current position" only in live mode:
+  // no date range and no place filter. Otherwise it is just where that route ended.
+  const finEsActual = siguiendoActual && !rangoActivo && !lugarActivo && Boolean(ultimaLectura);
   const enVivo =
-    siguiendoActual && Boolean(ultimaLectura) && Date.now() - ultimaLectura.fecha.getTime() <= 120000;
+    finEsActual && Date.now() - ultimaLectura.fecha.getTime() <= 120000;
   // A speed only means something while the device is reporting
   const velocidadActualKmh = enVivo ? velocidadActual(puntosNorm) : null;
 
@@ -978,8 +990,11 @@ function App() {
     (aMsBogota(formHasta) - aMsBogota(formDesde)) / 3600000 >= UMBRAL_COMPLETAR_H;
   const completarEfectivo = completarManual ?? completarAuto;
 
+  // "Hasta" must be strictly later than "Desde" (same-minute ranges are invalid too)
+  const rangoInvalido = hastaFH <= desdeFH;
+
   const aplicarFiltro = () => {
-    setRangoActivo({ ...rangoDelFormulario(), completar: completarEfectivo });
+    setRangoActivo({ ...rangoDelFormulario(), completar: completarEfectivo, invalido: rangoInvalido });
     setCompletarManual(null);
     setIndiceRuta(null);
     setFiltroAbierto(false);
@@ -1214,6 +1229,18 @@ function App() {
                 </div>
               )}
 
+              {!filtroAbierto && rangoActivo && rangoActivo.invalido && (
+                <p className="filtro-error sin-rutas-aviso" role="alert">
+                  Las fechas no son v&aacute;lidas («Hasta» debe ser posterior a «Desde»), as&iacute; que no hay rutas que mostrar.
+                </p>
+              )}
+              {!filtroAbierto && historialCargado && rutas.length === 0 &&
+                (rangoActivo ? !rangoActivo.invalido : false) && (
+                <p className="filtro-error sin-rutas-aviso" role="status">
+                  No hay rutas que cumplan con los filtros aplicados.
+                </p>
+              )}
+              <div className="filtros-fila">
               {filtroAbierto ? (
               <div className="filtro-fecha">
                 <SelectorFechaHora
@@ -1222,10 +1249,7 @@ function App() {
                   max={ahoraFH()}
                   abierto={fhAbierto === "desde"}
                   onAlternar={() => setFhAbierto(fhAbierto === "desde" ? null : "desde")}
-                  onChange={(v) => {
-                    setDesdeFH(v);
-                    if (v > hastaFH) setHastaFH(v);
-                  }}
+                  onChange={setDesdeFH}
                 />
 
                 <SelectorFechaHora
@@ -1237,6 +1261,12 @@ function App() {
                   onAlternar={() => setFhAbierto(fhAbierto === "hasta" ? null : "hasta")}
                   onChange={setHastaFH}
                 />
+
+                                {rangoInvalido && (
+                  <p className="filtro-error" role="alert">
+                    «Hasta» debe ser posterior a «Desde». Si aplicas así, no se mostrarán rutas.
+                  </p>
+                )}
 
                 <label className="filtro-completar">
                   <input
@@ -1260,8 +1290,15 @@ function App() {
               </div>
               ) : (
                 <div className="filtros-chips">
-                  <button className="filtro-toggle" onClick={() => { setFhAbierto(null); setFiltroAbierto(true); }}>
-                    {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
+                  <button className={`filtro-toggle ${rangoActivo ? "activo" : ""}`} onClick={() => { setFhAbierto(null); setFiltroAbierto(true); }}>
+                    <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="16" rx="3" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                      <line x1="8" y1="3" x2="8" y2="7" />
+                      <line x1="16" y1="3" x2="16" y2="7" />
+                    </svg>
+                    <span>{rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}</span>
                   </button>
                   {rangoActivo && (
                     <button className="chip-quitar" onClick={quitarFiltro} aria-label="Quitar filtro de fecha">
@@ -1272,6 +1309,11 @@ function App() {
               )}
 
               <div className="buscador-lugar">
+                <svg className="campo-icono buscador-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.5" y2="16.5" />
+                </svg>
                 <input
                   type="text"
                   className="buscador-input"
@@ -1310,6 +1352,8 @@ function App() {
               {!buscandoLugar && sinResultadosLugar && (
                   <span className="buscando-lugar">No se encontr&oacute; ning&uacute;n lugar con ese nombre.</span>
                 )}
+              </div>
+
               </div>
 
               {mensajeLugar && (
@@ -1433,7 +1477,7 @@ function App() {
                   Inicio
                 </div>
                 <div className="legend-item">
-                  {siguiendoActual ? (
+                  {finEsActual ? (
                     <span className="legend-dot current"></span>
                   ) : (
                     <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
@@ -1442,7 +1486,7 @@ function App() {
                       <path d="M3 1.5h7l-2 2.5 2 2.5H3z" fill="var(--marker-end)" />
                     </svg>
                   )}
-                  {siguiendoActual ? " Actual" : " Fin de ruta"}
+                  {finEsActual ? " Actual" : " Fin de ruta"}
                 </div>
                 {paradasVisibles && paradas.length > 0 && (
                   <div className="legend-item">
@@ -1489,12 +1533,12 @@ function App() {
               {ruta.length > 0 && (
                 <Marker
                   position={ruta[ruta.length - 1]}
-                  icon={siguiendoActual ? (enVivo ? iconoActual : iconoActualInactivo) : iconoFin}
+                  icon={finEsActual ? (enVivo ? iconoActual : iconoActualInactivo) : iconoFin}
                 >
                   <Popup className="popup-oscuro" autoPanPaddingTopLeft={[16, margenSuperior]}>
                     <PopupPosicion
                       titulo={
-                        siguiendoActual
+                        finEsActual
                           ? enVivo
                             ? "Posici\u00f3n actual"
                             : "\u00daltima posici\u00f3n conocida"
@@ -1527,7 +1571,7 @@ function App() {
             </MapContainer>
             </div>
 
-            <aside className="sidebar">
+            <aside className={`sidebar ${historialAbierto ? "" : "plegado"} ${visitas.length > 0 ? "con-visitas" : ""}`}>
               <PanelVisitas
                 visitas={visitas}
                 nombreLugar={lugarActivo ? lugarActivo.nombre : ""}
@@ -1535,15 +1579,21 @@ function App() {
                 seleccionada={visitaElegida}
                 onElegir={elegirVisita}
               />
-              <p className="sidebar-title">
+              <button
+                type="button"
+                className="sidebar-title sidebar-titulo-btn"
+                onClick={() => setHistorialAbierto(!historialAbierto)}
+                aria-expanded={historialAbierto}
+              >
+                <span className="sidebar-titulo-flecha" aria-hidden="true">{historialAbierto ? "▾" : "▸"}</span>
                 Historial de puntos ({historialReciente.length})
-              </p>
-              <div className="sidebar-list">
+              </button>
+              <div className={`sidebar-list ${historialAbierto ? "" : "oculto"}`}>
                 {historialReciente.map((punto, index) => {
                   const fecha = parsearFechaGPS(punto.timestamp_gps);
                   const esInicio = index === historialReciente.length - 1;
                   const esActual = index === 0;
-                  const claseFinal = siguiendoActual ? "current" : "end";
+                  const claseFinal = finEsActual ? "current" : "end";
                   return (
                     <div className="sidebar-item" key={index}>
                       <div className="sidebar-item-header">

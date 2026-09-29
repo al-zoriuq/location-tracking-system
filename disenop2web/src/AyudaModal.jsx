@@ -25,12 +25,12 @@ export default function AyudaModal({ onCerrar }) {
         <h3>Filtros</h3>
         <ul>
           <li>
-            <strong>Fecha:</strong> «Filtrar por fecha» tiene dos campos, «Desde» y «Hasta».
-            Cada uno abre un calendario con la hora. No se aceptan fechas futuras. Para volver
+            <strong>Fecha:</strong> «Filtrar por fecha» (el campo con el calendario) tiene dos campos, «Desde» y «Hasta».
+            Cada uno abre un calendario con la hora. No se aceptan fechas futuras, y «Hasta» debe ser posterior a «Desde»: si no lo es, sale un aviso y, si aplicas así, el mapa queda sin rutas hasta que corrijas las fechas. Para volver
             a lo más reciente, usa «Ver en vivo» o la «x».
           </li>
           <li>
-            <strong>Lugar:</strong> escribe una ciudad o dirección y elige una opción. Solo se
+            <strong>Lugar:</strong> escribe una ciudad o dirección en el campo de la lupa y elige una opción. Solo se
             muestran las rutas que pasaron por allí. «Sin historial» marca lugares donde el
             dispositivo nunca estuvo. Cada paso queda con un círculo amarillo; tócalo para ver
             el detalle.
@@ -43,9 +43,9 @@ export default function AyudaModal({ onCerrar }) {
         <h3>Marcadores</h3>
         <ul>
           <li><strong>Triángulo verde:</strong> inicio de la ruta.</li>
-          <li><strong>Bandera roja:</strong> final de una ruta que ya terminó.</li>
+          <li><strong>Bandera roja:</strong> final de la ruta. Con un filtro de fecha o de lugar siempre se ve la bandera, aunque sea la última ruta de la lista.</li>
           <li>
-            <strong>Círculo morado:</strong> posición actual. Se pone gris si la última señal
+            <strong>Círculo morado:</strong> posición actual, solo en modo en vivo (sin filtros de fecha ni de lugar). Se pone gris si la última señal
             tiene más de 2 minutos. Tócalo para ver estadísticas de la ruta.
           </li>
           <li>
@@ -81,10 +81,11 @@ export default function AyudaModal({ onCerrar }) {
       </section>
 
       <section>
-        <h3>Lista de puntos</h3>
+        <h3>Historial de puntos</h3>
         <p>
-          Junto al mapa (o debajo, en el celular) están los puntos de la ruta mostrada, del más
-          reciente al más antiguo, con fecha, hora y coordenadas.
+          Está plegado para dejar espacio al mapa. Toca «Historial de puntos» para abrirlo: muestra
+          los puntos de la ruta mostrada, del más reciente al más antiguo, con fecha, hora y
+          coordenadas. En pantalla ancha, plegado queda como una tira a un lado del mapa.
         </p>
       </section>
 

@@ -2159,3 +2159,85 @@ body {
 
 /* Legend icons that match the map marker shapes */
 .legend-icono { width: 12px; height: 12px; flex-shrink: 0; }
+
+/* Date range validation message */
+.filtro-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--marker-end);
+  border-radius: 8px;
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.filtro-fecha .aplicar:disabled { opacity: 0.4; cursor: default; }
+
+/* Collapsible point history */
+.sidebar-titulo-btn {
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+.sidebar-titulo-btn:hover { color: var(--text); }
+.sidebar-titulo-flecha { margin-right: 6px; }
+.sidebar-list.oculto { display: none; }
+.sidebar.plegado .sidebar-titulo-btn { border-bottom: none; }
+
+/* Folded and no place visits: thin strip (wide) or thin bar (portrait) */
+@media not all and (max-width: 900px) and (orientation: portrait) {
+  .sidebar.plegado:not(.con-visitas) { width: 44px; }
+  .sidebar.plegado:not(.con-visitas) .sidebar-titulo-btn {
+    writing-mode: vertical-rl;
+    padding: 16px 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+@media (max-width: 900px) and (orientation: portrait) {
+  .sidebar.plegado:not(.con-visitas) { height: auto; }
+  .sidebar.plegado:not(.con-visitas) .sidebar-titulo-btn { padding: 12px 20px; }
+}
+
+/* Filters: two fields of the same height in one row, each with its icon */
+.filtros-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.mapa-zona.compacto .filtros-fila { display: contents; }
+
+.filtro-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+.filtro-toggle:hover { border-color: var(--accent); }
+.filtro-toggle.activo {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.16);
+}
+.campo-icono { color: var(--accent); flex-shrink: 0; }
+
+.buscador-input { min-height: 38px; padding-left: 34px; box-sizing: border-box; }
+.buscador-icono {
+  position: absolute;
+  left: 12px;
+  top: 11px;
+  pointer-events: none;
+}
+.chip-quitar { width: 30px; height: 30px; }
