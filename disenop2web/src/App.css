@@ -1203,9 +1203,15 @@ body {
 .mapa-zona.bajo .controles-mapa { bottom: 28px; }
 
 /* ============ Short windows: a minimum usable map; below it the page scrolls ============ */
-.app { overflow-y: auto; }
-.main { min-height: auto; }
-.mapa-zona { min-height: 300px; }
+/* Fixed-height layout: only the inner lists scroll. Below 520 px of window
+   height the map keeps a 300 px minimum and the page itself scrolls. */
+.main { min-height: 0; }
+.sidebar { overflow: hidden; }
+@media (max-height: 520px) {
+  .app { overflow-y: auto; }
+  .main { min-height: auto; }
+  .mapa-zona { min-height: 300px; }
+}
 
 /* "bajo" (< 380 px tall) keeps the compact column, just tighter */
 .mapa-zona.bajo .capa-superior {
@@ -1615,3 +1621,338 @@ body {
 }
 
 .velocidad-chip b { color: var(--text); font-size: 15px; }
+
+/* Route player: compact bar over the map, next to the round buttons */
+.reproductor {
+  position: absolute;
+  right: 76px;
+  bottom: 34px;
+  z-index: 30;
+  width: min(520px, calc(100% - 90px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.repro-btn, .repro-vel {
+  flex: none;
+  min-width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+}
+.repro-vel { padding: 0 8px; font-family: var(--font-mono); font-size: 12px; }
+.repro-barra { flex: 1; min-width: 60px; accent-color: var(--accent); }
+.repro-hora { flex: none; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+.fab:disabled { opacity: 0.4; cursor: default; }
+
+/* Player bar goes above the legend when the map zone is compact */
+.mapa-zona.compacto .reproductor { bottom: 84px; }
+
+/* Hide panels: only the map and the round buttons stay */
+.main.sin-paneles .capa-superior,
+.main.sin-paneles .legend { display: none; }
+.main.sin-paneles .sidebar { display: none; }
+
+/* Visit popup: smaller in compact map zones */
+.mapa-zona.compacto .popup-visita .leaflet-popup-content {
+  margin: 8px 10px;
+  font-size: 11px;
+  width: 210px !important;
+}
+
+/* Date-time picker, adapted from sthefany-test (SelectorFechaHora) */
+.fh-campo,
+.fh-ahora,
+.fh-listo {
+  transition: background-color 150ms var(--ease-out, ease-out), border-color 150ms var(--ease-out, ease-out),
+    color 150ms var(--ease-out, ease-out), transform 120ms var(--ease-out, ease-out);
+}
+
+.fh-ahora:active,
+.fh-listo:active {
+  transform: scale(0.97);
+}
+
+.fh {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fh-campo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fh-campo svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.fh-valor {
+  flex: 1;
+}
+
+.fh-flecha {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.fh-campo.abierto {
+  border-color: var(--accent);
+  background: rgba(179, 127, 235, 0.1);
+}
+
+.fh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  animation: fh-entrada 160ms var(--ease-out, ease-out);
+}
+
+.fh-mes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fh-mes-nombre {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.fh-nav {
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out, ease-out), border-color 150ms var(--ease-out, ease-out);
+}
+
+.fh-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.fh-semana,
+.fh-dias {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+}
+
+.fh-semana span {
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.fh-dia {
+  aspect-ratio: 1;
+  min-height: 36px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease-out, ease-out), transform 120ms var(--ease-out, ease-out);
+}
+
+.fh-dia:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.fh-dia.hoy {
+  border-color: var(--accent-2);
+}
+
+.fh-dia.elegido {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.fh-dia:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.fh-hora {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.fh-hora-campo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fh-hora-campo span {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.fh-hora-campo select {
+  appearance: none;
+  min-height: 42px;
+  padding: 0 28px 0 12px;
+  background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%23a897c9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 11px center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.fh-hora-campo select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fh-dospuntos {
+  padding-bottom: 8px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 18px;
+}
+
+.fh-ayuda {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.fh-pie {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fh-ahora,
+.fh-listo {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fh-ahora {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.fh-listo {
+  margin-left: auto;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+@keyframes fh-entrada {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Zoom buttons in the dark theme, like the round buttons */
+.map .leaflet-bar {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.map .leaflet-bar a {
+  background-color: var(--panel);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.map .leaflet-bar a:last-child { border-bottom: none; }
+.map .leaflet-bar a:hover { background-color: rgba(179, 127, 235, 0.15); }
+.map .leaflet-bar a.leaflet-disabled { background-color: var(--panel); color: var(--text-dim); opacity: 0.5; }
+
+/* Top bar: location icon, soft gradient and a pill for the status (as in sthefany-test) */
+.topbar {
+  padding: 14px 24px;
+  background: linear-gradient(180deg, #1d1333 0%, var(--bg) 100%);
+}
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.topbar .brand span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brand-icono { color: var(--accent); flex-shrink: 0; }
+.status {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 6px 14px;
+  background: var(--glass, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+/* Stop popup */
+.popup-parada { min-width: 150px; }
+.popup-parada p { margin: 0; }
+.popup-parada-titulo { font-weight: 600; margin-bottom: 6px !important; }
+.popup-parada-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: var(--font-mono);
+}
+.popup-parada-fila span { color: var(--text-dim); }

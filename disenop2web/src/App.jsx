@@ -10,6 +10,8 @@ import PanelVisitas from "./PanelVisitas.jsx";
 import { calcularVisitas } from "./visitas.js";
 import SelectorRuta from "./SelectorRuta.jsx";
 import { formatearHoraCorta } from "./utils/tiempo.js";
+import Reproductor from "./Reproductor.jsx";
+import SelectorFechaHora from "./SelectorFechaHora.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
@@ -569,6 +571,8 @@ function App() {
   const [vueloA, setVueloA] = useState(null);
   const [margenSuperior, setMargenSuperior] = useState(0);
   const [paradasVisibles, setParadasVisibles] = useState(true);
+  const [reproductorAbierto, setReproductorAbierto] = useState(false);
+  const [panelesOcultos, setPanelesOcultos] = useState(false);
   const [lugarSinHistorial, setLugarSinHistorial] = useState(null); // name of a place never visited
   const [sinResultadosLugar, setSinResultadosLugar] = useState(false);
   const [historialCargado, setHistorialCargado] = useState(false);
@@ -581,14 +585,12 @@ function App() {
   // Default end of the range: right now (the server rejects future dates)
   const [ahoraH, ahoraM] = formatearHoraCorta(new Date()).split(":").map(Number);
   const [filtroAbierto, setFiltroAbierto] = useState(false);
-  const [fechaDesde, setFechaDesde] = useState(hoy);
-  const [horaDesde, setHoraDesde] = useState(12);
-  const [minDesde, setMinDesde] = useState(0);
-  const [meridianoDesde, setMeridianoDesde] = useState("AM");
-  const [fechaHasta, setFechaHasta] = useState(hoy);
-  const [horaHasta, setHoraHasta] = useState(ahoraH % 12 || 12);
-  const [minHasta, setMinHasta] = useState(ahoraM);
-  const [meridianoHasta, setMeridianoHasta] = useState(ahoraH >= 12 ? "PM" : "AM");
+  // Range as "YYYY-MM-DDTHH:mm" strings (Bogota time), one per end
+  const [desdeFH, setDesdeFH] = useState(`${hoy}T00:00`);
+  const [hastaFH, setHastaFH] = useState(
+    `${hoy}T${String(ahoraH).padStart(2, "0")}:${String(ahoraM).padStart(2, "0")}`
+  );
+  const [fhAbierto, setFhAbierto] = useState(null); // "desde" | "hasta" | null
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
   // null = automatic; true/false = the user's choice in the filter panel
@@ -701,7 +703,7 @@ function App() {
     const el = zonaRef.current;
     if (!el) return undefined;
     const medir = () => {
-      setCompacto(el.clientWidth < 640 || el.clientHeight < 460);
+      setCompacto(el.clientWidth < 760 || el.clientHeight < 560);
       setBajo(el.clientHeight < 380);
     };
     medir();
@@ -956,14 +958,17 @@ function App() {
     return hora12 === 12 ? 12 : hora12 + 12;
   };
 
-  const rangoDelFormulario = () => {
-    const h1 = a24Horas(horaDesde, meridianoDesde);
-    const h2 = a24Horas(horaHasta, meridianoHasta);
-    return {
-      desde: `${fechaDesde} ${dosDigitos(h1)}:${dosDigitos(minDesde)}:00`,
-      hasta: `${fechaHasta} ${dosDigitos(h2)}:${dosDigitos(minHasta)}:59`,
-    };
+  // Current Bogota time as "YYYY-MM-DDTHH:mm": upper bound of the pickers
+  const ahoraFH = () => {
+    const [h, m] = formatearHoraCorta(new Date()).split(":").map(Number);
+    const dia = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
+    return `${dia}T${dosDigitos(h)}:${dosDigitos(m)}`;
   };
+
+  const rangoDelFormulario = () => ({
+    desde: `${desdeFH.replace("T", " ")}:00`,
+    hasta: `${hastaFH.replace("T", " ")}:59`,
+  });
 
   // Automatic default: complete the routes when the typed range is long
   const { desde: formDesde, hasta: formHasta } = rangoDelFormulario();
@@ -1097,6 +1102,11 @@ function App() {
       <Toasts toasts={toasts} onCerrar={cerrar} />
       <div className="topbar">
         <div className="brand">
+          <svg className="brand-icono" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+            <circle cx="12" cy="9.5" r="2.5" />
+          </svg>
           GPSLink <span>· {nombre}</span>
         </div>
         <div className="status">
@@ -1105,7 +1115,7 @@ function App() {
         </div>
       </div>
 
-      <div className="main">
+      <div className={`main ${panelesOcultos ? "sin-paneles" : ""}`}>
         {location ? (
           <>
             <div className={`mapa-zona ${compacto ? "compacto" : ""} ${bajo ? "bajo" : ""}`} ref={zonaRef}>
@@ -1191,43 +1201,27 @@ function App() {
 
               {filtroAbierto ? (
               <div className="filtro-fecha">
-                <div className="filtro-grupo">
-                  <span className="filtro-label">Desde</span>
-                  <input
-                    type="date"
-                    value={fechaDesde}
-                    onChange={(e) => setFechaDesde(e.target.value)}
-                  />
-                  <div className="rueda-grupo">
-                    <RuedaNumeros min={1} max={12} valor={horaDesde} onChange={setHoraDesde} />
-                    <span className="rueda-separador">:</span>
-                    <RuedaNumeros min={0} max={59} valor={minDesde} onChange={setMinDesde} />
-                    <RuedaOpciones
-                      opciones={["AM", "PM"]}
-                      valor={meridianoDesde}
-                      onChange={setMeridianoDesde}
-                    />
-                  </div>
-                </div>
+                <SelectorFechaHora
+                  etiqueta="Desde"
+                  valor={desdeFH}
+                  max={ahoraFH()}
+                  abierto={fhAbierto === "desde"}
+                  onAlternar={() => setFhAbierto(fhAbierto === "desde" ? null : "desde")}
+                  onChange={(v) => {
+                    setDesdeFH(v);
+                    if (v > hastaFH) setHastaFH(v);
+                  }}
+                />
 
-                <div className="filtro-grupo">
-                  <span className="filtro-label">Hasta</span>
-                  <input
-                    type="date"
-                    value={fechaHasta}
-                    onChange={(e) => setFechaHasta(e.target.value)}
-                  />
-                  <div className="rueda-grupo">
-                    <RuedaNumeros min={1} max={12} valor={horaHasta} onChange={setHoraHasta} />
-                    <span className="rueda-separador">:</span>
-                    <RuedaNumeros min={0} max={59} valor={minHasta} onChange={setMinHasta} />
-                    <RuedaOpciones
-                      opciones={["AM", "PM"]}
-                      valor={meridianoHasta}
-                      onChange={setMeridianoHasta}
-                    />
-                  </div>
-                </div>
+                <SelectorFechaHora
+                  etiqueta="Hasta"
+                  valor={hastaFH}
+                  min={desdeFH}
+                  max={ahoraFH()}
+                  abierto={fhAbierto === "hasta"}
+                  onAlternar={() => setFhAbierto(fhAbierto === "hasta" ? null : "hasta")}
+                  onChange={setHastaFH}
+                />
 
                 <label className="filtro-completar">
                   <input
@@ -1251,7 +1245,7 @@ function App() {
               </div>
               ) : (
                 <div className="filtros-chips">
-                  <button className="filtro-toggle" onClick={() => setFiltroAbierto(true)}>
+                  <button className="filtro-toggle" onClick={() => { setFhAbierto(null); setFiltroAbierto(true); }}>
                     {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
                   </button>
                   {rangoActivo && (
@@ -1369,6 +1363,34 @@ function App() {
               </button>
 
               <button
+                className={`fab ${panelesOcultos ? "activo" : ""}`}
+                onClick={() => setPanelesOcultos(!panelesOcultos)}
+                aria-pressed={panelesOcultos}
+                aria-label={panelesOcultos ? "Mostrar paneles" : "Ocultar paneles"}
+                title={panelesOcultos ? "Mostrar paneles" : "Ocultar paneles y ver solo el mapa"}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                  <circle cx="12" cy="12" r="3" />
+                  {panelesOcultos && <line x1="3" y1="21" x2="21" y2="3" />}
+                </svg>
+              </button>
+
+              <button
+                className={`fab ${reproductorAbierto ? "activo" : ""}`}
+                onClick={() => setReproductorAbierto(!reproductorAbierto)}
+                disabled={puntosNorm.length < 2}
+                aria-label="Reproducir recorrido"
+                title="Reproduce el recorrido de la ruta mostrada"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"
+                  stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                  <polygon points="7 4 20 12 7 20 7 4" />
+                </svg>
+              </button>
+
+              <button
                 className={`fab ${centradoActivo ? "activo" : ""}`}
                 onClick={() => setCentradoActivo(!centradoActivo)}
                 aria-label="Seguir punto actual"
@@ -1461,6 +1483,12 @@ function App() {
               />
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
             {paradasVisibles && <MarcadoresParada paradas={paradas} />}
+            {reproductorAbierto && puntosNorm.length > 1 && (
+              <Reproductor
+                puntos={puntosNorm}
+                onCerrar={() => setReproductorAbierto(false)}
+              />
+            )}
             </MapContainer>
             </div>
 

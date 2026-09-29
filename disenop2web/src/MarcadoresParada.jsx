@@ -1,7 +1,13 @@
 import { useMemo } from "react";
-import { Marker, Tooltip } from "react-leaflet";
+import { Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import { formatearHoraCorta } from "./utils/tiempo";
+
+// "13:54" -> "1:54 p. m." (formatearHoraCorta already applies the right zone)
+function hora12(fecha) {
+  const [h, m] = formatearHoraCorta(fecha).split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "a. m." : "p. m."}`;
+}
 
 // "8 min", "1 h 5 min", "2 h"
 export function duracionCorta(segundos) {
@@ -36,10 +42,17 @@ export default function MarcadoresParada({ paradas }) {
 
   return paradas.map((parada, i) => (
     <Marker key={parada.inicio.getTime()} position={[parada.lat, parada.lon]} icon={iconos[i]}>
-      <Tooltip direction="top" offset={[0, -12]}>
-        Parada de {duracionCorta(parada.duracionS)} · {formatearHoraCorta(parada.inicio)}–
-        {formatearHoraCorta(parada.fin)}
-      </Tooltip>
+      <Popup className="popup-oscuro">
+        <div className="popup-parada">
+          <p className="popup-parada-titulo">Parada · {duracionCorta(parada.duracionS)}</p>
+          <p className="popup-parada-fila">
+            <span>Llegada</span> <b>{hora12(parada.inicio)}</b>
+          </p>
+          <p className="popup-parada-fila">
+            <span>Salida</span> <b>{hora12(parada.fin)}</b>
+          </p>
+        </div>
+      </Popup>
     </Marker>
   ));
 }
