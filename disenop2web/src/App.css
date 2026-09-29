@@ -2438,3 +2438,10 @@ body {
     bottom: calc(90px + var(--barra-inf, 0px));
   }
 }
+
+/* reproductor-compacto-fino: on small maps the player content shrinks to fit inside its bar */
+.mapa-zona.compacto .reproductor { gap: 6px; padding: 6px 8px; }
+.mapa-zona.compacto .repro-barra { min-width: 24px; }
+.mapa-zona.compacto .repro-hora { font-size: 11px; }
+.mapa-zona.compacto .repro-vel { padding: 0 6px; }
+.mapa-zona.compacto .repro-btn { min-width: 30px; height: 30px; }

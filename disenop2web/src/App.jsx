@@ -1484,7 +1484,7 @@ function App() {
 
               <button
                 className={`fab fab-historial ${historialAbierto ? "activo" : ""}`}
-                onClick={() => setHistorialAbierto(!historialAbierto)}
+                onClick={() => { setCapasAbierto(false); setHistorialAbierto(!historialAbierto); }}
                 aria-pressed={historialAbierto}
                 aria-label="Historial de puntos"
                 title="Historial de puntos"
