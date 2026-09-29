@@ -2250,3 +2250,59 @@ body {
     flex: 1 1 100%;
   }
 }
+
+/* Route edge cut by the date filter: hollow circle */
+.marker-cortado {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--marker-start);
+  background: var(--bg);
+  box-sizing: content-box;
+}
+.marker-cortado.fin { border-color: var(--marker-end); }
+
+/* Notice for a route cut by the date filter */
+.aviso-corte {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ffd166;
+  border-radius: 10px;
+  background: rgba(255, 209, 102, 0.12);
+  backdrop-filter: blur(4px);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.aviso-corte svg { color: #ffd166; flex-shrink: 0; }
+.aviso-corte-btn {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #ffd166;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.aviso-corte-btn:hover { background: rgba(255, 209, 102, 0.2); }
+
+/* capa-aviso: the route list dropdown must open above the cut notice and the filters */
+.nav-rutas { position: relative; z-index: 5; }
+.aviso-corte { position: relative; z-index: 1; }
+
+/* panel-fechas-en-flujo: on wide maps the date panel opens below the route bar,
+   pushing the place search down, instead of floating over both */
+.mapa-zona:not(.compacto) .superior .filtro-fecha {
+  position: static;
+  transform: none;
+  z-index: auto;
+  width: min(380px, 100%);
+  max-height: calc(100dvh - 300px);
+  overflow-y: auto;
+}

@@ -70,6 +70,21 @@ const iconoFin = L.divIcon({
   iconAnchor: [11, 11],
 });
 
+// A route cut by the date filter: its edge is the filter's edge, not the real start/end.
+// Hollow circles tell it apart from the start triangle and the end flag.
+const iconoInicioCortado = L.divIcon({
+  className: "",
+  html: '<div class="marker-cortado inicio"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+const iconoFinCortado = L.divIcon({
+  className: "",
+  html: '<div class="marker-cortado fin"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
 // A "trip" is considered finished if this much time passes with no new GPS
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
@@ -860,6 +875,19 @@ function App() {
   // Snapped line when available, raw GPS line otherwise.
   const rutaDibujada = snapActivo && rutaAjustada ? rutaAjustada : ruta;
 
+  // A route is cut by the filter when its first/last point sits on the range edge
+  // (readings arrive every ~30 s, so 2 minutes of tolerance). Only when not completing.
+  const TOL_BORDE_MS = 2 * 60 * 1000;
+  const hayCorte =
+    Boolean(rangoActivo) && !rangoActivo.completar && !rangoActivo.invalido && puntosRutaMostrada.length > 0;
+  const cortadaInicio =
+    hayCorte &&
+    aMsBogota(puntosRutaMostrada[0].timestamp_gps) - aMsBogota(rangoActivo.desde) <= TOL_BORDE_MS;
+  const cortadaFin =
+    hayCorte &&
+    aMsBogota(rangoActivo.hasta) -
+      aMsBogota(puntosRutaMostrada[puntosRutaMostrada.length - 1].timestamp_gps) <= TOL_BORDE_MS;
+
   const etiquetaRuta = useMemo(() => {
     if (puntosRutaMostrada.length === 0) return "";
 
@@ -879,8 +907,8 @@ function App() {
             OPCIONES_HORA_CORTA
           )}`;
 
-    return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}`;
-  }, [puntosRutaMostrada, indiceMostrado, rutas.length]);
+    return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}${cortadaInicio || cortadaFin ? " · recortada" : ""}`;
+  }, [puntosRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
 
   const verRutaAnterior = () => {
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
@@ -1240,6 +1268,36 @@ function App() {
                   No hay rutas que cumplan con los filtros aplicados.
                 </p>
               )}
+              {!filtroAbierto && (cortadaInicio || cortadaFin) && (
+                <div className="aviso-corte" role="status">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 3 2 21h20L12 3z" />
+                    <line x1="12" y1="10" x2="12" y2="14" />
+                    <line x1="12" y1="17.5" x2="12" y2="17.6" />
+                  </svg>
+                  <span>
+                    Este viaje{" "}
+                    {cortadaInicio && cortadaFin
+                      ? "empez\u00f3 antes y termin\u00f3 despu\u00e9s"
+                      : cortadaInicio
+                        ? "empez\u00f3 antes"
+                        : "termin\u00f3 despu\u00e9s"}{" "}
+                    del rango elegido.
+                  </span>
+                  <button
+                    type="button"
+                    className="aviso-corte-btn"
+                    onClick={() => {
+                      setRangoActivo({ ...rangoActivo, completar: true });
+                      setIndiceRuta(null);
+                    }}
+                  >
+                    Ver viaje completo
+                  </button>
+                </div>
+              )}
+
               <div className="filtros-fila">
               {filtroAbierto ? (
               <div className="filtro-fecha">
@@ -1267,18 +1325,6 @@ function App() {
                     «Hasta» debe ser posterior a «Desde». Si aplicas así, no se mostrarán rutas.
                   </p>
                 )}
-
-                <label className="filtro-completar">
-                  <input
-                    type="checkbox"
-                    checked={completarEfectivo}
-                    onChange={() => setCompletarManual(!completarEfectivo)}
-                  />
-                  <span>
-                    Completar rutas en los bordes
-                    {completarManual === null && <em> (automático)</em>}
-                  </span>
-                </label>
 
                 <div className="filtro-acciones">
                   <button onClick={() => setFiltroAbierto(false)}>Cancelar</button>
@@ -1488,6 +1534,14 @@ function App() {
                   )}
                   {finEsActual ? " Actual" : " Fin de ruta"}
                 </div>
+                {(cortadaInicio || cortadaFin) && (
+                  <div className="legend-item">
+                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+                      <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                    </svg>
+                    Recortada por el filtro
+                  </div>
+                )}
                 {paradasVisibles && paradas.length > 0 && (
                   <div className="legend-item">
                     <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
@@ -1528,12 +1582,12 @@ function App() {
                 <Polyline positions={rutaDibujada} color="#b37feb" weight={3} opacity={0.75} />
               )}
 
-              {ruta.length > 1 && <Marker position={ruta[0]} icon={iconoInicio} />}
+              {ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
 
               {ruta.length > 0 && (
                 <Marker
                   position={ruta[ruta.length - 1]}
-                  icon={finEsActual ? (enVivo ? iconoActual : iconoActualInactivo) : iconoFin}
+                  icon={finEsActual ? (enVivo ? iconoActual : iconoActualInactivo) : (cortadaFin ? iconoFinCortado : iconoFin)}
                 >
                   <Popup className="popup-oscuro" autoPanPaddingTopLeft={[16, margenSuperior]}>
                     <PopupPosicion

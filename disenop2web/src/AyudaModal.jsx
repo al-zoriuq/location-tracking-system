@@ -43,6 +43,11 @@ export default function AyudaModal({ onCerrar }) {
         <h3>Marcadores</h3>
         <ul>
           <li><strong>Triángulo verde:</strong> inicio de la ruta.</li>
+          <li>
+            <strong>Círculo hueco (verde o rojo):</strong> ese extremo de la ruta está cortado por el
+            filtro de fechas, no es el inicio o el final real del viaje. La barra de rutas dice
+            «recortada». Bajo la barra sale un aviso ámbar con el botón «Ver viaje completo», que muestra el viaje entero.
+          </li>
           <li><strong>Bandera roja:</strong> final de la ruta. Con un filtro de fecha o de lugar siempre se ve la bandera, aunque sea la última ruta de la lista.</li>
           <li>
             <strong>Círculo morado:</strong> posición actual, solo en modo en vivo (sin filtros de fecha ni de lugar). Se pone gris si la última señal
