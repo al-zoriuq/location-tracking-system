@@ -35,6 +35,13 @@ export default function AyudaModal({ onCerrar }) {
             dispositivo nunca estuvo. Cada paso queda con un círculo amarillo; tócalo para ver
             el detalle.
           </li>
+          <li>
+            <strong>Pin en el mapa:</strong> el botón del pin, junto al campo de la lupa, te deja
+            elegir un punto tocando el mapa (sale un aviso arriba; «Cancelar» o la tecla Esc lo
+            anulan). Se muestran solo las rutas que pasaron a menos de 300 m de ese punto, con el
+            área marcada con un recuadro punteado. Toca el pin para ver sus coordenadas o quitarlo;
+            también se quita con la «x» del campo de lugar.
+          </li>
         </ul>
         <p>Ambos filtros se pueden combinar.</p>
         <p>En el celular, los filtros están detrás del botón «Filtros», y el selector de fecha y hora se abre como una hoja desde abajo. Al aplicar el rango o elegir un lugar, la tarjeta se cierra y el botón «Filtros» muestra un resumen de lo aplicado; tócalo para abrirla otra vez. Al filtrar, el mapa se centra en la ruta.</p>

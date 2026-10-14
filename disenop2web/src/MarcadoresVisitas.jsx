@@ -24,7 +24,9 @@ function duracionTexto(v) {
 // permanently; the others show their label on hover and open the same popup.
 // margenSuperior: height in px of the panels floating over the top of the map, so a
 // popup that opens near the top makes the map pan instead of hiding under them.
-export default function MarcadoresVisitas({ visitas, indiceRuta, seleccionada, onIrARuta, margenSuperior }) {
+// etiquetaAbajo: put the label under the ring instead of above it (used with the map pin,
+// which stands right on top of the visit and would be covered by the label).
+export default function MarcadoresVisitas({ visitas, indiceRuta, seleccionada, onIrARuta, margenSuperior, etiquetaAbajo = false }) {
   return visitas.map((v) => {
     const enPantalla = v.indiceRuta === indiceRuta;
     const elegida = v.id === seleccionada;
@@ -32,9 +34,9 @@ export default function MarcadoresVisitas({ visitas, indiceRuta, seleccionada, o
 
     return (
       <CircleMarker
-        // A Leaflet tooltip cannot change between permanent and hover after
-        // mounting, so the key changes with it.
-        key={`${v.id}-${enPantalla}`}
+        // A Leaflet tooltip cannot change between permanent and hover (or its side)
+        // after mounting, so the key changes with them.
+        key={`${v.id}-${enPantalla}-${etiquetaAbajo}`}
         center={[v.cercano.lat, v.cercano.lon]}
         radius={elegida ? 18 : 13}
         pathOptions={{
@@ -45,7 +47,12 @@ export default function MarcadoresVisitas({ visitas, indiceRuta, seleccionada, o
           fillOpacity: elegida ? 0.3 : 0.16,
         }}
       >
-        <Tooltip permanent={enPantalla} direction="top" offset={[0, -12]} className="tooltip-visita">
+        <Tooltip
+          permanent={enPantalla}
+          direction={etiquetaAbajo ? "bottom" : "top"}
+          offset={etiquetaAbajo ? [0, 12] : [0, -12]}
+          className="tooltip-visita"
+        >
           {etiquetaVisita(v)}
         </Tooltip>
 
