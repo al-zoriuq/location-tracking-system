@@ -1691,8 +1691,7 @@ function App() {
 
               {ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
 
-              {/* Most recent location marker using iconoActual */}
-              {location && (
+              {ruta.length > 0 && (
                 <Marker
                   position={ruta[ruta.length - 1]}
                   icon={finEsActual ? (enVivo ? iconoActual : iconoActualInactivo) : (cortadaFin ? iconoFinCortado : iconoFin)}
