@@ -2492,20 +2492,20 @@ html, body {
   background: rgba(20, 16, 32, 0.88);
   border: 1px solid var(--border);
   border-radius: 12px;
-  backdrop-filter: blur(4px);
 }
 .mapa-zona.compacto .filtros-fila .filtro-toggle,
 .mapa-zona.compacto .filtros-fila .buscador-input { min-height: 44px; }
 .mapa-zona.compacto .filtros-fila .filtro-toggle { flex: 1 1 auto; justify-content: flex-start; }
 .mapa-zona.compacto .filtros-fila .chip-quitar { width: 44px; height: 44px; }
 
-/* filtros-compacto-v2: the date panel stays in the normal flow (no backdrop-filter on the card,
-   which would make it the containing block of the absolutely positioned panel) */
+/* filtros-compacto-v2: NO backdrop-filter on this card. In Chrome (Android) a backdrop-filter
+   makes the card the containing block of the position:fixed date sheet inside it, trapping the
+   sheet at the top of the screen. Do not add it back and override it later: the CSS minifier
+   drops the unprefixed "backdrop-filter: none", so the override only works in Safari. */
 .mapa-zona.compacto .superior.filtros-visibles .filtros-fila {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   background: rgba(20, 16, 32, 0.94);
 }
+
 .mapa-zona.compacto .superior .filtro-fecha {
   position: static;
   transform: none;
