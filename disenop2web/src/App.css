@@ -2639,3 +2639,70 @@ html, body {
   .main > .sidebar.plegado,
   .main > .sidebar.plegado:not(.con-visitas) { display: none; }
 }
+
+/* ============ Pin filter: a point chosen on the map ============ */
+/* Button next to the place search box, same height as the box */
+.btn-pin {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-pin:hover { color: var(--text); border-color: var(--accent); }
+.btn-pin.activo { color: #ffd166; border-color: #ffd166; background: rgba(255, 209, 102, 0.12); }
+.mapa-zona.compacto .filtros-fila .btn-pin { width: 44px; height: 44px; }
+
+/* The pin on the map: the teardrop's tip is the chosen point */
+.marker-pin {
+  color: #ffd166;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+.marker-pin svg { display: block; }
+.legend-icono[viewBox="0 0 24 32"] { width: 10px; height: 13px; }
+
+/* Pin mode: crosshair cursor over the map and a notice at the top, own row */
+.mapa-zona.modo-pin .leaflet-container,
+.mapa-zona.modo-pin .leaflet-interactive { cursor: crosshair; }
+.aviso-pin {
+  flex: 1 1 100%;
+  order: -1;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.aviso-pin-caja {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 8px 8px 14px;
+  background: rgba(20, 16, 32, 0.94);
+  border: 1px solid #ffd166;
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.aviso-pin-caja button {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+}
+.mapa-zona.compacto .aviso-pin { width: min(100%, 460px); flex: 0 0 auto; }
+.mapa-zona.compacto .aviso-pin-caja { width: 100%; box-sizing: border-box; justify-content: space-between; }
+.mapa-zona.compacto .aviso-pin-caja button { min-height: 40px; }

@@ -17,7 +17,7 @@ import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, Rectangle, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -96,6 +96,11 @@ const VENTANA_VIVO_H = 24;
 const MARGEN_VIVO_H = 72;
 // With a place filter and no dates, look back this far.
 const VENTANA_LUGAR_H = 720; // 30 days
+// Pin filter: half-side in meters of the square searched around a pin dropped on the map.
+// Same size the backend uses around a single-point address (RADIO_DIRECCION_KM = 0.3).
+const RADIO_PIN_M = 300;
+const METROS_POR_GRADO_LAT = 111320;
+const COLOR_PIN = "#ffd166"; // same yellow as the visits to a place
 // The backend stores GPS timestamps as Bogota wall-clock time, without zone.
 const DESFASE_BOGOTA = "-05:00";
 // A range of at least this many hours completes the routes on its edges by
@@ -592,6 +597,50 @@ function AjustarTamano({ zonaRef }) {
   return null;
 }
 
+// A "place" built from a pin dropped on the map. It has the same shape as the
+// /api/buscar-lugar results ({nombre, lat, lon, lat_min, lat_max, lon_min, lon_max}),
+// so it goes through exactly the same place filter. The box is RADIO_PIN_M to each
+// side; a degree of longitude shrinks with latitude, hence the cosine.
+function lugarDesdePin(lat, lon) {
+  const dLat = RADIO_PIN_M / METROS_POR_GRADO_LAT;
+  const dLon = RADIO_PIN_M / (METROS_POR_GRADO_LAT * Math.cos((lat * Math.PI) / 180));
+  return {
+    nombre: `Punto en el mapa (${lat.toFixed(5)}, ${lon.toFixed(5)})`,
+    esPin: true,
+    lat,
+    lon,
+    lat_min: lat - dLat,
+    lat_max: lat + dLat,
+    lon_min: lon - dLon,
+    lon_max: lon + dLon,
+  };
+}
+
+// Map pin: a teardrop whose tip (the anchor) is the exact chosen point
+const iconoPin = L.divIcon({
+  className: "",
+  html:
+    '<div class="marker-pin">' +
+    '<svg viewBox="0 0 24 32" width="28" height="36" aria-hidden="true">' +
+    '<path d="M12 1C6 1 1.5 5.6 1.5 11.4 1.5 19 12 31 12 31s10.5-12 10.5-19.6C22.5 5.6 18 1 12 1z"' +
+    ' fill="currentColor" stroke="#150e24" stroke-width="1.6"/>' +
+    '<circle cx="12" cy="11.5" r="4" fill="#150e24"/></svg></div>',
+  iconSize: [28, 36],
+  iconAnchor: [14, 35],
+  popupAnchor: [0, -32],
+});
+
+// While pin mode is on, the next click / tap on the map drops the pin there.
+// Clicks on markers do not reach the map, so they keep opening their popups.
+function ColocarPin({ activo, onColocar }) {
+  useMapEvents({
+    click(e) {
+      if (activo) onColocar(e.latlng);
+    },
+  });
+  return null;
+}
+
 // Asks the backend if the device has EVER been inside the place's bounding
 // box (whole history, not just the loaded date range). Resolves {visitado}.
 function consultarLugarVisitado(lugar) {
@@ -633,6 +682,11 @@ function App() {
   const [historialCargado, setHistorialCargado] = useState(false);
   // Guards against out-of-order answers when a place is picked twice quickly
   const eleccionActual = useRef(0);
+  // Text written into the search box by picking a place (or dropping a pin): it is
+  // already a chosen place, so it must not be searched again
+  const textoElegido = useRef(null);
+  // Pin mode: the next click on the map drops a pin to filter by that point
+  const [modoPin, setModoPin] = useState(false);
   const { toasts, cerrar, mostrar, registrarFallo, registrarExito } = useToasts();
 
   // Date/time range filter state
@@ -779,7 +833,7 @@ function App() {
   }, [hayUbicacion]);
 
   useEffect(() => {
-    if (busquedaLugar.trim().length < 3) {
+    if (busquedaLugar.trim().length < 3 || busquedaLugar === textoElegido.current) {
       setSugerenciasLugar([]);
       setSinResultadosLugar(false);
       setBuscandoLugar(false);
@@ -834,6 +888,7 @@ function App() {
 
   const elegirLugar = async (lugar) => {
     const eleccion = ++eleccionActual.current;
+    textoElegido.current = lugar.nombre;
     setBusquedaLugar(lugar.nombre);
     setSugerenciasLugar([]);
     setSinResultadosLugar(false);
@@ -873,6 +928,34 @@ function App() {
     setSinResultadosLugar(false);
     setIndiceRuta(null);
   };
+
+  // ----- Pin filter: a point chosen on the map instead of a searched place -----
+  const activarModoPin = () => {
+    setModoPin(true);
+    // Leave the map uncovered so the point can be chosen
+    setFiltrosVisibles(false);
+    setFiltroAbierto(false);
+    setCapasAbierto(false);
+    setSugerenciasLugar([]);
+  };
+
+  // Same path as picking a searched place: visited check, then the route filter
+  const colocarPin = ({ lat, lng }) => {
+    setModoPin(false);
+    elegirLugar(lugarDesdePin(lat, lng));
+  };
+
+  // Escape cancels pin mode
+  useEffect(() => {
+    if (!modoPin) return undefined;
+    const alPresionar = (e) => {
+      if (e.key === "Escape") setModoPin(false);
+    };
+    window.addEventListener("keydown", alPresionar);
+    return () => window.removeEventListener("keydown", alPresionar);
+  }, [modoPin]);
+
+  const pinActivo = lugarActivo && lugarActivo.esPin ? lugarActivo : null;
 
   const ultimoPunto = ruta.length > 0 ? ruta[ruta.length - 1] : null;
 
@@ -1075,7 +1158,9 @@ function App() {
       partesResumen.push(a === b ? a : `${a} \u2013 ${b}`);
     }
   }
-  if (lugarActivo) partesResumen.push(lugarActivo.nombre.split(",")[0]);
+  if (lugarActivo) {
+    partesResumen.push(lugarActivo.esPin ? "pin en el mapa" : lugarActivo.nombre.split(",")[0]);
+  }
   const resumenFiltros = partesResumen.length ? " \u00b7 " + partesResumen.join(" \u00b7 ") : "";
 
   const aplicarFiltro = () => {
@@ -1234,8 +1319,16 @@ function App() {
       <div className={`main ${panelesOcultos ? "sin-paneles" : ""}`}>
         {location ? (
           <>
-            <div className={`mapa-zona ${compacto ? "compacto" : ""} ${bajo ? "bajo" : ""}`} ref={zonaRef}>
+            <div className={`mapa-zona ${compacto ? "compacto" : ""} ${bajo ? "bajo" : ""} ${modoPin ? "modo-pin" : ""}`} ref={zonaRef}>
             <div className="capa-superior">
+            {modoPin && (
+              <div className="aviso-pin" role="status">
+                <div className="aviso-pin-caja">
+                  <span>Toca el mapa donde quieras poner el pin</span>
+                  <button type="button" onClick={() => setModoPin(false)}>Cancelar</button>
+                </div>
+              </div>
+            )}
             <div className={`panel ${panelExpandido ? "expandido" : ""}`}>
               <button
                 className="panel-resumen"
@@ -1430,6 +1523,7 @@ function App() {
                   placeholder="Buscar ciudad o direcci&oacute;n"
                   value={busquedaLugar}
                   onChange={(e) => {
+                    textoElegido.current = null; // typed by hand: search it
                     setBusquedaLugar(e.target.value);
                     if (lugarActivo) setLugarActivo(null);
                     // Editing the text drops the previous verdict and any pending pick
@@ -1437,6 +1531,19 @@ function App() {
                     setLugarSinHistorial(null);
                   }}
                 />
+                <button
+                  type="button"
+                  className={`btn-pin ${modoPin || pinActivo ? "activo" : ""}`}
+                  onClick={activarModoPin}
+                  aria-label="Poner un pin en el mapa para filtrar por ese punto"
+                  title="Poner un pin en el mapa"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+                    <circle cx="12" cy="9.5" r="2.5" />
+                  </svg>
+                </button>
                 {lugarActivo && (
                   <button className="chip-quitar" onClick={quitarLugar} aria-label="Quitar filtro de lugar">
                     x
@@ -1638,6 +1745,15 @@ function App() {
                     <span className="legend-dot visita"></span> Pas&oacute; por el lugar
                   </div>
                 )}
+                {pinActivo && (
+                  <div className="legend-item">
+                    <svg className="legend-icono" viewBox="0 0 24 32" aria-hidden="true">
+                      <path d="M12 1C6 1 1.5 5.6 1.5 11.4 1.5 19 12 31 12 31s10.5-12 10.5-19.6C22.5 5.6 18 1 12 1z"
+                        fill={COLOR_PIN} />
+                    </svg>
+                    Pin
+                  </div>
+                )}
               </div>
             )}
 
@@ -1692,12 +1808,41 @@ function App() {
                 </Marker>
               )}
             <AjustarTamano zonaRef={zonaRef} />
+            <ColocarPin activo={modoPin} onColocar={colocarPin} />
+            {pinActivo && (
+              <>
+                {/* The exact area the filter searches: RADIO_PIN_M to each side of the pin */}
+                <Rectangle
+                  bounds={[
+                    [pinActivo.lat_min, pinActivo.lon_min],
+                    [pinActivo.lat_max, pinActivo.lon_max],
+                  ]}
+                  interactive={false}
+                  pathOptions={{ color: COLOR_PIN, weight: 1.5, dashArray: "6 6", fillOpacity: 0.08 }}
+                />
+                <Marker position={[pinActivo.lat, pinActivo.lon]} icon={iconoPin}>
+                  <Popup className="popup-visita" autoPanPaddingTopLeft={[16, margenSuperior]}>
+                    <strong className="popup-visita-dia">Pin en el mapa</strong>
+                    <span className="popup-visita-fila">
+                      {pinActivo.lat.toFixed(5)}, {pinActivo.lon.toFixed(5)}
+                    </span>
+                    <span className="popup-visita-fila">
+                      Se muestran las rutas que pasaron a menos de {RADIO_PIN_M} m
+                    </span>
+                    <button type="button" className="popup-visita-boton" onClick={quitarLugar}>
+                      Quitar pin
+                    </button>
+                  </Popup>
+                </Marker>
+              </>
+            )}
             <MarcadoresVisitas
                 visitas={visitas}
                 indiceRuta={indiceMostrado}
                 seleccionada={visitaElegida}
                 onIrARuta={elegirVisita}
                 margenSuperior={margenSuperior}
+                etiquetaAbajo={Boolean(pinActivo)}
               />
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
             {paradasVisibles && <MarcadoresParada paradas={paradas} />}
