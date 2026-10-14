@@ -4,3 +4,6 @@ boto3
 flask
 flask_cors
 gunicorn
+requests
+requests
+tzdata

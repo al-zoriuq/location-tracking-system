@@ -106,8 +106,43 @@ ExecStart=/home/ubuntu/location-tracking-system/venv/bin/gunicorn --bind 127.0.0
 [Install]
 WantedBy=multi-user.target
 ```
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable gunicorn-location
-sudo systemctl start gunicorn-location
+
+### Zona horaria de los timestamps
+
+Los paquetes GPS traen la hora con offset explícito (p. ej. `-05:00`). El sniffer conserva la hora local y descarta el offset, sin convertir a UTC:
+
+```python
+timestamp_gps = timestamp_gps.replace(tzinfo=None)
 ```
+
+- `timestamp_gps` se guarda como **hora de Bogotá sin zona** (UTC−5 todo el año).
+- `timestamp_recepcion` se guarda en **UTC** (la RDS corre en UTC).
+- Toda comparación con "ahora" debe usar `NOW() AT TIME ZONE 'America/Bogota'` en el servidor, o `-05:00` al interpretar la fecha en el navegador. Comparar `timestamp_gps` con `NOW()` directamente desplaza el resultado 5 horas.
+
+---
+
+## 5. Frontend Build & State Management
+
+La aplicación frontend en React (`disenop2web`) cuenta con:
+
+- **Base Path Resolution:** `base: '/'` estandarizado en `vite.config.js` para eliminar errores 404 de assets durante la distribución.
+- **Environment Variables:** Configuradas vía `.env` (p. ej. `VITE_NOMBRE_PERSONA=Sthefany`) para renderizar dinámicamente el branding individual de cada cliente.
+- **Real-time Map & Route Plotting:** `MapContainer` de Leaflet, marcadores SVG/CSS pulsantes personalizados (`iconoActual`), marcadores estáticos (`iconoInicio`) y trazados `Polyline` que rastrean el movimiento histórico de coordenadas.
+- **Dynamic Auto-Fitting (AjustarVista):** Usa el hook `useMap` de Leaflet y una guarda con `useRef` para realizar un `fitBounds` inicial al cargar la ruta, sin sobrescribir las interacciones manuales de pan/zoom durante los ciclos de polling de 10 segundos.
+- **Relative Time Calculation:** Las funciones `parsearFechaUTC` y `calcularEstado` calculan estados relativos en línea ("en línea", "hace X min") e indicadores visuales de salud (`dot-fresh`, `dot-medium`, `dot-old`).
+
+---
+
+### Interfaz de usuario
+
+- **Rutas:** el historial se divide en viajes (más de 1 h sin datos, más de 1 km entre puntos o velocidad implícita mayor a 180 km/h). Se navega con anterior, siguiente y un selector con todas.
+- **Filtros:** rango de fecha y hora (el fin debe ser posterior al inicio, sin fechas futuras) y búsqueda de lugar, combinables. Si el filtro corta un viaje, se marca con extremos huecos y un aviso con «Ver viaje completo».
+- **Mapa:** marcadores de inicio, fin y posición actual, paradas (5 min dentro de 50 m), visitas a un lugar, reproductor del recorrido, ajuste a vías y seguimiento del punto actual.
+- **Diseño adaptable:** en pantallas pequeñas los paneles se compactan, el selector de fechas se abre como hoja inferior, el historial como hoja inferior en el celular y como columna lateral en pantalla ancha, y hay un botón para ocultar los paneles.
+- **Ayuda:** botón «?» en la barra superior; su texto (`AyudaModal.jsx`) debe actualizarse cuando cambie la interfaz.
+
+## 6. Branch Management & Workflow Integration
+
+1. **Development & Isolation:** Las features y pruebas de integración se desarrollan en branches de staging (p. ej. `sthefany-test`).
+2. **Synchronization with Main:** Los merges de branches traen los cambios entrantes desde `main` (`git fetch origin` → `git merge origin/main`), resolviendo conflictos localmente (p. ej. `App.jsx`, migraciones de esquema) antes de hacer push.
+3. **Automated Continuous Deployment:** Hacer push o mergear Pull Requests hacia `main` dispara automáticamente `deploy-main.yml`, ejecutando scripts de despliegue SSH en paralelo hacia todos los targets EC2 configurados.
