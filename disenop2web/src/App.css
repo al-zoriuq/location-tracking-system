@@ -2337,8 +2337,15 @@ body {
 .app { box-sizing: border-box; padding-bottom: env(safe-area-inset-bottom, 0px); }
 /* Touch phones: the browser's floating bottom bar is not reported as a safe area,
    so reserve a fixed strip for it */
+/* Android / other touch browsers: only the real safe area */
 @media (pointer: coarse) and (max-width: 900px) {
-  .app { padding-bottom: 0; --barra-inf: max(env(safe-area-inset-bottom, 0px), 16px); }
+  .app { padding-bottom: 0; --barra-inf: env(safe-area-inset-bottom, 0px); }
+}
+/* iOS Safari only: its floating bottom bar is not reported as a safe area */
+@supports (-webkit-touch-callout: none) {
+  @media (pointer: coarse) and (max-width: 900px) {
+    .app { --barra-inf: max(env(safe-area-inset-bottom, 0px), 16px); }
+  }
 }
 
 /* fab-historial: on narrow portrait screens the sidebar becomes a bottom sheet
