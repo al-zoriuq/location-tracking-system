@@ -55,6 +55,13 @@ export default function Reproductor({ puntos, onCerrar }) {
   }, [reproduciendo, fin]);
 
   const posicion = posicionEnInstante(puntos, t);
+  // Keep the moving point centered while playing (and while scrubbing the bar)
+  const lat = posicion ? posicion[0] : null;
+  const lon = posicion ? posicion[1] : null;
+  useEffect(() => {
+    if (lat == null || lon == null) return;
+    map.panTo([lat, lon], { animate: false });
+  }, [lat, lon, map]);
   const destino = map.getContainer().parentElement;
 
   const alternar = () => {
