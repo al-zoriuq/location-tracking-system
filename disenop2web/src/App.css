@@ -2438,34 +2438,73 @@ body {
 .mapa-zona.compacto .superior .filtros-toggle-compacto { order: 2; }
 .mapa-zona.compacto .superior .filtros-fila { order: 3; }
 
-/* reproductor-junto-al-zoom: on small maps the player bar starts to the right of the zoom buttons */
-.mapa-zona.compacto .reproductor {
-  left: 64px;
-  right: 76px;
-  width: auto;
-}
-
 /* reproductor-svg: drawn play/pause icons, and the player kept clear of the legend and the round buttons */
 .repro-btn { display: grid; place-items: center; padding: 0; }
 @media (max-width: 1100px) {
   .mapa-zona:not(.compacto) .reproductor { bottom: 84px; }
 }
-.mapa-zona.compacto .reproductor { right: 88px; }
 
-/* leyenda-sobre-reproductor: in compact maps the legend stays visible and sits above the player bar */
-.mapa-zona.compacto:has(.reproductor) .legend { bottom: 140px; }
+/* reproductor-dos-filas: on small maps (phones) the player is two rows, so the progress bar
+   gets the full width instead of being squeezed by the time text:
+     [ ===========o================= ]   <- progress bar, whole width
+     [ >  10:33:25 a. m.   x300   x  ]   <- play, time, speed, close
+   It spans from the left edge to the round-button column (12 + 52 px button + 12 gap = 76 px),
+   bottom-aligned with that column. While it is open, the zoom buttons and the legend move
+   up above it. --alto-repro is the bar's height: 2 rows + gaps + padding + border. */
+.mapa-zona.compacto { --alto-repro: 80px; }
+.mapa-zona.compacto .reproductor {
+  left: 12px;
+  right: 76px;
+  bottom: 34px;
+  width: auto;
+  height: var(--alto-repro);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: 26px 32px;
+  grid-template-areas:
+    "barra barra barra barra"
+    "play  hora  vel   cerrar";
+  column-gap: 8px;
+  row-gap: 4px;
+  padding: 6px 10px 8px;
+  border-radius: 18px;
+}
+.mapa-zona.compacto .reproductor > .repro-btn:first-child { grid-area: play; }
+.mapa-zona.compacto .reproductor > .repro-btn:last-child { grid-area: cerrar; }
+.mapa-zona.compacto .repro-barra { grid-area: barra; width: 100%; min-width: 0; margin: 0; }
+.mapa-zona.compacto .repro-hora {
+  grid-area: hora;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
+}
+.mapa-zona.compacto .repro-vel { grid-area: vel; padding: 0 8px; }
+/* Very narrow phones (360 px wide or less): "10:33 a. m." instead of "10:33:25 a. m." */
+@media (max-width: 360px) {
+  .mapa-zona.compacto .repro-seg { display: none; }
+  .mapa-zona.compacto .reproductor { column-gap: 6px; padding-inline: 8px; }
+  .mapa-zona.compacto .repro-hora { font-size: 11px; }
+  .mapa-zona.compacto .repro-vel { padding: 0 6px; font-size: 11px; }
+}
+.mapa-zona.compacto .repro-btn,
+.mapa-zona.compacto .repro-vel { min-width: 32px; height: 32px; }
+
+/* While the player is open, the zoom buttons and the legend sit just above it (12 px gap) */
+.mapa-zona.compacto:has(.reproductor) .map .leaflet-top.leaflet-left,
+.mapa-zona.compacto:has(.reproductor) .legend {
+  bottom: calc(34px + var(--alto-repro) + 12px);
+}
 @media (pointer: coarse) and (max-width: 900px) {
+  /* On phones the player also moves up by the bottom-bar strip (--barra-inf); the zoom already
+     follows it through its translateY, the legend needs it added */
   .main .mapa-zona.compacto:has(.reproductor) .legend {
-    bottom: calc(90px + var(--barra-inf, 0px));
+    bottom: calc(34px + var(--alto-repro) + 12px + var(--barra-inf, 0px));
   }
 }
-
-/* reproductor-compacto-fino: on small maps the player content shrinks to fit inside its bar */
-.mapa-zona.compacto .reproductor { gap: 6px; padding: 6px 8px; }
-.mapa-zona.compacto .repro-barra { min-width: 24px; }
-.mapa-zona.compacto .repro-hora { font-size: 11px; }
-.mapa-zona.compacto .repro-vel { padding: 0 6px; }
-.mapa-zona.compacto .repro-btn { min-width: 30px; height: 30px; }
 
 /* sin-desplazamiento-pagina: the page is exactly one screen tall and only the inner lists scroll,
    so lock the document itself; iOS can no longer push the header up when a text field gets focus */
