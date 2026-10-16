@@ -26,11 +26,7 @@ import "leaflet/dist/leaflet.css";
 const ZONA = "America/Bogota";
 const DESFASE_ZONA = "-05:00";
 const OPCIONES_ZONA = { timeZone: ZONA };
-const OPCIONES_HORA_CORTA = {
-  timeZone: ZONA,
-  hour: "2-digit",
-  minute: "2-digit",
-};
+const OPCIONES_HORA_CORTA = { timeZone: ZONA, hour: "2-digit", minute: "2-digit" };
 
 // Current position while data keeps arriving: a pulsing dot
 const iconoActual = L.divIcon({
@@ -186,18 +182,14 @@ async function ajustarACarretera(puntos) {
       if (!respuesta.ok) return tramo;
 
       const datos = await respuesta.json();
-      if (
-        datos.code !== "Ok" ||
-        !datos.matchings ||
-        datos.matchings.length === 0
-      ) {
+      if (datos.code !== "Ok" || !datos.matchings || datos.matchings.length === 0) {
         return tramo;
       }
 
       return datos.matchings.flatMap((m) =>
-        m.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
+        m.geometry.coordinates.map(([lon, lat]) => [lat, lon])
       );
-    }),
+    })
   );
 
   return resultados.flat();
@@ -309,50 +301,79 @@ function calcularEstado(fechaGPS) {
 }
 
 // Splits the full (chronological, oldest -> newest) history into separate
-// "trips". A new trip starts whenever the gap between two consecutive
-// readings exceeds UMBRAL_NUEVA_RUTA_MS.
+// "trips". Each point is compared against the last accepted point:
+//   1. more than UMBRAL_NUEVA_RUTA_MS later -> new trip, with no speed check
+//      (the device can reappear far away after being off for a while)
+//   2. implied speed above VELOCIDAD_MAXIMA_KMH -> held as a "candidate", not
+//      drawn yet. If the next point agrees with it (plausible speed from it),
+//      the jump is real (or the previous point was the bad one), so a new trip
+//      starts from the candidate. If not, the candidate was a lone GPS glitch
+//      and is dropped; it still exists in the database.
+//   3. more than UMBRAL_NUEVA_RUTA_METROS away -> new trip
+//   4. otherwise -> same trip
+// Without step 2's check of the next point, one bad reading at the start would
+// make every later real point look "impossible", and the map would stay stuck
+// on the bad point.
 function dividirEnRutas(historial) {
   if (historial.length === 0) return [];
 
   const rutas = [];
   let rutaActual = [historial[0]];
+  let candidato = null; // a point that jumped too fast, waiting for the next one
+
+  // Time, distance and implied speed from point a to point b
+  const tramo = (a, b) => {
+    const diffMs = parsearFechaGPS(b.timestamp_gps) - parsearFechaGPS(a.timestamp_gps);
+    const distanciaM = calcularDistanciaMetros(
+      Number(a.latitud),
+      Number(a.longitud),
+      Number(b.latitud),
+      Number(b.longitud)
+    );
+    const diffHoras = diffMs / (1000 * 60 * 60);
+    const velocidadKmh = diffHoras > 0 ? distanciaM / 1000 / diffHoras : Infinity;
+    return { diffMs, distanciaM, velocidadKmh };
+  };
+
+  const empezarRuta = (punto) => {
+    rutas.push(rutaActual);
+    rutaActual = [punto];
+  };
+
+  // Adds a plausible point: same trip, or a new one if it is more than 1 km away
+  const agregar = (punto, distanciaM) => {
+    if (distanciaM > UMBRAL_NUEVA_RUTA_METROS) empezarRuta(punto);
+    else rutaActual.push(punto);
+  };
 
   for (let i = 1; i < historial.length; i++) {
-    // Compared against the last accepted point, not historial[i - 1], so a
-    // discarded point doesn't drag the next comparison with it.
-    const anterior = rutaActual[rutaActual.length - 1];
     const actual = historial[i];
+    const t = tramo(rutaActual[rutaActual.length - 1], actual);
 
-    const fechaAnterior = parsearFechaGPS(anterior.timestamp_gps);
-    const fechaActual = parsearFechaGPS(actual.timestamp_gps);
-    const diffMs = fechaActual - fechaAnterior;
-
-    const distanciaM = calcularDistanciaMetros(
-      Number(anterior.latitud),
-      Number(anterior.longitud),
-      Number(actual.latitud),
-      Number(actual.longitud),
-    );
-
-    const diffHoras = diffMs / (1000 * 60 * 60);
-    const velocidadKmh =
-      diffHoras > 0 ? distanciaM / 1000 / diffHoras : Infinity;
-
-    if (velocidadKmh > VELOCIDAD_MAXIMA_KMH) {
-      // Physically impossible jump (GPS glitch): left out of the drawn
-      // route, though the point still exists in the database.
+    if (t.diffMs > UMBRAL_NUEVA_RUTA_MS) {
+      candidato = null;
+      empezarRuta(actual);
       continue;
     }
 
-    if (
-      diffMs > UMBRAL_NUEVA_RUTA_MS ||
-      distanciaM > UMBRAL_NUEVA_RUTA_METROS
-    ) {
-      rutas.push(rutaActual);
-      rutaActual = [actual];
-    } else {
-      rutaActual.push(actual);
+    if (t.velocidadKmh > VELOCIDAD_MAXIMA_KMH) {
+      if (candidato) {
+        const c = tramo(candidato, actual);
+        if (c.diffMs <= UMBRAL_NUEVA_RUTA_MS && c.velocidadKmh <= VELOCIDAD_MAXIMA_KMH) {
+          // Two points agree with each other: the device really is there
+          empezarRuta(candidato);
+          candidato = null;
+          agregar(actual, c.distanciaM);
+          continue;
+        }
+      }
+      candidato = actual;
+      continue;
     }
+
+    // Back on the route: a pending candidate was a lone glitch
+    candidato = null;
+    agregar(actual, t.distanciaM);
   }
 
   rutas.push(rutaActual);
@@ -560,7 +581,7 @@ function RuedaOpciones({ opciones, valor, onChange }) {
   const { ref, alHacerScroll, alPresionarTecla, alPresionarMouse } = useRueda(
     indice,
     opciones.length,
-    (i) => onChange(opciones[i]),
+    (i) => onChange(opciones[i])
   );
 
   return (
@@ -1026,18 +1047,18 @@ function App() {
 
     const primero = parsearFechaGPS(puntosRutaMostrada[0].timestamp_gps);
     const ultimo = parsearFechaGPS(
-      puntosRutaMostrada[puntosRutaMostrada.length - 1].timestamp_gps,
+      puntosRutaMostrada[puntosRutaMostrada.length - 1].timestamp_gps
     );
 
     const rango =
       puntosRutaMostrada.length > 1
         ? `${primero.toLocaleDateString("es-CO", OPCIONES_ZONA)}, ${primero.toLocaleTimeString(
             "es-CO",
-            OPCIONES_HORA_CORTA,
+            OPCIONES_HORA_CORTA
           )} - ${ultimo.toLocaleTimeString("es-CO", OPCIONES_HORA_CORTA)}`
         : `${primero.toLocaleDateString("es-CO", OPCIONES_ZONA)}, ${primero.toLocaleTimeString(
             "es-CO",
-            OPCIONES_HORA_CORTA,
+            OPCIONES_HORA_CORTA
           )}`;
 
     return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}${cortadaInicio || cortadaFin ? " · recortada" : ""}`;
@@ -1496,12 +1517,8 @@ function App() {
                 )}
 
                 <div className="filtro-acciones">
-                  <button onClick={() => setFiltroAbierto(false)}>
-                    Cancelar
-                  </button>
-                  {rangoActivo && (
-                    <button onClick={quitarFiltro}>Ver en vivo</button>
-                  )}
+                  <button onClick={() => setFiltroAbierto(false)}>Cancelar</button>
+                  {rangoActivo && <button onClick={quitarFiltro}>Ver en vivo</button>}
                   <button className="aplicar" onClick={aplicarFiltro}>
                     Aplicar
                   </button>
@@ -1795,14 +1812,8 @@ function App() {
                 activo={centradoActivo}
               />
 
-              {/* Draw route path */}
               {rutaDibujada.length > 1 && (
-                <Polyline
-                  positions={rutaDibujada}
-                  color="#b37feb"
-                  weight={3}
-                  opacity={0.75}
-                />
+                <Polyline positions={rutaDibujada} color="#b37feb" weight={3} opacity={0.75} />
               )}
 
               {ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
