@@ -2323,8 +2323,15 @@ body {
 .app { box-sizing: border-box; padding-bottom: env(safe-area-inset-bottom, 0px); }
 /* Touch phones: the browser's floating bottom bar is not reported as a safe area,
    so reserve a fixed strip for it */
+/* Android / other touch browsers: only the real safe area */
 @media (pointer: coarse) and (max-width: 900px) {
-  .app { padding-bottom: 0; --barra-inf: max(env(safe-area-inset-bottom, 0px), 16px); }
+  .app { padding-bottom: 0; --barra-inf: env(safe-area-inset-bottom, 0px); }
+}
+/* iOS Safari only: its floating bottom bar is not reported as a safe area */
+@supports (-webkit-touch-callout: none) {
+  @media (pointer: coarse) and (max-width: 900px) {
+    .app { --barra-inf: max(env(safe-area-inset-bottom, 0px), 16px); }
+  }
 }
 
 /* fab-historial: on narrow portrait screens the sidebar becomes a bottom sheet
@@ -2417,34 +2424,73 @@ body {
 .mapa-zona.compacto .superior .filtros-toggle-compacto { order: 2; }
 .mapa-zona.compacto .superior .filtros-fila { order: 3; }
 
-/* reproductor-junto-al-zoom: on small maps the player bar starts to the right of the zoom buttons */
-.mapa-zona.compacto .reproductor {
-  left: 64px;
-  right: 76px;
-  width: auto;
-}
-
 /* reproductor-svg: drawn play/pause icons, and the player kept clear of the legend and the round buttons */
 .repro-btn { display: grid; place-items: center; padding: 0; }
 @media (max-width: 1100px) {
   .mapa-zona:not(.compacto) .reproductor { bottom: 84px; }
 }
-.mapa-zona.compacto .reproductor { right: 88px; }
 
-/* leyenda-sobre-reproductor: in compact maps the legend stays visible and sits above the player bar */
-.mapa-zona.compacto:has(.reproductor) .legend { bottom: 140px; }
+/* reproductor-dos-filas: on small maps (phones) the player is two rows, so the progress bar
+   gets the full width instead of being squeezed by the time text:
+     [ ===========o================= ]   <- progress bar, whole width
+     [ >  10:33:25 a. m.   x300   x  ]   <- play, time, speed, close
+   It spans from the left edge to the round-button column (12 + 52 px button + 12 gap = 76 px),
+   bottom-aligned with that column. While it is open, the zoom buttons and the legend move
+   up above it. --alto-repro is the bar's height: 2 rows + gaps + padding + border. */
+.mapa-zona.compacto { --alto-repro: 80px; }
+.mapa-zona.compacto .reproductor {
+  left: 12px;
+  right: 76px;
+  bottom: 34px;
+  width: auto;
+  height: var(--alto-repro);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: 26px 32px;
+  grid-template-areas:
+    "barra barra barra barra"
+    "play  hora  vel   cerrar";
+  column-gap: 8px;
+  row-gap: 4px;
+  padding: 6px 10px 8px;
+  border-radius: 18px;
+}
+.mapa-zona.compacto .reproductor > .repro-btn:first-child { grid-area: play; }
+.mapa-zona.compacto .reproductor > .repro-btn:last-child { grid-area: cerrar; }
+.mapa-zona.compacto .repro-barra { grid-area: barra; width: 100%; min-width: 0; margin: 0; }
+.mapa-zona.compacto .repro-hora {
+  grid-area: hora;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
+}
+.mapa-zona.compacto .repro-vel { grid-area: vel; padding: 0 8px; }
+/* Very narrow phones (360 px wide or less): "10:33 a. m." instead of "10:33:25 a. m." */
+@media (max-width: 360px) {
+  .mapa-zona.compacto .repro-seg { display: none; }
+  .mapa-zona.compacto .reproductor { column-gap: 6px; padding-inline: 8px; }
+  .mapa-zona.compacto .repro-hora { font-size: 11px; }
+  .mapa-zona.compacto .repro-vel { padding: 0 6px; font-size: 11px; }
+}
+.mapa-zona.compacto .repro-btn,
+.mapa-zona.compacto .repro-vel { min-width: 32px; height: 32px; }
+
+/* While the player is open, the zoom buttons and the legend sit just above it (12 px gap) */
+.mapa-zona.compacto:has(.reproductor) .map .leaflet-top.leaflet-left,
+.mapa-zona.compacto:has(.reproductor) .legend {
+  bottom: calc(34px + var(--alto-repro) + 12px);
+}
 @media (pointer: coarse) and (max-width: 900px) {
+  /* On phones the player also moves up by the bottom-bar strip (--barra-inf); the zoom already
+     follows it through its translateY, the legend needs it added */
   .main .mapa-zona.compacto:has(.reproductor) .legend {
-    bottom: calc(90px + var(--barra-inf, 0px));
+    bottom: calc(34px + var(--alto-repro) + 12px + var(--barra-inf, 0px));
   }
 }
-
-/* reproductor-compacto-fino: on small maps the player content shrinks to fit inside its bar */
-.mapa-zona.compacto .reproductor { gap: 6px; padding: 6px 8px; }
-.mapa-zona.compacto .repro-barra { min-width: 24px; }
-.mapa-zona.compacto .repro-hora { font-size: 11px; }
-.mapa-zona.compacto .repro-vel { padding: 0 6px; }
-.mapa-zona.compacto .repro-btn { min-width: 30px; height: 30px; }
 
 /* sin-desplazamiento-pagina: the page is exactly one screen tall and only the inner lists scroll,
    so lock the document itself; iOS can no longer push the header up when a text field gets focus */
@@ -2471,20 +2517,20 @@ html, body {
   background: rgba(20, 16, 32, 0.88);
   border: 1px solid var(--border);
   border-radius: 12px;
-  backdrop-filter: blur(4px);
 }
 .mapa-zona.compacto .filtros-fila .filtro-toggle,
 .mapa-zona.compacto .filtros-fila .buscador-input { min-height: 44px; }
 .mapa-zona.compacto .filtros-fila .filtro-toggle { flex: 1 1 auto; justify-content: flex-start; }
 .mapa-zona.compacto .filtros-fila .chip-quitar { width: 44px; height: 44px; }
 
-/* filtros-compacto-v2: the date panel stays in the normal flow (no backdrop-filter on the card,
-   which would make it the containing block of the absolutely positioned panel) */
+/* filtros-compacto-v2: NO backdrop-filter on this card. In Chrome (Android) a backdrop-filter
+   makes the card the containing block of the position:fixed date sheet inside it, trapping the
+   sheet at the top of the screen. Do not add it back and override it later: the CSS minifier
+   drops the unprefixed "backdrop-filter: none", so the override only works in Safari. */
 .mapa-zona.compacto .superior.filtros-visibles .filtros-fila {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   background: rgba(20, 16, 32, 0.94);
 }
+
 .mapa-zona.compacto .superior .filtro-fecha {
   position: static;
   transform: none;
@@ -2593,3 +2639,70 @@ html, body {
   .main > .sidebar.plegado,
   .main > .sidebar.plegado:not(.con-visitas) { display: none; }
 }
+
+/* ============ Pin filter: a point chosen on the map ============ */
+/* Button next to the place search box, same height as the box */
+.btn-pin {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: rgba(20, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-pin:hover { color: var(--text); border-color: var(--accent); }
+.btn-pin.activo { color: #ffd166; border-color: #ffd166; background: rgba(255, 209, 102, 0.12); }
+.mapa-zona.compacto .filtros-fila .btn-pin { width: 44px; height: 44px; }
+
+/* The pin on the map: the teardrop's tip is the chosen point */
+.marker-pin {
+  color: #ffd166;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+.marker-pin svg { display: block; }
+.legend-icono[viewBox="0 0 24 32"] { width: 10px; height: 13px; }
+
+/* Pin mode: crosshair cursor over the map and a notice at the top, own row */
+.mapa-zona.modo-pin .leaflet-container,
+.mapa-zona.modo-pin .leaflet-interactive { cursor: crosshair; }
+.aviso-pin {
+  flex: 1 1 100%;
+  order: -1;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.aviso-pin-caja {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 8px 8px 14px;
+  background: rgba(20, 16, 32, 0.94);
+  border: 1px solid #ffd166;
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.aviso-pin-caja button {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+}
+.mapa-zona.compacto .aviso-pin { width: min(100%, 460px); flex: 0 0 auto; }
+.mapa-zona.compacto .aviso-pin-caja { width: 100%; box-sizing: border-box; justify-content: space-between; }
+.mapa-zona.compacto .aviso-pin-caja button { min-height: 40px; }

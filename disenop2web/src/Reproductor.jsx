@@ -6,13 +6,20 @@ import { posicionEnInstante } from "./utils/viajes.js";
 // Speeds: seconds of route time per real second.
 const VELOCIDADES = [60, 300, 1200];
 
-const formatoHora = (ms) =>
-  new Date(ms).toLocaleTimeString("es-CO", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZone: "America/Bogota",
-  });
+const FORMATO_HORA = new Intl.DateTimeFormat("es-CO", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  timeZone: "America/Bogota",
+});
+
+// "10:33:25 a. m." split into {hm: "10:33", seg: ":25", periodo: "a. m."}, so CSS can
+// drop the seconds on very narrow phones, where the full time does not fit the player.
+function partesHora(ms) {
+  const v = {};
+  for (const { type, value } of FORMATO_HORA.formatToParts(new Date(ms))) v[type] = value;
+  return { hm: `${v.hour}:${v.minute}`, seg: `:${v.second}`, periodo: v.dayPeriod || "" };
+}
 
 export default function Reproductor({ puntos, onCerrar }) {
   const map = useMap();
@@ -55,6 +62,14 @@ export default function Reproductor({ puntos, onCerrar }) {
   }, [reproduciendo, fin]);
 
   const posicion = posicionEnInstante(puntos, t);
+  const hora = partesHora(t);
+  // Keep the moving point centered while playing (and while scrubbing the bar)
+  const lat = posicion ? posicion[0] : null;
+  const lon = posicion ? posicion[1] : null;
+  useEffect(() => {
+    if (lat == null || lon == null) return;
+    map.panTo([lat, lon], { animate: false });
+  }, [lat, lon, map]);
   const destino = map.getContainer().parentElement;
 
   const alternar = () => {
@@ -81,7 +96,11 @@ export default function Reproductor({ puntos, onCerrar }) {
         value={Math.min(Math.max(t, inicio), fin)}
         onChange={(e) => setT(Number(e.target.value))}
         aria-label="Posici\u00f3n en el recorrido" />
-      <span className="repro-hora">{formatoHora(t)}</span>
+      <span className="repro-hora">
+        {hora.hm}
+        <span className="repro-seg">{hora.seg}</span>
+        {hora.periodo && ` ${hora.periodo}`}
+      </span>
       <button type="button" className="repro-vel"
         onClick={() => setVelocidad(VELOCIDADES[(VELOCIDADES.indexOf(velocidad) + 1) % VELOCIDADES.length])}
         aria-label="Cambiar velocidad">
