@@ -1,20 +1,21 @@
 /* ============ Design tokens (colors, fonts) ============ */
 :root {
-  --bg: #150e24;           /* page background: deep purple/navy */
-  --panel: #1e1533;        /* floating card and sidebar item background */
-  --panel-2: #241a3d;      /* alternate panel shade, currently unused but kept for future use */
-  --border: #3a2a5c;       /* border color used on cards, dividers, sidebar rows */
-  --text: #f3eefb;         /* primary text color */
-  --text-dim: #a897c9;     /* secondary/muted text color (labels, meta info) */
-  --accent: #b37feb;       /* primary accent: current-position marker, route line */
-  --accent-2: #D0BBFC;     /* secondary accent, used for lighter purple details */
+  --bg: #1e1533; /* page background: deep purple/navy */
+  --panel: #1e1533; /* floating card and sidebar item background */
+  --panel-2: #241a3d; /* alternate panel shade, currently unused but kept for future use */
+  --border: #3a2a5c; /* border color used on cards, dividers, sidebar rows */
+  --text: #f3eefb; /* primary text color */
+  --text-dim: #a897c9; /* secondary/muted text color (labels, meta info) */
+  --accent: #b37feb; /* primary accent: current-position marker, route line */
+  --accent-2: #d0bbfc; /* secondary accent, used for lighter purple details */
   --marker-start: #3ddc97; /* start-of-route marker: teal green */
-  --marker-end: #ff7a8a;   /* end of a past route: coral */
-  --status-fresh: #ffee00;   /* status dot: data received within the last 2 minutes */
-  --status-medium: #fbbf24;  /* status dot: data is somewhat recent (under 1 hour) */
-  --status-old: #6b6280;     /* status dot: data is stale (over 1 hour, or none) */
+  --marker-end: #ff7a8a; /* end of a past route: coral */
+  --status-fresh: #ffee00; /* status dot: data received within the last 2 minutes */
+  --status-medium: #fbbf24; /* status dot: data is somewhat recent (under 1 hour) */
+  --status-old: #6b6280; /* status dot: data is stale (over 1 hour, or none) */
   --font-display: "Space Grotesk", sans-serif; /* headings and general text */
-  --font-mono: "IBM Plex Mono", monospace;      /* numeric data: coordinates, dates, times */
+  --font-mono:
+    "IBM Plex Mono", monospace; /* numeric data: coordinates, dates, times */
 }
 
 * {
@@ -24,7 +25,9 @@
 /* Force html/body/root to fill the full viewport, both height and width.
    Height alone isn't enough: without width:100%, the browser can leave
    blank space on the right when the window is wider than the content. */
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   width: 100%;
   margin: 0;
@@ -72,7 +75,9 @@ body {
   gap: 8px;
   font-size: 13px;
   color: var(--text-dim);
-  font-family: var(--font-mono); /* relative time reads like a data value, not a label */
+  font-family: var(
+    --font-mono
+  ); /* relative time reads like a data value, not a label */
 }
 
 /* Base dot style; color is set by the dot-fresh / dot-medium / dot-old modifier below */
@@ -80,7 +85,9 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  transition: background-color 0.3s, box-shadow 0.3s;
+  transition:
+    background-color 0.3s,
+    box-shadow 0.3s;
 }
 
 .dot-fresh {
@@ -101,7 +108,7 @@ body {
 /* ============ Main area: map (flexible width) + sidebar (fixed width) ============ */
 .main {
   position: relative;
-  flex: 1;       /* take all remaining vertical space after the topbar */
+  flex: 1; /* take all remaining vertical space after the topbar */
   display: flex;
   min-height: 0; /* IMPORTANT: allows flex children to shrink properly instead of overflowing */
 }
@@ -116,7 +123,8 @@ body {
 /* CSS trick to recolor the free OpenStreetMap tiles into a dark/purple theme,
    without needing a paid map provider or API key. */
 .map .leaflet-tile-pane {
-  filter: invert(92%) hue-rotate(225deg) brightness(0.85) contrast(0.9) saturate(0.6);
+  filter: invert(92%) hue-rotate(225deg) brightness(0.85) contrast(0.9)
+    saturate(0.6);
 }
 
 /* Leaflet puts its zoom buttons at the top-left by default, exactly where
@@ -149,7 +157,10 @@ body {
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .control-toggle:hover {
@@ -206,7 +217,7 @@ body {
 .coord-label {
   font-size: 11px;
   color: var(--text-dim);
-  width: 24px;     /* fixed width so "Lat" and "Lon" line up vertically */
+  width: 24px; /* fixed width so "Lat" and "Lon" line up vertically */
   flex-shrink: 0;
 }
 
@@ -311,7 +322,8 @@ body {
 
 /* Pulsing glow animation used by the current-position marker */
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 6px rgba(179, 127, 235, 0.3);
   }
   50% {
@@ -539,16 +551,16 @@ body {
 }
 
 .rueda {
-  height: 102px;           /* exactly 3 rows of 34px */
+  height: 102px; /* exactly 3 rows of 34px */
   width: 52px;
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
-  scrollbar-width: none;          /* Firefox */
-  -ms-overflow-style: none;       /* old Edge */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
 }
 
 .rueda::-webkit-scrollbar {
-  display: none;                  /* Chrome/Safari */
+  display: none; /* Chrome/Safari */
 }
 
 .rueda-item {
@@ -560,7 +572,9 @@ body {
   font-size: 17px;
   color: var(--text-dim);
   opacity: 0.45;
-  transition: opacity 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
   user-select: none;
 }
 
