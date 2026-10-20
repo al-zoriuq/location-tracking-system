@@ -896,6 +896,26 @@ body {
   letter-spacing: 0.06em;
 }
 
+/* Same route/date/place controls as over the map, but flowing normally
+   instead of floating (they are absolutely positioned there) */
+.menu-controles {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.menu-controles .filtro-fecha {
+  position: static;
+  transform: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.menu-controles .buscador-lugar {
+  width: 100%;
+}
+
 .menu-item-boton {
   display: block;
   width: 100%;

@@ -881,6 +881,176 @@ function App() {
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
 
+  // Route navigation, date filter and place search: rendered both in their
+  // usual spot over the map and a second time inside the menu, so every
+  // function stays reachable from there too without duplicating the markup.
+  const controlesFuncionales = (
+    <>
+      {ruta.length > 0 && (
+        <div className="nav-rutas">
+          <button
+            className="nav-btn"
+            onClick={verRutaAnterior}
+            disabled={indiceMostrado === 0}
+            aria-label="Ruta anterior"
+          >
+            ← <span className="nav-texto">Anterior</span>
+          </button>
+          <SelectorRuta
+            etiqueta={etiquetaRuta}
+            opciones={opcionesRuta}
+            indice={indiceMostrado}
+            onElegir={irARuta}
+          />
+          <button
+            className="nav-btn"
+            onClick={verRutaSiguiente}
+            disabled={siguiendoActual}
+            aria-label="Ruta siguiente"
+          >
+            <span className="nav-texto">Siguiente</span> →
+          </button>
+          {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
+          {indiceMostrado < rutas.length - 2 && (
+            <button
+              className="nav-btn primario"
+              onClick={volverARutaActual}
+              aria-label="Ir a la ruta actual, la más reciente"
+              title="Ir a la ruta más reciente"
+            >
+              <span className="nav-texto">Actual</span> »
+            </button>
+          )}
+        </div>
+      )}
+
+      {filtroAbierto ? (
+      <div className="filtro-fecha">
+        <SelectorFechaHora
+          etiqueta="Desde"
+          valor={fechaDesde}
+          max={ahoraMax}
+          abierto={campoFecha === "desde"}
+          onAlternar={() => setCampoFecha(campoFecha === "desde" ? null : "desde")}
+          onChange={(valor) => {
+            setFechaDesde(valor);
+            setErrorFiltro("");
+          }}
+        />
+
+        <SelectorFechaHora
+          etiqueta="Hasta"
+          valor={fechaHasta}
+          min={fechaDesde || undefined}
+          max={ahoraMax}
+          abierto={campoFecha === "hasta"}
+          onAlternar={() => setCampoFecha(campoFecha === "hasta" ? null : "hasta")}
+          onChange={(valor) => {
+            setFechaHasta(valor);
+            setErrorFiltro("");
+          }}
+        />
+
+        {errorFiltro && (
+          <p className="filtro-error" role="alert">
+            {errorFiltro}
+          </p>
+        )}
+
+        <div className="filtro-acciones">
+          <button onClick={() => setFiltroAbierto(false)}>Cancelar</button>
+          {rangoActivo && <button onClick={quitarFiltro}>Ver en vivo</button>}
+          <button className="aplicar" onClick={aplicarFiltro}>
+            Aplicar
+          </button>
+        </div>
+      </div>
+      ) : (
+        <div className="filtros-chips">
+          <button className="filtro-toggle" onClick={abrirFiltro}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="3" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+              <line x1="8" y1="3" x2="8" y2="7" />
+              <line x1="16" y1="3" x2="16" y2="7" />
+            </svg>
+            {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
+          </button>
+          {rangoActivo && (
+            <button className="chip-quitar" onClick={quitarFiltro} aria-label="Quitar filtro de fecha">
+              x
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="buscador-lugar">
+        <input
+          type="text"
+          className="buscador-input"
+          placeholder="Filtrar por ciudad o direccion"
+          value={busquedaLugar}
+          onChange={(e) => {
+            eleccionActual.current++;
+            busquedaElegida.current = null;
+            setBusquedaLugar(e.target.value);
+            if (lugarActivo) setLugarActivo(null);
+            if (lugarSinHistorial) setLugarSinHistorial(null);
+          }}
+        />
+        {(lugarActivo || lugarSinHistorial) && (
+          <button className="chip-quitar" onClick={quitarLugar} aria-label="Quitar filtro de lugar">
+            x
+          </button>
+        )}
+
+        {sugerenciasLugar.length > 0 && (
+          <div className="sugerencias-lugar">
+            {sugerenciasLugar.map((s, i) => (
+              <button key={i} className="sugerencia-item" onClick={() => elegirLugar(s)}>
+                {s.nombre}
+                {s.visitado === false && (
+                  <span className="chip-estado chip-sin-historial">Sin historial</span>
+                )}
+                {s.visitado === true && (
+                  <span className="chip-estado chip-con-historial">Con historial</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+        {buscandoLugar && <span className="buscando-lugar">Buscando...</span>}
+        {!buscandoLugar && sinResultadosLugar && (
+          <span className="buscando-lugar">
+            No se encontró ningún lugar con ese nombre.
+          </span>
+        )}
+      </div>
+
+      {mensajeLugar && (
+        <p className="lugar-mensaje" role="status">
+          {mensajeLugar}
+        </p>
+      )}
+
+      {lugarActivo && visitas.length > 0 && (
+        <p className="lugar-mensaje lugar-mensaje-ok" role="status">
+          <span>
+            {visitas.length === 1
+              ? "Pasó 1 vez por este lugar (círculo amarillo en el mapa)."
+              : `Pasó ${visitas.length} veces por este lugar (círculos amarillos en el mapa).`}
+          </span>
+          {esMovil && (
+            <button type="button" className="lugar-mensaje-boton" onClick={() => setListaAbierta(true)}>
+              Ver lista
+            </button>
+          )}
+        </p>
+      )}
+    </>
+  );
+
   return (
     <div className="app">
       <div className="topbar">
@@ -916,6 +1086,11 @@ function App() {
 
       {menuAbierto && (
         <Modal titulo="Menú" onCerrar={() => setMenuAbierto(false)}>
+          <section className="menu-lista">
+            <h3>Rutas, fecha y lugar</h3>
+            <div className="menu-controles">{controlesFuncionales}</div>
+          </section>
+
           <section className="menu-lista">
             <h3>Mapa</h3>
             <label className="capas-opcion">
@@ -993,168 +1168,7 @@ function App() {
             </div>
 
             <div className="superior">
-              {ruta.length > 0 && (
-                <div className="nav-rutas">
-                  <button
-                    className="nav-btn"
-                    onClick={verRutaAnterior}
-                    disabled={indiceMostrado === 0}
-                    aria-label="Ruta anterior"
-                  >
-                    ← <span className="nav-texto">Anterior</span>
-                  </button>
-                  <SelectorRuta
-                    etiqueta={etiquetaRuta}
-                    opciones={opcionesRuta}
-                    indice={indiceMostrado}
-                    onElegir={irARuta}
-                  />
-                  <button
-                    className="nav-btn"
-                    onClick={verRutaSiguiente}
-                    disabled={siguiendoActual}
-                    aria-label="Ruta siguiente"
-                  >
-                    <span className="nav-texto">Siguiente</span> →
-                  </button>
-                  {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
-                  {indiceMostrado < rutas.length - 2 && (
-                    <button
-                      className="nav-btn primario"
-                      onClick={volverARutaActual}
-                      aria-label="Ir a la ruta actual, la más reciente"
-                      title="Ir a la ruta más reciente"
-                    >
-                      <span className="nav-texto">Actual</span> »
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {filtroAbierto ? (
-              <div className="filtro-fecha">
-                <SelectorFechaHora
-                  etiqueta="Desde"
-                  valor={fechaDesde}
-                  max={ahoraMax}
-                  abierto={campoFecha === "desde"}
-                  onAlternar={() => setCampoFecha(campoFecha === "desde" ? null : "desde")}
-                  onChange={(valor) => {
-                    setFechaDesde(valor);
-                    setErrorFiltro("");
-                  }}
-                />
-
-                <SelectorFechaHora
-                  etiqueta="Hasta"
-                  valor={fechaHasta}
-                  min={fechaDesde || undefined}
-                  max={ahoraMax}
-                  abierto={campoFecha === "hasta"}
-                  onAlternar={() => setCampoFecha(campoFecha === "hasta" ? null : "hasta")}
-                  onChange={(valor) => {
-                    setFechaHasta(valor);
-                    setErrorFiltro("");
-                  }}
-                />
-
-                {errorFiltro && (
-                  <p className="filtro-error" role="alert">
-                    {errorFiltro}
-                  </p>
-                )}
-
-                <div className="filtro-acciones">
-                  <button onClick={() => setFiltroAbierto(false)}>Cancelar</button>
-                  {rangoActivo && <button onClick={quitarFiltro}>Ver en vivo</button>}
-                  <button className="aplicar" onClick={aplicarFiltro}>
-                    Aplicar
-                  </button>
-                </div>
-              </div>
-              ) : (
-                <div className="filtros-chips">
-                  <button className="filtro-toggle" onClick={abrirFiltro}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <rect x="3" y="5" width="18" height="16" rx="3" />
-                      <line x1="3" y1="10" x2="21" y2="10" />
-                      <line x1="8" y1="3" x2="8" y2="7" />
-                      <line x1="16" y1="3" x2="16" y2="7" />
-                    </svg>
-                    {rangoActivo ? "Rango personalizado" : "Filtrar por fecha"}
-                  </button>
-                  {rangoActivo && (
-                    <button className="chip-quitar" onClick={quitarFiltro} aria-label="Quitar filtro de fecha">
-                      x
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <div className="buscador-lugar">
-                <input
-                  type="text"
-                  className="buscador-input"
-                  placeholder="Filtrar por ciudad o direccion"
-                  value={busquedaLugar}
-                  onChange={(e) => {
-                    eleccionActual.current++;
-                    busquedaElegida.current = null;
-                    setBusquedaLugar(e.target.value);
-                    if (lugarActivo) setLugarActivo(null);
-                    if (lugarSinHistorial) setLugarSinHistorial(null);
-                  }}
-                />
-                {(lugarActivo || lugarSinHistorial) && (
-                  <button className="chip-quitar" onClick={quitarLugar} aria-label="Quitar filtro de lugar">
-                    x
-                  </button>
-                )}
-
-                {sugerenciasLugar.length > 0 && (
-                  <div className="sugerencias-lugar">
-                    {sugerenciasLugar.map((s, i) => (
-                      <button key={i} className="sugerencia-item" onClick={() => elegirLugar(s)}>
-                        {s.nombre}
-                        {s.visitado === false && (
-                          <span className="chip-estado chip-sin-historial">Sin historial</span>
-                        )}
-                        {s.visitado === true && (
-                          <span className="chip-estado chip-con-historial">Con historial</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {buscandoLugar && <span className="buscando-lugar">Buscando...</span>}
-                {!buscandoLugar && sinResultadosLugar && (
-                  <span className="buscando-lugar">
-                    No se encontró ningún lugar con ese nombre.
-                  </span>
-                )}
-              </div>
-
-              {mensajeLugar && (
-                <p className="lugar-mensaje" role="status">
-                  {mensajeLugar}
-                </p>
-              )}
-
-              {lugarActivo && visitas.length > 0 && (
-                <p className="lugar-mensaje lugar-mensaje-ok" role="status">
-                  <span>
-                    {visitas.length === 1
-                      ? "Pasó 1 vez por este lugar (círculo amarillo en el mapa)."
-                      : `Pasó ${visitas.length} veces por este lugar (círculos amarillos en el mapa).`}
-                  </span>
-                  {esMovil && (
-                    <button type="button" className="lugar-mensaje-boton" onClick={() => setListaAbierta(true)}>
-                      Ver lista
-                    </button>
-                  )}
-                </p>
-              )}
+              {controlesFuncionales}
             </div>
 
             <div className="controles-mapa fab-columna">
