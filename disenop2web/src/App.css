@@ -195,6 +195,21 @@ body {
   margin: 0 0 14px;
 }
 
+/* Short address label: the main thing shown for a position now, coordinates
+   being secondary detail (see .coords-secundario below). */
+.direccion {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+/* Lat/Lon, demoted to secondary, muted detail under the address */
+.coords-secundario {
+  margin: 0 0 14px;
+  opacity: 0.75;
+}
+
 /* Each coordinate row: small label ("Lat"/"Lon") + the actual number.
    Reused both in the floating panel (normal size) and the sidebar list (small size). */
 .coord-row {
@@ -497,36 +512,6 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--bg);
-}
-
-/* Small dot on the layers button when "snap to roads" is on */
-.fab-punto {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--status-fresh);
-  border: 2px solid var(--panel);
-}
-
-.capas-menu {
-  background: rgba(20, 16, 32, 0.95);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px;
-  min-width: 210px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(4px);
-}
-
-.capas-titulo {
-  margin: 0 0 10px;
-  font-size: 11px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .capas-opcion {
@@ -838,6 +823,7 @@ body {
 }
 
 .btn-ayuda-signo {
+  position: relative;
   display: grid;
   place-items: center;
   width: 24px;
@@ -846,6 +832,99 @@ body {
   background: var(--accent);
   color: var(--bg);
   font-weight: 600;
+}
+
+/* Small dot on the menu button when "snap to roads" is on, so the setting
+   stays visible even though its toggle now lives inside the menu */
+.menu-punto {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--status-fresh);
+  border: 2px solid var(--panel);
+}
+
+/* ============ Menu dialog content ============ */
+.menu-lista {
+  padding: 4px 0;
+}
+
+.menu-lista + .menu-lista {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.menu-lista h3 {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.menu-item-boton {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.menu-item-boton:hover {
+  background: rgba(179, 127, 235, 0.15);
+  border-color: var(--accent);
+}
+
+/* ============ Welcome banner (first visit only) ============ */
+.bienvenida {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 12px 24px 0;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--glass-borde);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.bienvenida p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.bienvenida strong {
+  color: var(--text);
+}
+
+.bienvenida-cerrar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.bienvenida-cerrar:hover {
+  background: rgba(179, 127, 235, 0.15);
+  color: var(--text);
 }
 
 /* Above Leaflet's panes and the floating panels (z-index up to 1200) */
@@ -2134,6 +2213,8 @@ input:focus-visible {
     border-radius: 22px;
   }
 
+  /* The hamburger icon alone (· aria-label carries "Menú") is enough at this
+     width; its own label is still always visible once the menu is open */
   .btn-ayuda-texto {
     display: none;
   }

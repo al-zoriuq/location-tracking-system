@@ -2,12 +2,13 @@ import "./App.css";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
-import AyudaModal from "./AyudaModal.jsx";
+import AyudaModal, { Modal } from "./AyudaModal.jsx";
+import Bienvenida from "./Bienvenida.jsx";
 import SelectorFechaHora from "./SelectorFechaHora.jsx";
 import SelectorRuta from "./SelectorRuta.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
-import { pedirJSON, describirFallo, MENSAJE_RECUPERADA } from "./api.js";
+import { pedirJSON, describirFallo, MENSAJE_RECUPERADA, obtenerDireccion } from "./api.js";
 import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
 import PanelVisitas from "./PanelVisitas.jsx";
 import { calcularDistanciaMetros } from "./geo.js";
@@ -381,9 +382,14 @@ function App() {
   const [snapActivo, setSnapActivo] = useState(false);
   const [rutaAjustada, setRutaAjustada] = useState(null);
   const [snapCargando, setSnapCargando] = useState(false);
-  const [capasAbierto, setCapasAbierto] = useState(false);
   const [panelExpandido, setPanelExpandido] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  // Short "street · neighbourhood" label for the current position, fetched
+  // by reverse-geocoding once per distinct spot (see the effect below).
+  const [direccion, setDireccion] = useState(null);
+  const direccionCacheRef = useRef(new Map()); // "lat,lon" (rounded) -> label
+  const direccionPedidaRef = useRef(0); // ignores the answer of an older request
   const { toasts, mostrar, cerrar, registrarFallo, registrarExito } = useToasts();
   // "cargando" | "ok" | "vacio" (database has no points yet) | "error"
   const [ubicacionEstado, setUbicacionEstado] = useState("cargando");
@@ -847,6 +853,31 @@ function App() {
     return () => clearInterval(intervalo);
   }, [rangoActivo, mostrar, registrarFallo, registrarExito]);
 
+  // Reverse-geocodes the current position into a short address label.
+  // Rounded to ~11 m so small GPS jitter doesn't trigger a new request, and
+  // cached client-side so revisiting a spot is instant.
+  useEffect(() => {
+    if (!location) return;
+
+    const lat = Number(location.latitud);
+    const lon = Number(location.longitud);
+    const clave = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+
+    const enCache = direccionCacheRef.current.get(clave);
+    if (enCache !== undefined) {
+      setDireccion(enCache);
+      return;
+    }
+
+    setDireccion(null); // a new spot: fall back to coordinates until it resolves
+    const pedido = ++direccionPedidaRef.current;
+    obtenerDireccion(lat, lon).then((texto) => {
+      if (pedido !== direccionPedidaRef.current) return; // a newer point already asked
+      direccionCacheRef.current.set(clave, texto);
+      setDireccion(texto);
+    });
+  }, [location]);
+
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
 
   return (
@@ -867,15 +898,54 @@ function App() {
           </div>
           <button
             className="btn-ayuda"
-            onClick={() => setAyudaAbierta(true)}
+            onClick={() => setMenuAbierto(true)}
             aria-haspopup="dialog"
-            aria-label="Ayuda: cómo usar esta página"
+            aria-label="Menú: todas las funciones"
           >
-            <span className="btn-ayuda-signo" aria-hidden="true">?</span>
-            <span className="btn-ayuda-texto">Ayuda</span>
+            <span className="btn-ayuda-signo" aria-hidden="true">
+              ≡
+              {snapActivo && <span className="menu-punto" aria-hidden="true" />}
+            </span>
+            <span className="btn-ayuda-texto">Menú</span>
           </button>
         </div>
       </div>
+
+      <Bienvenida />
+
+      {menuAbierto && (
+        <Modal titulo="Menú" onCerrar={() => setMenuAbierto(false)}>
+          <section className="menu-lista">
+            <h3>Mapa</h3>
+            <label className="capas-opcion">
+              <span>
+                Ajustar a vías
+                {snapCargando && <em> · ajustando…</em>}
+              </span>
+              <input
+                type="checkbox"
+                checked={snapActivo}
+                onChange={() => setSnapActivo(!snapActivo)}
+              />
+              <span className="interruptor" />
+            </label>
+          </section>
+
+          <section className="menu-lista">
+            <h3>Ayuda</h3>
+            <button
+              type="button"
+              className="menu-item-boton"
+              onClick={() => {
+                setMenuAbierto(false);
+                setAyudaAbierta(true);
+              }}
+            >
+              Cómo usar esta página
+            </button>
+          </section>
+        </Modal>
+      )}
 
       {ayudaAbierta && <AyudaModal onCerrar={() => setAyudaAbierta(false)} />}
 
@@ -892,7 +962,7 @@ function App() {
               >
                 <span className={`dot dot-${estado.tier}`}></span>
                 <span className="panel-resumen-texto">
-                  {Number(location.latitud).toFixed(4)}, {Number(location.longitud).toFixed(4)} ·{" "}
+                  {direccion || `${Number(location.latitud).toFixed(4)}, ${Number(location.longitud).toFixed(4)}`} ·{" "}
                   {fechaGPS.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "2-digit", minute: "2-digit" })}
                 </span>
                 <span className="panel-flecha">{panelExpandido ? "▴" : "▾"}</span>
@@ -900,12 +970,15 @@ function App() {
 
               <div className="panel-detalle">
                 <p className="label">Última posición</p>
-                <div className="coords">
-                  <div className="coord-row">
+                <p className="direccion">
+                  {direccion || "Buscando la dirección…"}
+                </p>
+                <div className="coords coords-secundario">
+                  <div className="coord-row small">
                     <span className="coord-label">Lat</span>
                     <span>{Number(location.latitud).toFixed(4)}</span>
                   </div>
-                  <div className="coord-row">
+                  <div className="coord-row small">
                     <span className="coord-label">Lon</span>
                     <span>{Number(location.longitud).toFixed(4)}</span>
                   </div>
@@ -1084,39 +1157,6 @@ function App() {
             </div>
 
             <div className="controles-mapa fab-columna">
-              {capasAbierto && (
-                <div className="capas-menu">
-                  <p className="capas-titulo">Opciones del mapa</p>
-                  <label className="capas-opcion">
-                    <span>
-                      Ajustar a vías
-                      {snapCargando && <em> · ajustando…</em>}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={snapActivo}
-                      onChange={() => setSnapActivo(!snapActivo)}
-                    />
-                    <span className="interruptor" />
-                  </label>
-                </div>
-              )}
-
-              <button
-                className={`fab ${capasAbierto ? "activo" : ""}`}
-                onClick={() => setCapasAbierto(!capasAbierto)}
-                aria-label="Opciones del mapa"
-                title="Opciones del mapa"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                  <polyline points="2 17 12 22 22 17" />
-                  <polyline points="2 12 12 17 22 12" />
-                </svg>
-                {snapActivo && <span className="fab-punto" />}
-              </button>
-
               <button
                 className={`fab ${centradoActivo ? "activo" : ""}`}
                 onClick={() => setCentradoActivo(!centradoActivo)}

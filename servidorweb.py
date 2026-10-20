@@ -108,6 +108,78 @@ def buscar_lugar():
     return jsonify(lugares)
 
 
+# API - REVERSE GEOCODING (coordinates -> a short "street, neighbourhood" label)
+
+# Used for the "last position" panel, which shows an address instead of raw
+# numbers. Cached in memory keyed by rounded coordinates (~11 m) so the panel
+# can poll every 10 s without re-querying Nominatim for the same spot, in
+# line with its usage policy (max ~1 request/second).
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
+CACHE_DIRECCION_TTL_SEG = 3600
+_cache_direcciones = {}
+
+def _etiqueta_desde_direccion(direccion):
+    calle = direccion.get("road")
+    numero = direccion.get("house_number")
+    if calle and numero:
+        calle = f"{calle} #{numero}"
+
+    barrio = (
+        direccion.get("neighbourhood")
+        or direccion.get("suburb")
+        or direccion.get("quarter")
+        or direccion.get("city_district")
+    )
+
+    partes = [p for p in (calle, barrio) if p]
+    if partes:
+        return " · ".join(partes)
+
+    ciudad = direccion.get("city") or direccion.get("town") or direccion.get("village")
+    return ciudad
+
+
+@app.route("/api/direccion-inversa")
+def direccion_inversa():
+    lat = request.args.get("lat", type=float)
+    lon = request.args.get("lon", type=float)
+
+    if lat is None or lon is None:
+        return jsonify({"error": "Faltan los parametros lat y lon"}), 400
+
+    clave = (round(lat, 4), round(lon, 4))
+    entrada = _cache_direcciones.get(clave)
+    if entrada and (datetime.now().timestamp() - entrada[1]) < CACHE_DIRECCION_TTL_SEG:
+        return jsonify({"direccion": entrada[0]})
+
+    try:
+        respuesta = requests.get(
+            NOMINATIM_REVERSE_URL,
+            params={
+                "lat": lat,
+                "lon": lon,
+                "format": "json",
+                "addressdetails": 1,
+                "zoom": 18,
+            },
+            headers={
+                "User-Agent": "GPSLink-location-tracking-system/1.0"
+            },
+            timeout=5,
+        )
+        respuesta.raise_for_status()
+        resultado = respuesta.json()
+    except requests.RequestException as e:
+        return jsonify({"error": f"Error consultando el geocodificador: {e}"}), 502
+
+    etiqueta = _etiqueta_desde_direccion(resultado.get("address", {})) or resultado.get("display_name")
+    if not etiqueta:
+        return jsonify({"error": "No se encontró una dirección para ese punto"}), 404
+
+    _cache_direcciones[clave] = (etiqueta, datetime.now().timestamp())
+    return jsonify({"direccion": etiqueta})
+
+
 # CONNECTION TO POSTGRESQL
 
 # Opens a new connection to the RDS database.

@@ -60,6 +60,20 @@ export async function pedirJSON(url) {
 // failures count as "the same problem" (see registrarFallo in useToasts.js):
 // every offline failure shares one key, so losing the connection raises a
 // single toast no matter how many requests were in flight.
+// Reverse geocoding: turns a point into a short "street · neighbourhood"
+// label for the "last position" panel. Returns null on any failure so the
+// caller can just fall back to showing coordinates.
+export async function obtenerDireccion(lat, lon) {
+  try {
+    const datos = await pedirJSON(
+      import.meta.env.BASE_URL + `api/direccion-inversa?lat=${lat}&lon=${lon}`
+    );
+    return datos.direccion || null;
+  } catch {
+    return null;
+  }
+}
+
 export function describirFallo(error, contexto, mensajeServidor = MENSAJE_SERVIDOR) {
   if (!(error instanceof ErrorApi)) {
     return { clave: `${contexto}:inesperado`, mensaje: "Ocurrió un error inesperado." };
