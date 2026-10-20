@@ -1,6 +1,6 @@
 import "./App.css";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import AyudaModal, { Modal } from "./AyudaModal.jsx";
 import Bienvenida from "./Bienvenida.jsx";
@@ -13,7 +13,7 @@ import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
 import PanelVisitas from "./PanelVisitas.jsx";
 import { calcularDistanciaMetros } from "./geo.js";
 import { calcularVisitas } from "./visitas.js";
-import { DESFASE_ZONA, OPCIONES_ZONA, OPCIONES_HORA_CORTA, parsearFechaGPS } from "./zona.js";
+import { DESFASE_ZONA, OPCIONES_ZONA, OPCIONES_HORA_CORTA, parsearFechaGPS, formatoHora } from "./zona.js";
 import "leaflet/dist/leaflet.css";
 
 const iconoActual = L.divIcon({
@@ -39,12 +39,34 @@ const iconoFin = L.divIcon({
   iconAnchor: [8, 8],
 });
 
+const iconoParada = L.divIcon({
+  className: "",
+  html: '<div class="marker-parada"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+const iconoReproduccion = L.divIcon({
+  className: "",
+  html: '<div class="marker-reproduccion"></div>',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+});
+
 // A "trip" is considered finished if this much time passes with no new GPS
 // reading. The next reading after that gap starts a brand-new trip.
 const UMBRAL_NUEVA_RUTA_MS = 60 * 60 * 1000; // 1 hour
 const UMBRAL_NUEVA_RUTA_METROS = 1000; // 1 km
 // Jumps implying more than this are treated as GPS glitches, not real travel
 const VELOCIDAD_MAXIMA_KMH = 180;
+
+// A "stop" is a cluster of points that never strays farther than this from
+// where it started, held for at least this long.
+const UMBRAL_PARADA_M = 60;
+const UMBRAL_PARADA_MS = 3 * 60 * 1000; // 3 minutes
+
+// Milliseconds the route-playback marker stays on each point
+const INTERVALO_REPRODUCCION_MS = 400;
 
 // The public OSRM server (router.project-osrm.org) accepts at most 10
 // coordinates and a 40 m search radius per map-matching request; anything
@@ -369,6 +391,45 @@ function dividirEnRutas(historial) {
   return rutas;
 }
 
+// Finds clusters of consecutive points that stay within UMBRAL_PARADA_M of
+// where the cluster started, for at least UMBRAL_PARADA_MS. Each becomes one
+// "parada" (stop), anchored at the cluster's first point.
+function detectarParadas(puntos) {
+  const paradas = [];
+  let inicio = 0;
+
+  for (let i = 1; i <= puntos.length; i++) {
+    const dentro =
+      i < puntos.length &&
+      calcularDistanciaMetros(
+        Number(puntos[inicio].latitud),
+        Number(puntos[inicio].longitud),
+        Number(puntos[i].latitud),
+        Number(puntos[i].longitud)
+      ) <= UMBRAL_PARADA_M;
+
+    if (!dentro) {
+      const fin = i - 1;
+      if (fin > inicio) {
+        const duracionMs =
+          parsearFechaGPS(puntos[fin].timestamp_gps) - parsearFechaGPS(puntos[inicio].timestamp_gps);
+        if (duracionMs >= UMBRAL_PARADA_MS) {
+          paradas.push({
+            lat: Number(puntos[inicio].latitud),
+            lon: Number(puntos[inicio].longitud),
+            inicio: puntos[inicio].timestamp_gps,
+            fin: puntos[fin].timestamp_gps,
+            duracionMs,
+          });
+        }
+      }
+      inicio = i;
+    }
+  }
+
+  return paradas;
+}
+
 function App() {
   const [location, setLocation] = useState(null);
   const [historial, setHistorial] = useState([]);
@@ -383,6 +444,11 @@ function App() {
   const [rutaAjustada, setRutaAjustada] = useState(null);
   const [snapCargando, setSnapCargando] = useState(false);
   const [capasAbierto, setCapasAbierto] = useState(false);
+  const [paradasActivo, setParadasActivo] = useState(false);
+  const [soloMapa, setSoloMapa] = useState(false);
+  // Route playback: null = stopped, otherwise the index into `ruta` being shown
+  const [reproduciendo, setReproduciendo] = useState(false);
+  const [indiceReproduccion, setIndiceReproduccion] = useState(null);
   const [panelExpandido, setPanelExpandido] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -476,6 +542,31 @@ function App() {
   ]);
 
   const historialReciente = [...puntosRutaMostrada].reverse();
+
+  const paradas = useMemo(() => detectarParadas(puntosRutaMostrada), [puntosRutaMostrada]);
+
+  // Stopping the player or switching to a different route both reset playback
+  useEffect(() => {
+    setReproduciendo(false);
+    setIndiceReproduccion(null);
+  }, [indiceMostrado]);
+
+  useEffect(() => {
+    if (!reproduciendo || ruta.length === 0) return;
+
+    const intervalo = setInterval(() => {
+      setIndiceReproduccion((i) => {
+        const siguiente = i === null ? 0 : i + 1;
+        if (siguiente >= ruta.length) {
+          setReproduciendo(false);
+          return i;
+        }
+        return siguiente;
+      });
+    }, INTERVALO_REPRODUCCION_MS);
+
+    return () => clearInterval(intervalo);
+  }, [reproduciendo, ruta.length]);
 
   useEffect(() => {
     // The text was filled in by picking a suggestion: not a new search
@@ -1051,6 +1142,75 @@ function App() {
     </>
   );
 
+  // "Ajustar a vías", "Ver paradas" and "Ver solo el mapa": shown both in the
+  // floating "Opciones del mapa" popover and inside the menu.
+  const controlesMapa = (
+    <>
+      <label className="capas-opcion">
+        <span>
+          Ajustar a vías
+          {snapCargando && <em> · ajustando…</em>}
+        </span>
+        <input
+          type="checkbox"
+          checked={snapActivo}
+          onChange={() => setSnapActivo(!snapActivo)}
+        />
+        <span className="interruptor" />
+      </label>
+
+      <label className="capas-opcion">
+        <span>
+          Ver paradas
+          {paradas.length > 0 && <em> · {paradas.length}</em>}
+        </span>
+        <input
+          type="checkbox"
+          checked={paradasActivo}
+          onChange={() => setParadasActivo(!paradasActivo)}
+        />
+        <span className="interruptor" />
+      </label>
+
+      <label className="capas-opcion">
+        <span>Ver solo el mapa</span>
+        <input
+          type="checkbox"
+          checked={soloMapa}
+          onChange={() => setSoloMapa(!soloMapa)}
+        />
+        <span className="interruptor" />
+      </label>
+    </>
+  );
+
+  const puntoReproduccion =
+    indiceReproduccion !== null && ruta[indiceReproduccion] ? ruta[indiceReproduccion] : null;
+
+  // "Reproducir recorrido": animates a marker along the route currently shown
+  const controlesReproductor = (
+    <div className="reproductor">
+      <button
+        type="button"
+        className="menu-item-boton"
+        onClick={() => {
+          if (ruta.length === 0) return;
+          setIndiceReproduccion((i) => (i === null || i >= ruta.length - 1 ? 0 : i));
+          setReproduciendo((r) => !r);
+        }}
+        disabled={ruta.length === 0}
+      >
+        {reproduciendo ? "Pausar recorrido" : "Reproducir recorrido"}
+      </button>
+      {indiceReproduccion !== null && puntosRutaMostrada[indiceReproduccion] && (
+        <p className="reproductor-estado">
+          Punto {indiceReproduccion + 1} de {ruta.length} ·{" "}
+          {formatoHora(parsearFechaGPS(puntosRutaMostrada[indiceReproduccion].timestamp_gps))}
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <div className="app">
       <div className="topbar">
@@ -1089,22 +1249,28 @@ function App() {
           <section className="menu-lista">
             <h3>Rutas, fecha y lugar</h3>
             <div className="menu-controles">{controlesFuncionales}</div>
+            {controlesReproductor}
           </section>
+
+          {esMovil && (
+            <section className="menu-lista">
+              <h3>Historial de puntos</h3>
+              <button
+                type="button"
+                className="menu-item-boton"
+                onClick={() => {
+                  setListaAbierta(!listaAbierta);
+                  setMenuAbierto(false);
+                }}
+              >
+                {listaAbierta ? "Ocultar historial de puntos" : "Ver historial de puntos"}
+              </button>
+            </section>
+          )}
 
           <section className="menu-lista">
             <h3>Mapa</h3>
-            <label className="capas-opcion">
-              <span>
-                Ajustar a vías
-                {snapCargando && <em> · ajustando…</em>}
-              </span>
-              <input
-                type="checkbox"
-                checked={snapActivo}
-                onChange={() => setSnapActivo(!snapActivo)}
-              />
-              <span className="interruptor" />
-            </label>
+            {controlesMapa}
           </section>
 
           <section className="menu-lista">
@@ -1127,7 +1293,7 @@ function App() {
 
       <Toasts toasts={toasts} onCerrar={cerrar} />
 
-      <div className={`main ${listaAbierta ? "lista-abierta" : ""}`}>
+      <div className={`main ${listaAbierta ? "lista-abierta" : ""} ${soloMapa ? "solo-mapa" : ""}`}>
         {location ? (
           <>
             <div className={`panel ${panelExpandido ? "expandido" : ""}`}>
@@ -1175,18 +1341,7 @@ function App() {
               {capasAbierto && (
                 <div className="capas-menu">
                   <p className="capas-titulo">Opciones del mapa</p>
-                  <label className="capas-opcion">
-                    <span>
-                      Ajustar a vías
-                      {snapCargando && <em> · ajustando…</em>}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={snapActivo}
-                      onChange={() => setSnapActivo(!snapActivo)}
-                    />
-                    <span className="interruptor" />
-                  </label>
+                  {controlesMapa}
                 </div>
               )}
 
@@ -1283,6 +1438,19 @@ function App() {
                 onIrARuta={elegirVisita}
                 margenSuperior={margenSuperior}
               />
+
+              {paradasActivo &&
+                paradas.map((parada, i) => (
+                  <Marker key={i} position={[parada.lat, parada.lon]} icon={iconoParada}>
+                    <Popup>
+                      Parada de {Math.round(parada.duracionMs / 60000)} min
+                      <br />
+                      {formatoHora(parsearFechaGPS(parada.inicio))} – {formatoHora(parsearFechaGPS(parada.fin))}
+                    </Popup>
+                  </Marker>
+                ))}
+
+              {puntoReproduccion && <Marker position={puntoReproduccion} icon={iconoReproduccion} />}
 
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
             </MapContainer>

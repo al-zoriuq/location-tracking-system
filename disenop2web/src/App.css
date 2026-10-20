@@ -122,6 +122,12 @@ body {
   z-index: 0;
 }
 
+/* "Ver solo el mapa": hides every overlay and the sidebar, leaving just the
+   map (and the topbar, still reachable to turn it back off) */
+.main.solo-mapa > :not(.map) {
+  display: none;
+}
+
 /* CSS trick to recolor the free OpenStreetMap tiles into a dark/purple theme,
    without needing a paid map provider or API key. */
 .map .leaflet-tile-pane {
@@ -336,6 +342,28 @@ body {
   background: var(--marker-end);
   border: 3px solid var(--bg);
   box-shadow: 0 0 0 3px rgba(255, 122, 138, 0.28);
+}
+
+/* A stop detected along the route: square so it reads apart from the round
+   start/end/current markers at a glance */
+.marker-parada {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--text-dim);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 2px rgba(168, 151, 201, 0.3);
+}
+
+/* Route-playback marker: same purple family as the current position, but a
+   ring instead of a filled dot so it's never confused with it */
+.marker-reproduccion {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: transparent;
+  border: 3px solid var(--accent-2);
+  box-shadow: 0 0 0 3px rgba(208, 187, 252, 0.35);
 }
 
 /* Pulsing glow animation used by the current-position marker */
@@ -914,6 +942,17 @@ body {
 
 .menu-controles .buscador-lugar {
   width: 100%;
+}
+
+.reproductor {
+  margin-top: 10px;
+}
+
+.reproductor-estado {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
 }
 
 .menu-item-boton {
