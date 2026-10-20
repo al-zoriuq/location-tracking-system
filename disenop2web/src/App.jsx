@@ -382,6 +382,7 @@ function App() {
   const [snapActivo, setSnapActivo] = useState(false);
   const [rutaAjustada, setRutaAjustada] = useState(null);
   const [snapCargando, setSnapCargando] = useState(false);
+  const [capasAbierto, setCapasAbierto] = useState(false);
   const [panelExpandido, setPanelExpandido] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -1157,6 +1158,39 @@ function App() {
             </div>
 
             <div className="controles-mapa fab-columna">
+              {capasAbierto && (
+                <div className="capas-menu">
+                  <p className="capas-titulo">Opciones del mapa</p>
+                  <label className="capas-opcion">
+                    <span>
+                      Ajustar a vías
+                      {snapCargando && <em> · ajustando…</em>}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={snapActivo}
+                      onChange={() => setSnapActivo(!snapActivo)}
+                    />
+                    <span className="interruptor" />
+                  </label>
+                </div>
+              )}
+
+              <button
+                className={`fab ${capasAbierto ? "activo" : ""}`}
+                onClick={() => setCapasAbierto(!capasAbierto)}
+                aria-label="Opciones del mapa"
+                title="Opciones del mapa"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                  <polyline points="2 17 12 22 22 17" />
+                  <polyline points="2 12 12 17 22 12" />
+                </svg>
+                {snapActivo && <span className="fab-punto" />}
+              </button>
+
               <button
                 className={`fab ${centradoActivo ? "activo" : ""}`}
                 onClick={() => setCentradoActivo(!centradoActivo)}

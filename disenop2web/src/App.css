@@ -514,6 +514,36 @@ body {
   color: var(--bg);
 }
 
+/* Small dot on the layers button when "snap to roads" is on */
+.fab-punto {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--status-fresh);
+  border: 2px solid var(--panel);
+}
+
+.capas-menu {
+  background: rgba(20, 16, 32, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 210px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.capas-titulo {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .capas-opcion {
   position: relative;
   display: flex;
