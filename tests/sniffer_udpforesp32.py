@@ -3,9 +3,17 @@
 Sniffer UDP de prueba para el ESP32-S3 + SIM7670G.
 
 Escucha en el puerto 5005 e imprime cada paquete que llega: hora, IP:puerto
-de origen, tamaño, mensaje y volcado hexadecimal. Además lo pasa por la misma
-regex y el mismo strptime del servidor real, para saber de antemano si el
-servidor lo aceptaría.
+de origen, tamaño, mensaje, campos decodificados y volcado hexadecimal.
+Además valida el mensaje con la misma regex y el mismo strptime que debe
+usar el servidor real, para saber de antemano si lo aceptaría.
+
+Formato esperado (nuevo):
+    Device: ESP32S3-SIM7670G, Lat: 11.019607, Lon: -74.823385,
+    Timestamp GPS: 2026-10-31 19:27:04.000000 -0500, Senal: LIMITE 50,
+    Conf: 1.00, Vel GPS: 52, Vel MPU: 49, Usa: GPS, SI
+
+También acepta el formato antiguo (solo Device/Lat/Lon/Timestamp) y lo
+marca como tal, por si quedan dispositivos con el firmware anterior.
 
 Solo usa la librería estándar de Python.
 
@@ -13,6 +21,7 @@ Uso:
     python3 sniffer_udp.py              # puerto 5005
     python3 sniffer_udp.py --port 5000  # otro puerto
     python3 sniffer_udp.py --no-hex     # sin volcado hexadecimal
+    python3 sniffer_udp.py --estricto   # rechaza el formato antiguo
 
 En EC2:
   - Security Group -> Inbound rules -> Custom UDP, puerto 5005, origen 0.0.0.0/0
@@ -24,12 +33,22 @@ import re
 import socket
 from datetime import datetime
 
-# Mismo patrón y formato de fecha que el servidor real
+NUM = r"[-+]?\d+(?:\.\d+)?"
+
+# Patrón compartido con el servidor real. La parte extendida (Senal ... SI)
+# es opcional para seguir aceptando el formato antiguo.
 PATRON = re.compile(
-    r"Device:\s*([\w-]+),\s*"
-    r"Lat:\s*([-+]?\d+(?:\.\d+)?),\s*"
-    r"Lon:\s*([-+]?\d+(?:\.\d+)?),\s*"
-    r"Timestamp GPS:\s*(.+)"
+    rf"Device:\s*(?P<device>[\w-]+),\s*"
+    rf"Lat:\s*(?P<lat>{NUM}),\s*"
+    rf"Lon:\s*(?P<lon>{NUM}),\s*"
+    rf"Timestamp GPS:\s*(?P<ts>[^,]+?)"
+    rf"(?:,\s*Senal:\s*(?P<senal>[^,]+?)"
+    rf",\s*Conf:\s*(?P<conf>{NUM})"
+    rf",\s*Vel GPS:\s*(?P<vel_gps>{NUM})"
+    rf",\s*Vel MPU:\s*(?P<vel_mpu>{NUM})"
+    rf",\s*Usa:\s*(?P<usa>\w+)"
+    rf",\s*(?P<flag>\w+))?"
+    rf"\s*$"
 )
 FORMATO_TS = "%Y-%m-%d %H:%M:%S.%f %z"
 
@@ -45,18 +64,77 @@ def volcado_hex(datos: bytes) -> str:
     return "\n".join(lineas)
 
 
-def validar(mensaje: str) -> str:
-    """Devuelve un resumen de si el servidor real aceptaría el mensaje."""
+def parsear(mensaje: str) -> dict:
+    """Devuelve un dict con los campos del mensaje o lanza ValueError."""
     r = PATRON.search(mensaje)
     if not r:
-        return "NO -> formato no reconocido por la regex del servidor"
-    device, lat, lon, ts = r.group(1), float(r.group(2)), float(r.group(3)), r.group(4).strip()
+        raise ValueError("formato no reconocido por la regex del servidor")
+
+    g = r.groupdict()
     try:
-        ts_dt = datetime.strptime(ts, FORMATO_TS)
+        ts_dt = datetime.strptime(g["ts"].strip(), FORMATO_TS)
     except ValueError as e:
-        return f"NO -> timestamp inválido ({e})"
-    return (f"SI -> device={device}  lat={lat}  lon={lon}  ts={ts_dt.isoformat()}\n"
-            f"   Mapa: https://maps.google.com/?q={lat},{lon}")
+        raise ValueError(f"timestamp inválido ({e})")
+
+    datos = {
+        "formato": "nuevo" if g["senal"] is not None else "antiguo",
+        "device": g["device"],
+        "lat": float(g["lat"]),
+        "lon": float(g["lon"]),
+        "ts": ts_dt,
+    }
+
+    if datos["formato"] == "nuevo":
+        senal = g["senal"].strip()
+        # "LIMITE 50" -> tipo "LIMITE", valor 50 (si trae número al final)
+        m = re.match(rf"^(.*?)\s*({NUM})?$", senal)
+        datos.update({
+            "senal": senal,
+            "senal_tipo": m.group(1) or senal,
+            "senal_valor": float(m.group(2)) if m.group(2) else None,
+            "conf": float(g["conf"]),
+            "vel_gps": float(g["vel_gps"]),
+            "vel_mpu": float(g["vel_mpu"]),
+            "usa": g["usa"].upper(),
+            "flag": g["flag"].upper(),
+        })
+    return datos
+
+
+def validar(mensaje: str, estricto: bool = False) -> str:
+    """Devuelve un resumen de si el servidor real aceptaría el mensaje."""
+    try:
+        d = parsear(mensaje)
+    except ValueError as e:
+        return f"NO -> {e}"
+
+    if estricto and d["formato"] == "antiguo":
+        return "NO -> formato antiguo (faltan Senal/Conf/Vel/Usa)"
+
+    lineas = [
+        f"SI ({d['formato']})",
+        f"   device   = {d['device']}",
+        f"   lat/lon  = {d['lat']}, {d['lon']}",
+        f"   ts       = {d['ts'].isoformat()}",
+    ]
+    if d["formato"] == "nuevo":
+        valor = "" if d["senal_valor"] is None else f"  (tipo={d['senal_tipo']}, valor={d['senal_valor']:g})"
+        lineas += [
+            f"   senal    = {d['senal']}{valor}",
+            f"   conf     = {d['conf']:.2f}",
+            f"   vel GPS  = {d['vel_gps']:g}   vel MPU = {d['vel_mpu']:g}"
+            f"   (dif = {d['vel_gps'] - d['vel_mpu']:+g})",
+            f"   usa      = {d['usa']}",
+            f"   flag     = {d['flag']}",
+        ]
+        if d["usa"] not in ("GPS", "MPU"):
+            lineas.append(f"   AVISO: 'Usa' tiene un valor inesperado ({d['usa']})")
+        if d["flag"] not in ("SI", "NO"):
+            lineas.append(f"   AVISO: el último campo no es SI/NO ({d['flag']})")
+        if not 0.0 <= d["conf"] <= 1.0:
+            lineas.append(f"   AVISO: Conf fuera de [0, 1] ({d['conf']})")
+    lineas.append(f"   Mapa: https://maps.google.com/?q={d['lat']},{d['lon']}")
+    return "\n".join(lineas)
 
 
 def main():
@@ -64,6 +142,8 @@ def main():
     ap.add_argument("--host", default="0.0.0.0", help="IP local (0.0.0.0 = todas)")
     ap.add_argument("--port", type=int, default=5005, help="Puerto UDP (por defecto 5005)")
     ap.add_argument("--no-hex", action="store_true", help="No mostrar volcado hexadecimal")
+    ap.add_argument("--estricto", action="store_true",
+                    help="Rechazar mensajes con el formato antiguo")
     args = ap.parse_args()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -85,7 +165,7 @@ def main():
             if not args.no_hex:
                 print("Hex     :")
                 print(volcado_hex(datos))
-            print(f"Servidor lo aceptaría: {validar(mensaje)}")
+            print(f"Servidor lo aceptaría: {validar(mensaje, args.estricto)}")
     except KeyboardInterrupt:
         print(f"\nSniffer detenido. Paquetes recibidos: {total}")
     finally:
