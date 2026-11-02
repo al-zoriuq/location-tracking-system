@@ -12,6 +12,10 @@ Formato esperado (nuevo):
     Timestamp GPS: 2026-10-31 19:27:04.000000 -0500, Senal: LIMITE 50,
     Conf: 1.00, Vel GPS: 52, Vel MPU: 49, Usa: GPS, SI
 
+    Vel GPS / Vel MPU pueden ser NA (sin dato). El campo de cumplimiento es
+    SI, EXCEDE o NA (PARE/CEDA o sin velocidad). Puede venir un campo extra al
+    final, "pos-<s>s", si la posición tenía más de 30 s.
+
 También acepta el formato antiguo (solo Device/Lat/Lon/Timestamp) y lo
 marca como tal, por si quedan dispositivos con el firmware anterior.
 
@@ -44,10 +48,11 @@ PATRON = re.compile(
     rf"Timestamp GPS:\s*(?P<ts>[^,]+?)"
     rf"(?:,\s*Senal:\s*(?P<senal>[^,]+?)"
     rf",\s*Conf:\s*(?P<conf>{NUM})"
-    rf",\s*Vel GPS:\s*(?P<vel_gps>{NUM})"
-    rf",\s*Vel MPU:\s*(?P<vel_mpu>{NUM})"
+    rf",\s*Vel GPS:\s*(?P<vel_gps>{NUM}|NA)"
+    rf",\s*Vel MPU:\s*(?P<vel_mpu>{NUM}|NA)"
     rf",\s*Usa:\s*(?P<usa>\w+)"
-    rf",\s*(?P<flag>\w+))?"
+    rf",\s*(?P<flag>\w+)"
+    rf"(?:,\s*(?P<extra>[^\r\n]*?))?)?"
     rf"\s*$"
 )
 FORMATO_TS = "%Y-%m-%d %H:%M:%S.%f %z"
@@ -93,8 +98,9 @@ def parsear(mensaje: str) -> dict:
             "senal_tipo": m.group(1) or senal,
             "senal_valor": float(m.group(2)) if m.group(2) else None,
             "conf": float(g["conf"]),
-            "vel_gps": float(g["vel_gps"]),
-            "vel_mpu": float(g["vel_mpu"]),
+            "vel_gps": None if g["vel_gps"] == "NA" else float(g["vel_gps"]),   # NA = sin dato
+            "vel_mpu": None if g["vel_mpu"] == "NA" else float(g["vel_mpu"]),
+            "extra": g["extra"],   # p. ej. "pos-45s" (posición vieja) o None
             "usa": g["usa"].upper(),
             "flag": g["flag"].upper(),
         })
@@ -122,15 +128,17 @@ def validar(mensaje: str, estricto: bool = False) -> str:
         lineas += [
             f"   senal    = {d['senal']}{valor}",
             f"   conf     = {d['conf']:.2f}",
-            f"   vel GPS  = {d['vel_gps']:g}   vel MPU = {d['vel_mpu']:g}"
-            f"   (dif = {d['vel_gps'] - d['vel_mpu']:+g})",
+            f"   vel GPS  = {d['vel_gps']}   vel MPU = {d['vel_mpu']}"
+            + (f"   (dif = {d['vel_gps'] - d['vel_mpu']:+g})" if None not in (d['vel_gps'], d['vel_mpu']) else ""),
             f"   usa      = {d['usa']}",
             f"   flag     = {d['flag']}",
         ]
-        if d["usa"] not in ("GPS", "MPU"):
+        if d["extra"]:
+            lineas.append(f"   extra    = {d['extra']}")
+        if d["usa"] not in ("GPS", "MPU", "NA"):
             lineas.append(f"   AVISO: 'Usa' tiene un valor inesperado ({d['usa']})")
-        if d["flag"] not in ("SI", "NO"):
-            lineas.append(f"   AVISO: el último campo no es SI/NO ({d['flag']})")
+        if d["flag"] not in ("SI", "EXCEDE", "NA"):
+            lineas.append(f"   AVISO: el campo de cumplimiento no es SI/EXCEDE/NA ({d['flag']})")
         if not 0.0 <= d["conf"] <= 1.0:
             lineas.append(f"   AVISO: Conf fuera de [0, 1] ({d['conf']})")
     lineas.append(f"   Mapa: https://maps.google.com/?q={d['lat']},{d['lon']}")
