@@ -19,6 +19,7 @@ import AyudaModal from "./AyudaModal.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
+import { useDireccion, textoDireccion } from "./useDireccion.js";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, Popup, Rectangle, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
@@ -1372,6 +1373,14 @@ function App() {
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
 
+  // Approximate address of the last position, shown on the card instead of
+  // the raw coordinates
+  const direccion = useDireccion(
+    location ? Number(location.latitud) : NaN,
+    location ? Number(location.longitud) : NaN
+  );
+  const direccionTexto = textoDireccion(direccion);
+
   return (
     <div className="app">
       <Toasts toasts={toasts} onCerrar={cerrar} />
@@ -1423,8 +1432,9 @@ function App() {
                 aria-expanded={panelExpandido}
               >
                 <span className={`dot dot-${estado.tier}`}></span>
-                <span className="panel-resumen-texto">
-                  {Number(location.latitud).toFixed(4)}, {Number(location.longitud).toFixed(4)} ·{" "}
+                {/* The address is cut with "…" when it does not fit; the time always shows */}
+                <span className="panel-resumen-texto">{direccionTexto}</span>
+                <span className="panel-resumen-hora">
                   {fechaGPS.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "2-digit", minute: "2-digit" })}
                 </span>
                 <span className="panel-flecha">{panelExpandido ? "▴" : "▾"}</span>
@@ -1432,21 +1442,14 @@ function App() {
 
               <div className="panel-detalle">
                 <p className="label">Última posición</p>
-                <div className="coords">
-                  <div className="coord-row">
-                    <span className="coord-label">Lat</span>
-                    <span>{Number(location.latitud).toFixed(4)}</span>
-                  </div>
-                  <div className="coord-row">
-                    <span className="coord-label">Lon</span>
-                    <span>{Number(location.longitud).toFixed(4)}</span>
-                  </div>
-                </div>
+                <p className={`direccion ${direccion.texto ? "" : "sin-texto"}`} title="Dirección aproximada">
+                  {direccionTexto}
+                </p>
+                <p className="direccion-nota">Dirección aproximada</p>
                 <div className="meta">
                   <span>{fechaGPS.toLocaleDateString("es-CO", OPCIONES_ZONA)}</span>
                   <span>{fechaGPS.toLocaleTimeString("es-CO", OPCIONES_ZONA)}</span>
                 </div>
-                <p className="ip">IP: {location.ip_origen}</p>
               </div>
             </div>
 
@@ -1670,48 +1673,6 @@ function App() {
             </div>
 
             <div className="controles-mapa fab-columna">
-              {capasAbierto && (
-                <div className="capas-menu">
-                  <p className="capas-titulo">Opciones del mapa</p>
-                  <label className="capas-opcion">
-                    <span>
-                      Ajustar a vías
-                      {snapCargando && <em> · ajustando…</em>}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={snapActivo}
-                      onChange={() => setSnapActivo(!snapActivo)}
-                    />
-                    <span className="interruptor" />
-                  </label>
-                  <label className="capas-opcion">
-                    <span>
-                      Mostrar paradas
-                      {paradas.length > 0 && <em> &middot; {paradas.length}</em>}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={paradasVisibles}
-                      onChange={() => setParadasVisibles(!paradasVisibles)}
-                    />
-                    <span className="interruptor" />
-                  </label>
-                  <label className="capas-opcion">
-                    <span>
-                      Mostrar se&ntilde;ales
-                      {senalesRuta.length > 0 && <em> &middot; {senalesRuta.length}</em>}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={senalesVisibles}
-                      onChange={() => setSenalesVisibles(!senalesVisibles)}
-                    />
-                    <span className="interruptor" />
-                  </label>
-                </div>
-              )}
-
               {velocidadActualKmh !== null && (
                 <div
                   className="velocidad-chip"
@@ -1721,21 +1682,6 @@ function App() {
                   <b>{Math.round(velocidadActualKmh)}</b> km/h
                 </div>
               )}
-
-              <button
-                className={`fab ${capasAbierto ? "activo" : ""}`}
-                onClick={() => { setFiltrosVisibles(false); setCapasAbierto(!capasAbierto); }}
-                aria-label="Opciones del mapa"
-                title="Opciones del mapa"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                  <polyline points="2 17 12 22 22 17" />
-                  <polyline points="2 12 12 17 22 12" />
-                </svg>
-                {snapActivo && <span className="fab-punto" />}
-              </button>
 
               <button
                 className={`fab ${panelesOcultos ? "activo" : ""}`}
@@ -1782,6 +1728,66 @@ function App() {
                   <polygon points="7 4 20 12 7 20 7 4" />
                 </svg>
               </button>
+
+              {/* Map options sit right above the centring button; the menu opens
+                  to the left of its button so the other buttons do not move */}
+              <div className="capas-ancla">
+                {capasAbierto && (
+                  <div className="capas-menu">
+                    <p className="capas-titulo">Opciones del mapa</p>
+                    <label className="capas-opcion">
+                      <span>
+                        Ajustar a vías
+                        {snapCargando && <em> · ajustando…</em>}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={snapActivo}
+                        onChange={() => setSnapActivo(!snapActivo)}
+                      />
+                      <span className="interruptor" />
+                    </label>
+                    <label className="capas-opcion">
+                      <span>
+                        Mostrar paradas
+                        {paradas.length > 0 && <em> &middot; {paradas.length}</em>}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={paradasVisibles}
+                        onChange={() => setParadasVisibles(!paradasVisibles)}
+                      />
+                      <span className="interruptor" />
+                    </label>
+                    <label className="capas-opcion">
+                      <span>
+                        Mostrar se&ntilde;ales
+                        {senalesRuta.length > 0 && <em> &middot; {senalesRuta.length}</em>}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={senalesVisibles}
+                        onChange={() => setSenalesVisibles(!senalesVisibles)}
+                      />
+                      <span className="interruptor" />
+                    </label>
+                  </div>
+                )}
+                <button
+                  className={`fab ${capasAbierto ? "activo" : ""}`}
+                  onClick={() => { setFiltrosVisibles(false); setCapasAbierto(!capasAbierto); }}
+                  aria-label="Opciones del mapa"
+                  title="Opciones del mapa"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                  </svg>
+                  {snapActivo && <span className="fab-punto" />}
+                </button>
+              </div>
 
               <button
                 className={`fab ${centradoActivo ? "activo" : ""}`}

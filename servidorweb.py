@@ -5,7 +5,10 @@ import psycopg2.errors  # UndefinedTable, see /api/detecciones-senal
 from psycopg2.extras import RealDictCursor
 import os
 import math
+import threading
+import time
 import requests
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -110,6 +113,121 @@ def buscar_lugar():
         })
 
     return jsonify(lugares)
+
+
+# API - REVERSE GEOCODING (coordinates -> approximate address)
+
+# Used by the "last position" card. Same free geocoder as /api/buscar-lugar.
+# Nominatim's usage policy asks for at most 1 request per second and for
+# caching results, so:
+#   - coordinates are rounded to 4 decimals (~11 m) and each rounded point is
+#     asked only once per server process (small LRU cache);
+#   - requests to Nominatim are spaced at least 1 s apart.
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
+DECIMALES_DIRECCION = 4
+MAX_CACHE_DIRECCIONES = 2000
+_cache_direcciones = OrderedDict()
+_candado_nominatim = threading.Lock()
+_ultima_consulta_nominatim = 0.0
+
+
+# Builds a short address from Nominatim's address parts, e.g.
+# "Carrera 51B #82-10, El Prado, Barranquilla". Falls back to the first parts
+# of display_name when the place has no street.
+def armar_direccion(resultado):
+    partes = resultado.get("address") or {}
+
+    calle = partes.get("road") or partes.get("pedestrian") or partes.get("footway")
+    if calle and partes.get("house_number"):
+        calle = f"{calle} #{partes['house_number']}"
+
+    sector = (
+        partes.get("neighbourhood")
+        or partes.get("suburb")
+        or partes.get("quarter")
+        or partes.get("city_district")
+    )
+    ciudad = (
+        partes.get("city")
+        or partes.get("town")
+        or partes.get("village")
+        or partes.get("municipality")
+        or partes.get("county")
+    )
+
+    elegidas = []
+    for parte in (calle, sector, ciudad):
+        if parte and parte not in elegidas:
+            elegidas.append(parte)
+
+    if elegidas:
+        return ", ".join(elegidas)
+
+    nombre = resultado.get("display_name") or ""
+    return ", ".join(p.strip() for p in nombre.split(",")[:3]) or None
+
+
+def consultar_nominatim_inverso(lat, lon):
+    global _ultima_consulta_nominatim
+
+    with _candado_nominatim:
+        espera = 1.0 - (time.monotonic() - _ultima_consulta_nominatim)
+        if espera > 0:
+            time.sleep(espera)
+        try:
+            respuesta = requests.get(
+                NOMINATIM_REVERSE_URL,
+                params={
+                    "lat": lat,
+                    "lon": lon,
+                    "format": "jsonv2",
+                    "zoom": 18,
+                    "addressdetails": 1,
+                    "accept-language": "es",
+                },
+                headers={"User-Agent": "GPSLink-location-tracking-system/1.0"},
+                timeout=5,
+            )
+        finally:
+            _ultima_consulta_nominatim = time.monotonic()
+
+    respuesta.raise_for_status()
+    return respuesta.json()
+
+
+@app.route("/api/direccion")
+def direccion():
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except ValueError:
+        return jsonify({"error": "Los parámetros lat y lon deben ser números"}), 400
+
+    if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
+        return jsonify({"error": "Coordenadas fuera de rango"}), 400
+
+    clave = (round(lat, DECIMALES_DIRECCION), round(lon, DECIMALES_DIRECCION))
+    if clave in _cache_direcciones:
+        _cache_direcciones.move_to_end(clave)
+        return jsonify(_cache_direcciones[clave])
+
+    try:
+        resultado = consultar_nominatim_inverso(*clave)
+    except (requests.RequestException, ValueError) as e:
+        app.logger.warning("Error consultando la dirección: %s", e)
+        return jsonify({"error": "No se pudo obtener la dirección"}), 502
+
+    # Points in the sea or with no data come back as {"error": "Unable to geocode"}
+    datos = {
+        "direccion": None if "error" in resultado else armar_direccion(resultado),
+        "completa": resultado.get("display_name"),
+    }
+
+    _cache_direcciones[clave] = datos
+    if len(_cache_direcciones) > MAX_CACHE_DIRECCIONES:
+        _cache_direcciones.popitem(last=False)
+
+    return jsonify(datos)
 
 
 # CONNECTION TO POSTGRESQL

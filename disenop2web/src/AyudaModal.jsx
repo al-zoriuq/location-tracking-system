@@ -12,6 +12,16 @@ export default function AyudaModal({ onCerrar }) {
       </section>
 
       <section>
+        <h3>Última posición</h3>
+        <p>
+          La tarjeta de arriba a la izquierda muestra la dirección aproximada del último punto
+          recibido, con su fecha y hora. La dirección se obtiene de OpenStreetMap a partir de las
+          coordenadas, así que puede no coincidir exactamente con el número de la casa. En el
+          celular la tarjeta está resumida en una línea: tócala para verla completa.
+        </p>
+      </section>
+
+      <section>
         <h3>Rutas</h3>
         <p>
           Una ruta es un viaje completo. Empieza otra cuando pasa más de 1 hora sin datos o
@@ -83,11 +93,6 @@ export default function AyudaModal({ onCerrar }) {
         <h3>Botones redondos</h3>
         <ul>
           <li>
-            <strong>Capas:</strong> «Ajustar a vías» dibuja la ruta sobre las calles reales,
-            «Mostrar paradas» activa o quita las paradas y «Mostrar señales» activa o quita las
-            señales de tránsito.
-          </li>
-          <li>
             <strong>Ojo:</strong> oculta todos los paneles y deja solo el mapa.
           </li>
           <li>
@@ -98,6 +103,11 @@ export default function AyudaModal({ onCerrar }) {
             <strong>Play:</strong> reproduce el recorrido de la ruta mostrada. La barra tiene
             pausa, un deslizador para saltar a cualquier momento y la velocidad (×60, ×300 o
             ×1200 veces el tiempo real).
+          </li>
+          <li>
+            <strong>Capas:</strong> «Ajustar a vías» dibuja la ruta sobre las calles reales,
+            «Mostrar paradas» activa o quita las paradas y «Mostrar señales» activa o quita las
+            señales de tránsito.
           </li>
           <li>
             <strong>Mira:</strong> mantiene el punto actual en el centro sin cambiar tu zoom.

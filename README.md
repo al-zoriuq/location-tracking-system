@@ -128,6 +128,14 @@ El ESP32 agrega al mensaje de ubicación la señal que detectó su cámara (`Sen
 - Prueba sin el ESP32: `tests/sniffer_udpforesp32.py --guardar` (solo bases `*_test`) + `pruebas/enviar_senales_prueba.py`.
 - Pruebas del frontend: `node --test disenop2web/src/senales.test.js`.
 
+### Dirección aproximada de la última posición
+
+La tarjeta «Última posición» muestra la dirección en vez de latitud, longitud e IP.
+
+- `GET /api/direccion?lat=..&lon=..` consulta Nominatim (OpenStreetMap, el mismo servicio de `/api/buscar-lugar`) y devuelve `{"direccion": "Calle 72 #57-43, Alto Prado, Barranquilla", "completa": "..."}`. `direccion` es `null` si el punto no tiene dirección.
+- Para respetar la política de uso de Nominatim (máximo 1 consulta por segundo y uso de caché), las coordenadas se redondean a 4 decimales (~11 m), cada punto se consulta una sola vez por proceso del servidor y las consultas se separan al menos 1 s.
+- En el navegador: `disenop2web/src/useDireccion.js`.
+
 ---
 
 ## 5. Frontend Build & State Management
