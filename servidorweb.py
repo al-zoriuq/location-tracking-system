@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import psycopg2
+import psycopg2.errors  # UndefinedTable, see /api/detecciones-senal
 from psycopg2.extras import RealDictCursor
 import os
 import math
@@ -410,6 +411,96 @@ def historial_ubicaciones():
         u["timestamp_gps"] = str(u["timestamp_gps"])
 
     return jsonify(ubicaciones)
+
+
+# API - TRAFFIC SIGN DETECTIONS (sparse events sent by the ESP32 camera)
+
+# Same window filters as /api/historial-ubicaciones, so the frontend asks for
+# the detections of exactly the period it is drawing and then assigns each one
+# to its route by time:
+#   ?horas=72 (default 24)              -> last N hours
+#   ?desde=...&hasta=...[&margen_horas=N] -> explicit range, optionally widened
+#   ?device_id=xyz                      -> defaults to the device of the latest point
+# Filtered by timestamp_evento (when the sign was seen), not by the GPS fix
+# that came with it, which may be up to a minute older ("pos-45s").
+@app.route("/api/detecciones-senal")
+def detecciones_senal():
+
+    horas = request.args.get("horas", default=24, type=int)
+    device_id = request.args.get("device_id", default=None, type=str)
+    desde = request.args.get("desde", default=None, type=str)
+    hasta = request.args.get("hasta", default=None, type=str)
+    margen_horas = request.args.get("margen_horas", default=0, type=int)
+
+    if desde or hasta:
+        desde, hasta, mensaje_error = validar_rango(desde, hasta)
+        if mensaje_error:
+            return jsonify({"error": mensaje_error}), 400
+        if margen_horas > 0:
+            margen = timedelta(hours=min(margen_horas, MARGEN_MAX_HORAS))
+            desde = desde - margen
+            hasta = min(hasta + margen, ahora_local())
+        filtro_fecha = "timestamp_evento BETWEEN %s AND %s"
+        params = [desde, hasta]
+    else:
+        filtro_fecha = (
+            "timestamp_evento >= (NOW() AT TIME ZONE 'America/Bogota')"
+            " - (%s || ' hours')::interval"
+        )
+        params = [horas]
+
+    if device_id:
+        filtro_device = "device_id = %s"
+        params.append(device_id)
+    else:
+        filtro_device = (
+            "device_id = (SELECT device_id FROM ubicaciones ORDER BY id DESC LIMIT 1)"
+        )
+
+    try:
+        detecciones = consultar_detecciones(filtro_fecha, filtro_device, params)
+    except psycopg2.errors.UndefinedTable:
+        # Database not migrated yet (migraciones/ not applied on this server):
+        # no detections to show, instead of an error toast every 10 s.
+        app.logger.warning("La tabla detecciones_senal no existe en esta base de datos")
+        return jsonify([])
+
+    for d in detecciones:
+        d["timestamp_evento"] = str(d["timestamp_evento"])
+
+    return jsonify(detecciones)
+
+
+def consultar_detecciones(filtro_fecha, filtro_device, params):
+    with cursor_bd() as cursor:
+        # Only the fixed SQL fragments above are concatenated; every value
+        # goes as a query parameter.
+        cursor.execute(f"""
+            SELECT
+                id,
+                latitud,
+                longitud,
+                timestamp_evento,
+                edad_posicion_s,
+                senal_texto,
+                senal_tipo,
+                senal_valor,
+                confianza,
+                vel_gps,
+                vel_mpu,
+                vel_fuente,
+                CASE vel_fuente
+                    WHEN 'GPS' THEN vel_gps
+                    WHEN 'MPU' THEN vel_mpu
+                END AS velocidad,
+                cumplimiento
+            FROM detecciones_senal
+            WHERE {filtro_fecha}
+              AND {filtro_device}
+            ORDER BY timestamp_evento ASC
+        """, tuple(params))
+
+        return cursor.fetchall()
 
 
 # API - VISITED PLACE CHECK

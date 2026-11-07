@@ -119,6 +119,15 @@ timestamp_gps = timestamp_gps.replace(tzinfo=None)
 - `timestamp_recepcion` se guarda en **UTC** (la RDS corre en UTC).
 - Toda comparación con "ahora" debe usar `NOW() AT TIME ZONE 'America/Bogota'` en el servidor, o `-05:00` al interpretar la fecha en el navegador. Comparar `timestamp_gps` con `NOW()` directamente desplaza el resultado 5 horas.
 
+### Señales de tránsito (ESP32-S3)
+
+El ESP32 agrega al mensaje de ubicación la señal que detectó su cámara (`Senal: LIMITE 30, Conf: 0.99, Vel GPS: 2, Vel MPU: 22, Usa: GPS, SI`). Se guardan en la tabla `detecciones_senal`, aparte de `ubicaciones`.
+
+- `GET /api/detecciones-senal`: mismos filtros que el historial (`horas`, `desde`/`hasta`, `margen_horas`, `device_id`), filtrando por `timestamp_evento`. Si la tabla no existe en esa base de datos devuelve `[]`.
+- La página asigna cada señal a su ruta por hora (`disenop2web/src/senales.js`), la dibuja en el mapa (`MarcadoresSenal.jsx`) y la lista en el panel lateral (`PanelSenales.jsx`).
+- Prueba sin el ESP32: `tests/sniffer_udpforesp32.py --guardar` (solo bases `*_test`) + `pruebas/enviar_senales_prueba.py`.
+- Pruebas del frontend: `node --test disenop2web/src/senales.test.js`.
+
 ---
 
 ## 5. Frontend Build & State Management

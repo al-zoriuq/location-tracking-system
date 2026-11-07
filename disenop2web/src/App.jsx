@@ -7,6 +7,9 @@ import { normalizarPunto } from "./utils/viajes.js";
 import { detectarParadas } from "./utils/paradas.js";
 import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
 import PanelVisitas from "./PanelVisitas.jsx";
+import MarcadoresSenal from "./MarcadoresSenal.jsx";
+import PanelSenales from "./PanelSenales.jsx";
+import { normalizarDeteccion, asignarSenalesARutas, contarExcesos, htmlSenal } from "./senales.js";
 import { calcularVisitas } from "./visitas.js";
 import SelectorRuta from "./SelectorRuta.jsx";
 import { formatearHoraCorta } from "./utils/tiempo.js";
@@ -706,6 +709,9 @@ function App() {
   const [vueloA, setVueloA] = useState(null);
   const [margenSuperior, setMargenSuperior] = useState(0);
   const [paradasVisibles, setParadasVisibles] = useState(true);
+  const [detecciones, setDetecciones] = useState([]); // traffic signs seen by the ESP32 camera
+  const [senalesVisibles, setSenalesVisibles] = useState(true);
+  const [senalSel, setSenalSel] = useState(null); // id of the sign picked in the sidebar
   const [reproductorAbierto, setReproductorAbierto] = useState(false);
   const [panelesOcultos, setPanelesOcultos] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
@@ -807,6 +813,16 @@ function App() {
   // Stops of the route on screen: at least 5 min within 50 m (see utils/paradas.js)
   const puntosNorm = useMemo(() => puntosRutaMostrada.map(normalizarPunto), [puntosRutaMostrada]);
   const paradas = useMemo(() => detectarParadas(puntosNorm), [puntosNorm]);
+
+  // Traffic signs, assigned to the routes by time (see senales.js)
+  const deteccionesNorm = useMemo(() => detecciones.map(normalizarDeteccion), [detecciones]);
+  const senalesPorRuta = useMemo(
+    () => asignarSenalesARutas(deteccionesNorm, rutas),
+    [deteccionesNorm, rutas]
+  );
+  const senalesRuta = senalesPorRuta[indiceMostrado] || [];
+  const haySenales = senalesPorRuta.some((lista) => lista.length > 0);
+  const excesosRuta = contarExcesos(senalesRuta);
 
   // Distance, duration and speeds of the route on screen (for the popup)
   const estadisticasRuta = useMemo(
@@ -1096,6 +1112,19 @@ function App() {
     setVueloA({ centro: [visita.cercano.lat, visita.cercano.lon], n: Date.now() });
   };
 
+  // A picked sign only stays highlighted while its route is on screen
+  const senalElegida = senalesRuta.some((d) => d.id === senalSel) ? senalSel : null;
+
+  const elegirSenal = (senal) => {
+    setSenalSel(senal.id);
+    setSenalesVisibles(true);
+    // On phones the history is a bottom sheet over the map: close it to see the sign
+    if (window.matchMedia("(max-width: 900px) and (orientation: portrait)").matches) {
+      setHistorialAbierto(false);
+    }
+    setVueloA({ centro: [senal.lat, senal.lon], n: Date.now() });
+  };
+
   // Why there is nothing to show for the chosen place. Never leave it empty
   // without a reason: either it was never visited, or only outside the dates.
   const mensajeLugar = lugarSinHistorial
@@ -1287,8 +1316,32 @@ function App() {
       }
     };
 
+    // Traffic signs of the same period as the history. They are few, so the
+    // whole window is asked for again on every refresh.
+    const obtenerDetecciones = async () => {
+      try {
+        let url = import.meta.env.BASE_URL + "api/detecciones-senal";
+        if (rangoActivo) {
+          url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
+          if (rangoActivo.completar) url += `&margen_horas=${MARGEN_RANGO_H}`;
+        } else {
+          url += `?horas=${lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H}`;
+        }
+        const data = await pedirJSON(url);
+        if (cancelado) return;
+        setDetecciones(Array.isArray(data) ? data : []);
+        registrarExito("senales", MENSAJE_RECUPERADA);
+      } catch (error) {
+        if (cancelado) return;
+        const { clave, mensaje } = describirFallo(error, "senales");
+        registrarFallo("senales", clave, mensaje);
+        if (error instanceof ErrorApi && error.tipo === "solicitud") setDetecciones([]);
+      }
+    };
+
     obtenerUbicacion();
     obtenerHistorial(true);
+    obtenerDetecciones();
 
     // A fully past range can't receive new points, so stop polling the
     // history for it (the live marker keeps updating regardless).
@@ -1301,6 +1354,7 @@ function App() {
       if (lugarActivo || rangoEsPasado) return;
       const tocaCompleta = Date.now() - ultimaCompletaMs >= RECARGA_COMPLETA_MS;
       obtenerHistorial(!modoVivo || tocaCompleta);
+      obtenerDetecciones();
     };
 
     const intervalo = setInterval(tick, 10000);
@@ -1643,6 +1697,18 @@ function App() {
                     />
                     <span className="interruptor" />
                   </label>
+                  <label className="capas-opcion">
+                    <span>
+                      Mostrar se&ntilde;ales
+                      {senalesRuta.length > 0 && <em> &middot; {senalesRuta.length}</em>}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={senalesVisibles}
+                      onChange={() => setSenalesVisibles(!senalesVisibles)}
+                    />
+                    <span className="interruptor" />
+                  </label>
                 </div>
               )}
 
@@ -1773,6 +1839,26 @@ function App() {
                     Parada
                   </div>
                 )}
+                {senalesVisibles && senalesRuta.length > 0 && (
+                  <div className="legend-item">
+                    <span
+                      className="legend-senal"
+                      aria-hidden="true"
+                      dangerouslySetInnerHTML={{ __html: htmlSenal({ senal_tipo: "LIMITE", senal_valor: "" }) }}
+                    />
+                    Se&ntilde;al de tr&aacute;nsito
+                  </div>
+                )}
+                {senalesVisibles && excesosRuta > 0 && (
+                  <div className="legend-item">
+                    <span
+                      className="legend-senal"
+                      aria-hidden="true"
+                      dangerouslySetInnerHTML={{ __html: htmlSenal({ senal_tipo: "LIMITE", senal_valor: "", cumplimiento: "EXCEDE" }) }}
+                    />
+                    Exceso de velocidad
+                  </div>
+                )}
                 {visitas.length > 0 && (
                   <div className="legend-item">
                     <span className="legend-dot visita"></span> Pas&oacute; por el lugar
@@ -1879,6 +1965,13 @@ function App() {
               />
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
             {paradasVisibles && <MarcadoresParada paradas={paradas} />}
+            {senalesVisibles && (
+              <MarcadoresSenal
+                senales={senalesRuta}
+                seleccionada={senalElegida}
+                margenSuperior={margenSuperior}
+              />
+            )}
             {reproductorAbierto && puntosNorm.length > 1 && (
               <Reproductor
                 puntos={puntosNorm}
@@ -1898,6 +1991,13 @@ function App() {
                 rangoActivo={rangoActivo}
                 seleccionada={visitaElegida}
                 onElegir={elegirVisita}
+              />
+              <PanelSenales
+                senales={senalesRuta}
+                numeroRuta={indiceMostrado + 1}
+                hayDetecciones={haySenales}
+                seleccionada={senalElegida}
+                onElegir={elegirSenal}
               />
               <button
                 type="button"
