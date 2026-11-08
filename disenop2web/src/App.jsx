@@ -10,7 +10,7 @@ import PanelVisitas from "./PanelVisitas.jsx";
 import MarcadoresSenal from "./MarcadoresSenal.jsx";
 import PanelSenales from "./PanelSenales.jsx";
 import BarraHerramientas from "./BarraHerramientas.jsx";
-import { normalizarDeteccion, asignarSenalesARutas, contarExcesos, htmlSenal } from "./senales.js";
+import { normalizarDeteccion, asignarSenalesARutas, contarExcesos } from "./senales.js";
 import { calcularVisitas } from "./visitas.js";
 import SelectorRuta from "./SelectorRuta.jsx";
 import { formatearHoraCorta } from "./utils/tiempo.js";
@@ -1830,26 +1830,6 @@ function App() {
                       <rect x="7" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
                     </svg>
                     Parada
-                  </div>
-                )}
-                {senalesVisibles && senalesRuta.length > 0 && (
-                  <div className="legend-item">
-                    <span
-                      className="legend-senal"
-                      aria-hidden="true"
-                      dangerouslySetInnerHTML={{ __html: htmlSenal({ senal_tipo: "LIMITE", senal_valor: "" }) }}
-                    />
-                    Se&ntilde;al de tr&aacute;nsito
-                  </div>
-                )}
-                {senalesVisibles && excesosRuta > 0 && (
-                  <div className="legend-item">
-                    <span
-                      className="legend-senal"
-                      aria-hidden="true"
-                      dangerouslySetInnerHTML={{ __html: htmlSenal({ senal_tipo: "LIMITE", senal_valor: "", cumplimiento: "EXCEDE" }) }}
-                    />
-                    Exceso de velocidad
                   </div>
                 )}
                 {visitas.length > 0 && (
