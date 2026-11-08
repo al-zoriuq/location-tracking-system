@@ -49,6 +49,14 @@ python snifferwpostgresql.py
 ```
 This listens for UDP location updates on port `5000` and stores them in the PostgreSQL RDS database.
 
+- Accepts both message formats: location only (Android app, old firmware) and location + traffic sign (ESP32-S3). See the message reader at the top of `snifferwpostgresql.py`.
+- The location goes to `ubicaciones`; a traffic sign, if any, goes to `detecciones_senal` in the same transaction.
+- Malformed packets are discarded without stopping the server, and a lost database connection is re-opened automatically.
+- If the database has no `detecciones_senal` table (e.g. a new test database), only locations are saved and a warning is printed; once the table is created (see «Esquema de `detecciones_senal`» below), signs start being saved within a minute, without a restart.
+- `--puerto N` listens on another port (e.g. to try a new version on the EC2 while the production sniffer keeps port 5000).
+
+**The deploy workflow only restarts the web server (Gunicorn), not the sniffer.** After pulling new sniffer code, stop it and start it again on every server.
+
 ## Production Deployment (Nginx + Gunicorn)
 The web dashboard (`servidorweb.py`) is served with Gunicorn behind Nginx, not with Flask's development server.
 
@@ -125,8 +133,52 @@ El ESP32 agrega al mensaje de ubicación la señal que detectó su cámara (`Sen
 
 - `GET /api/detecciones-senal`: mismos filtros que el historial (`horas`, `desde`/`hasta`, `margen_horas`, `device_id`), filtrando por `timestamp_evento`. Si la tabla no existe en esa base de datos devuelve `[]`.
 - La página asigna cada señal a su ruta por hora (`disenop2web/src/senales.js`), la dibuja en el mapa (`MarcadoresSenal.jsx`) y la lista en el panel lateral (`PanelSenales.jsx`).
-- Prueba sin el ESP32: `tests/sniffer_udpforesp32.py --guardar` (solo bases `*_test`) + `pruebas/enviar_senales_prueba.py`.
+- Tabla `detecciones_senal`: ya creada en la base central `p2database`, que comparten las 4 EC2. Su SQL está en la sección siguiente.
+- Prueba sin el ESP32: `tests/sniffer_udpforesp32.py --guardar` (solo bases `*_test`) o `snifferwpostgresql.py --puerto N`, con `pruebas/enviar_senales_prueba.py --puerto N`.
 - Pruebas del frontend: `node --test disenop2web/src/senales.test.js`.
+
+#### Esquema de `detecciones_senal`
+
+Creada a mano en `p2database` y en `alba_test` con este SQL. Sirve para recrearla o para preparar una base de pruebas nueva (`*_test`); se puede ejecutar varias veces sin problema (`IF NOT EXISTS`) y no toca `ubicaciones`. Si alguna EC2 se conecta con un usuario distinto al que creó la tabla, ese usuario necesita `GRANT SELECT, INSERT ON detecciones_senal` y `GRANT USAGE ON SEQUENCE detecciones_senal_id_seq`.
+
+Zonas horarias, igual que en `ubicaciones`: `timestamp_gps` y `timestamp_evento` en hora de Bogotá sin zona; `timestamp_recepcion` en UTC.
+
+```sql
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS detecciones_senal (
+    id                  BIGSERIAL PRIMARY KEY,
+    device_id           TEXT             NOT NULL,  -- mismo tipo que ubicaciones.device_id
+    ip_origen           VARCHAR(45),
+    latitud             DOUBLE PRECISION NOT NULL,
+    longitud            DOUBLE PRECISION NOT NULL,
+    timestamp_gps       TIMESTAMP        NOT NULL,
+    edad_posicion_s     INTEGER,                    -- del campo "pos-45s"; NULL = posición fresca
+    timestamp_evento    TIMESTAMP        NOT NULL,  -- timestamp_gps + edad: cuándo se vio la señal
+    timestamp_recepcion TIMESTAMP        NOT NULL,
+    senal_texto         VARCHAR(50)      NOT NULL,  -- "LIMITE 30"
+    senal_tipo          VARCHAR(20)      NOT NULL,  -- LIMITE, PARE, CEDA...
+    senal_valor         SMALLINT,                   -- 30 (NULL para PARE/CEDA)
+    confianza           REAL             NOT NULL CHECK (confianza BETWEEN 0 AND 1),
+    vel_gps             REAL,                       -- NULL cuando llega NA
+    vel_mpu             REAL,
+    vel_fuente          VARCHAR(5)       NOT NULL,  -- "Usa": GPS / MPU / NA
+    cumplimiento        VARCHAR(10)      NOT NULL,  -- SI / EXCEDE / NA
+    extra               TEXT,                       -- campos futuros del firmware
+    CONSTRAINT detecciones_senal_unica UNIQUE (device_id, timestamp_evento, senal_texto)
+);
+
+-- Consulta de la página: un dispositivo en un rango de fechas
+CREATE INDEX IF NOT EXISTS idx_detecciones_device_evento
+    ON detecciones_senal (device_id, timestamp_evento);
+
+-- Para contar o resaltar rápido los excesos de velocidad
+CREATE INDEX IF NOT EXISTS idx_detecciones_excesos
+    ON detecciones_senal (device_id, timestamp_evento)
+    WHERE cumplimiento = 'EXCEDE';
+
+COMMIT;
+```
 
 ### Dirección aproximada de la última posición
 

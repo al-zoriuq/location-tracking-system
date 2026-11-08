@@ -578,7 +578,7 @@ def detecciones_senal():
     try:
         detecciones = consultar_detecciones(filtro_fecha, filtro_device, params)
     except psycopg2.errors.UndefinedTable:
-        # Database not migrated yet (migraciones/ not applied on this server):
+        # Database without the table (e.g. a new test database; SQL in the README):
         # no detections to show, instead of an error toast every 10 s.
         app.logger.warning("La tabla detecciones_senal no existe en esta base de datos")
         return jsonify([])
