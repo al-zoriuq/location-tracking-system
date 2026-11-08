@@ -2361,9 +2361,7 @@ body {
 
 /* fab-historial: on narrow portrait screens the sidebar becomes a bottom sheet
    opened by a round button, so the map keeps the full height */
-.fab-historial { display: none; }
 @media (max-width: 900px) and (orientation: portrait) {
-  .fab-historial { display: grid; }
   .main > .sidebar {
     position: absolute;
     left: 0;
@@ -2382,7 +2380,6 @@ body {
     visibility: hidden;
     pointer-events: none;
   }
-  .main.sin-paneles .fab-historial { display: none; }
 }
 
 /* hoja-fondo: tapping outside the mobile bottom sheet closes it */
@@ -2617,8 +2614,6 @@ html, body {
 
 /* panel-lateral-historial: on wide screens the history is also opened by the round button and
    slides in over the map from the right, so no vertical strip is needed */
-.fab-historial { display: grid; }
-.main.sin-paneles .fab-historial { display: none; }
 @media not all and (max-width: 900px) and (orientation: portrait) {
   .main > .sidebar {
     position: absolute;
@@ -2912,4 +2907,219 @@ html, body {
   right: calc(100% + 10px);
   bottom: 0;
   z-index: 1;
+}
+
+/* ============ Interfaz B ajustada: isla de rutas, barra con nombre, esquina ============ */
+
+/* Route island: same route picker, as a rounded bar with round arrow buttons */
+.nav-rutas.isla-rutas {
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(30, 21, 51, 0.96);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+}
+.isla-rutas .nav-flecha {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  flex-shrink: 0;
+}
+.isla-rutas .nav-flecha:not(:disabled):hover { border-color: var(--accent); }
+.isla-rutas .nav-btn.primario { height: 40px; padding: 0 14px; border-radius: 999px; }
+.isla-rutas .nav-selector { border-radius: 999px; padding: 6px 12px; }
+.mapa-zona.compacto .nav-rutas.isla-rutas { padding: 3px; justify-content: space-between; }
+.mapa-zona.compacto .isla-rutas .nav-flecha { width: 44px; height: 44px; padding: 0; }
+.mapa-zona.compacto .isla-rutas .nav-btn.primario { height: 44px; }
+
+/* Labelled toolbar: vertical, centred on the right edge of the map (wide screens) */
+.barra-herramientas {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 20px;
+  background: rgba(30, 21, 51, 0.96);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+}
+/* Above the legend (z-index 30), so the map options menu is never covered by it */
+.barra-herramientas { z-index: 35; }
+.barra-btn {
+  position: relative;
+  width: 72px;
+  height: 56px;
+  padding: 0;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.barra-texto { font-size: 11px; line-height: 1; color: var(--text-dim); }
+.barra-btn.activo { background: rgba(179, 127, 235, 0.24); }
+.barra-btn.activo .barra-texto { color: var(--text); }
+.barra-btn:disabled { opacity: 0.4; cursor: default; }
+.barra-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (hover: hover) {
+  .barra-btn:not(:disabled):not(.activo):hover { background: rgba(179, 127, 235, 0.12); }
+}
+/* Red badge on "Señales": speed excesses of the route on screen */
+.barra-globo {
+  position: absolute;
+  top: 4px;
+  right: 12px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: var(--marker-end);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.barra-btn .fab-punto { top: 6px; right: 16px; }
+/* The map options menu opens to the left of the Capas button */
+.barra-herramientas .capas-ancla .capas-menu { right: calc(100% + 14px); bottom: 0; }
+
+/* Hide panels (eye): "Señales" and "Puntos" go away with the panels, like the old list button */
+.main.sin-paneles .barra-btn-panel { display: none; }
+
+/* Bottom-right corner: speed (live), hide panels, follow position */
+.esquina-mapa {
+  position: absolute;
+  right: 16px;
+  bottom: 34px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+.mapa-zona.bajo .esquina-mapa { bottom: 28px; }
+
+/* Side panel sections (Señales, Puntos): title folds the list, x closes the section */
+.seccion-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.puntos-cabecera { border-bottom: 1px solid var(--border); padding: 4px 6px 4px 0; }
+.seccion-titulo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.seccion-flecha { color: var(--text-dim); font-size: 11px; width: 10px; }
+.seccion-cerrar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.seccion-cerrar:hover { color: var(--text); background: rgba(179, 127, 235, 0.12); }
+.seccion-titulo:focus-visible,
+.seccion-cerrar:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.senales-panel { padding: 0; }
+.senales-panel .seccion-cabecera { padding: 4px 6px 4px 0; }
+.senales-excesos { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--marker-end); white-space: nowrap; }
+.senales-cuerpo { padding: 0 14px 12px; }
+.senales-panel.plegada { max-height: none; }
+@media (pointer: coarse) {
+  .seccion-cerrar { width: 44px; height: 44px; }
+  .seccion-titulo { min-height: 44px; }
+}
+
+/* Phones (compact map zone): the toolbar is horizontal at the bottom, leaving the
+   bottom-right corner to the eye and centring buttons; zoom, legend and player move above it */
+.mapa-zona.compacto { --barra-abajo: 16px; --barra-alto: 68px; --sobre-barra: calc(var(--barra-abajo) + var(--barra-alto) + 12px); }
+.mapa-zona.compacto .barra-herramientas {
+  top: auto;
+  transform: none;
+  left: 12px;
+  right: 80px;
+  bottom: var(--barra-abajo);
+  flex-direction: row;
+  justify-content: space-between;
+  border-radius: 22px;
+}
+.mapa-zona.compacto .barra-btn { flex: 1; width: auto; min-width: 0; height: 54px; }
+.mapa-zona.compacto .capas-ancla { flex: 1; min-width: 0; }
+.mapa-zona.compacto .capas-ancla .barra-btn { width: 100%; }
+.mapa-zona.compacto .barra-globo { right: calc(50% - 24px); }
+.mapa-zona.compacto .barra-btn .fab-punto { right: calc(50% - 20px); }
+.mapa-zona.compacto .barra-herramientas .capas-ancla .capas-menu { right: -6px; bottom: calc(100% + 16px); }
+.mapa-zona.compacto .esquina-mapa { right: 12px; bottom: calc(var(--barra-abajo) + 8px); }
+.mapa-zona.compacto .map .leaflet-top.leaflet-left,
+.mapa-zona.compacto .legend,
+.mapa-zona.compacto .reproductor { bottom: var(--sobre-barra); }
+.mapa-zona.compacto:has(.reproductor) .map .leaflet-top.leaflet-left,
+.mapa-zona.compacto:has(.reproductor) .legend { bottom: calc(var(--sobre-barra) + var(--alto-repro) + 12px); }
+@media (pointer: coarse) and (max-width: 900px) {
+  .main .mapa-zona.compacto .barra-herramientas { bottom: calc(var(--barra-abajo) + var(--barra-inf, 0px)); }
+  .main .mapa-zona.compacto .esquina-mapa { bottom: calc(var(--barra-abajo) + 8px + var(--barra-inf, 0px)); }
+  .main .mapa-zona.compacto .legend,
+  .main .mapa-zona.compacto .reproductor { bottom: calc(var(--sobre-barra) + var(--barra-inf, 0px)); }
+  .main .mapa-zona.compacto:has(.reproductor) .legend {
+    bottom: calc(var(--sobre-barra) + var(--alto-repro) + 12px + var(--barra-inf, 0px));
+  }
+}
+
+/* Only "Señales" open: its section takes the whole panel height (no empty space below) */
+.sidebar:not(:has(.puntos-cabecera)) .senales-panel:not(.plegada) { flex: 1 1 auto; max-height: none; }
+
+/* Phones: the bottom sheet (and its dimmed backdrop) stops right above the horizontal toolbar,
+   so "Señales" and "Puntos" stay reachable and work like tabs while the sheet is open.
+   92 px = toolbar bottom offset (16) + toolbar height (68) + gap (8). */
+@media (max-width: 900px) and (orientation: portrait) {
+  .main:has(.mapa-zona.compacto) > .sidebar,
+  .main:has(.mapa-zona.compacto) > .hoja-fondo { bottom: 92px; }
+  .main:has(.mapa-zona.compacto) > .sidebar { padding-bottom: 0; border-radius: 14px; }
+}
+@media (pointer: coarse) and (max-width: 900px) and (orientation: portrait) {
+  .main:has(.mapa-zona.compacto) > .sidebar,
+  .main:has(.mapa-zona.compacto) > .hoja-fondo { bottom: calc(92px + var(--barra-inf, 0px)); }
+}
+@media (max-width: 900px) and (orientation: portrait) {
+  /* While the sheet is open, the eye button (and the speed chip) would peek out under it */
+  .main:has(.mapa-zona.compacto):has(> .sidebar:not(.plegado)) .esquina-mapa > :not(:last-child) { visibility: hidden; }
 }

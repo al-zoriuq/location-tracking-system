@@ -207,7 +207,9 @@ La aplicación frontend en React (`disenop2web`) cuenta con:
 - **Rutas:** el historial se divide en viajes (más de 1 h sin datos, más de 1 km entre puntos o velocidad implícita mayor a 180 km/h). Se navega con anterior, siguiente y un selector con todas.
 - **Filtros:** rango de fecha y hora (el fin debe ser posterior al inicio, sin fechas futuras) y lugar (búsqueda de ciudad o dirección, o un pin puesto en el mapa con un área de 300 m alrededor), combinables. Si el filtro corta un viaje, se marca con extremos huecos y un aviso con «Ver viaje completo».
 - **Mapa:** marcadores de inicio, fin y posición actual, paradas (5 min dentro de 50 m), visitas a un lugar, reproductor del recorrido, ajuste a vías y seguimiento del punto actual.
-- **Diseño adaptable:** en pantallas pequeñas los paneles se compactan, el selector de fechas se abre como hoja inferior, el historial como hoja inferior en el celular y como columna lateral en pantalla ancha, y hay un botón para ocultar los paneles.
+- **Barra de herramientas** (`BarraHerramientas.jsx`): botones con nombre «Señales» (con el número de excesos; solo aparece si la ruta mostrada tiene señales), «Puntos», «Reproducir» y «Capas». Vertical a la derecha en pantalla ancha y horizontal abajo en modo compacto (celular). El ojo (ocultar paneles) y el seguimiento del punto actual van aparte, en la esquina inferior derecha.
+- **Panel lateral:** «Señales» y «Puntos» se abren juntos o por separado; cada sección se pliega desde su título y se cierra con «×». Columna a la derecha en pantalla ancha; en el celular, hoja inferior que se detiene sobre la barra para que esta siga funcionando como pestañas.
+- **Diseño adaptable:** en pantallas pequeñas los paneles se compactan y el selector de fechas se abre como hoja inferior.
 - **Ayuda:** botón «?» en la barra superior; su texto (`AyudaModal.jsx`) debe actualizarse cuando cambie la interfaz.
 
 ## 6. Branch Management & Workflow Integration
