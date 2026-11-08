@@ -49,6 +49,14 @@ python snifferwpostgresql.py
 ```
 This listens for UDP location updates on port `5000` and stores them in the PostgreSQL RDS database.
 
+- Accepts both message formats: location only (Android app, old firmware) and location + traffic sign (ESP32-S3). See the message reader at the top of `snifferwpostgresql.py`.
+- The location goes to `ubicaciones`; a traffic sign, if any, goes to `detecciones_senal` in the same transaction.
+- Malformed packets are discarded without stopping the server, and a lost database connection is re-opened automatically.
+- If the database has no `detecciones_senal` table (e.g. a new test database), only locations are saved and a warning is printed; once the table is created (see «Esquema de `detecciones_senal`» below), signs start being saved within a minute, without a restart.
+- `--puerto N` listens on another port (e.g. to try a new version on the EC2 while the production sniffer keeps port 5000).
+
+**The deploy workflow only restarts the web server (Gunicorn), not the sniffer.** After pulling new sniffer code, stop it and start it again on every server.
+
 ## Production Deployment (Nginx + Gunicorn)
 The web dashboard (`servidorweb.py`) is served with Gunicorn behind Nginx, not with Flask's development server.
 
@@ -119,6 +127,67 @@ timestamp_gps = timestamp_gps.replace(tzinfo=None)
 - `timestamp_recepcion` se guarda en **UTC** (la RDS corre en UTC).
 - Toda comparación con "ahora" debe usar `NOW() AT TIME ZONE 'America/Bogota'` en el servidor, o `-05:00` al interpretar la fecha en el navegador. Comparar `timestamp_gps` con `NOW()` directamente desplaza el resultado 5 horas.
 
+### Señales de tránsito (ESP32-S3)
+
+El ESP32 agrega al mensaje de ubicación la señal que detectó su cámara (`Senal: LIMITE 30, Conf: 0.99, Vel GPS: 2, Vel MPU: 22, Usa: GPS, SI`). Se guardan en la tabla `detecciones_senal`, aparte de `ubicaciones`.
+
+- `GET /api/detecciones-senal`: mismos filtros que el historial (`horas`, `desde`/`hasta`, `margen_horas`, `device_id`), filtrando por `timestamp_evento`. Si la tabla no existe en esa base de datos devuelve `[]`.
+- La página asigna cada señal a su ruta por hora (`disenop2web/src/senales.js`), la dibuja en el mapa (`MarcadoresSenal.jsx`) y la lista en el panel lateral (`PanelSenales.jsx`).
+- Tabla `detecciones_senal`: ya creada en la base central `p2database`, que comparten las 4 EC2. Su SQL está en la sección siguiente.
+- Prueba sin el ESP32: `tests/sniffer_udpforesp32.py --guardar` (solo bases `*_test`) o `snifferwpostgresql.py --puerto N`, con `pruebas/enviar_senales_prueba.py --puerto N`.
+- Pruebas del frontend: `node --test disenop2web/src/senales.test.js`.
+
+#### Esquema de `detecciones_senal`
+
+Creada a mano en `p2database` y en `alba_test` con este SQL. Sirve para recrearla o para preparar una base de pruebas nueva (`*_test`); se puede ejecutar varias veces sin problema (`IF NOT EXISTS`) y no toca `ubicaciones`. Si alguna EC2 se conecta con un usuario distinto al que creó la tabla, ese usuario necesita `GRANT SELECT, INSERT ON detecciones_senal` y `GRANT USAGE ON SEQUENCE detecciones_senal_id_seq`.
+
+Zonas horarias, igual que en `ubicaciones`: `timestamp_gps` y `timestamp_evento` en hora de Bogotá sin zona; `timestamp_recepcion` en UTC.
+
+```sql
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS detecciones_senal (
+    id                  BIGSERIAL PRIMARY KEY,
+    device_id           TEXT             NOT NULL,  -- mismo tipo que ubicaciones.device_id
+    ip_origen           VARCHAR(45),
+    latitud             DOUBLE PRECISION NOT NULL,
+    longitud            DOUBLE PRECISION NOT NULL,
+    timestamp_gps       TIMESTAMP        NOT NULL,
+    edad_posicion_s     INTEGER,                    -- del campo "pos-45s"; NULL = posición fresca
+    timestamp_evento    TIMESTAMP        NOT NULL,  -- timestamp_gps + edad: cuándo se vio la señal
+    timestamp_recepcion TIMESTAMP        NOT NULL,
+    senal_texto         VARCHAR(50)      NOT NULL,  -- "LIMITE 30"
+    senal_tipo          VARCHAR(20)      NOT NULL,  -- LIMITE, PARE, CEDA...
+    senal_valor         SMALLINT,                   -- 30 (NULL para PARE/CEDA)
+    confianza           REAL             NOT NULL CHECK (confianza BETWEEN 0 AND 1),
+    vel_gps             REAL,                       -- NULL cuando llega NA
+    vel_mpu             REAL,
+    vel_fuente          VARCHAR(5)       NOT NULL,  -- "Usa": GPS / MPU / NA
+    cumplimiento        VARCHAR(10)      NOT NULL,  -- SI / EXCEDE / NA
+    extra               TEXT,                       -- campos futuros del firmware
+    CONSTRAINT detecciones_senal_unica UNIQUE (device_id, timestamp_evento, senal_texto)
+);
+
+-- Consulta de la página: un dispositivo en un rango de fechas
+CREATE INDEX IF NOT EXISTS idx_detecciones_device_evento
+    ON detecciones_senal (device_id, timestamp_evento);
+
+-- Para contar o resaltar rápido los excesos de velocidad
+CREATE INDEX IF NOT EXISTS idx_detecciones_excesos
+    ON detecciones_senal (device_id, timestamp_evento)
+    WHERE cumplimiento = 'EXCEDE';
+
+COMMIT;
+```
+
+### Dirección aproximada de la última posición
+
+La tarjeta «Última posición» muestra la dirección en vez de latitud, longitud e IP.
+
+- `GET /api/direccion?lat=..&lon=..` consulta Nominatim (OpenStreetMap, el mismo servicio de `/api/buscar-lugar`) y devuelve `{"direccion": "Calle 72 #57-43, Alto Prado, Barranquilla", "completa": "..."}`. `direccion` es `null` si el punto no tiene dirección.
+- Para respetar la política de uso de Nominatim (máximo 1 consulta por segundo y uso de caché), las coordenadas se redondean a 4 decimales (~11 m), cada punto se consulta una sola vez por proceso del servidor y las consultas se separan al menos 1 s.
+- En el navegador: `disenop2web/src/useDireccion.js`.
+
 ---
 
 ## 5. Frontend Build & State Management
@@ -138,7 +207,9 @@ La aplicación frontend en React (`disenop2web`) cuenta con:
 - **Rutas:** el historial se divide en viajes (más de 1 h sin datos, más de 1 km entre puntos o velocidad implícita mayor a 180 km/h). Se navega con anterior, siguiente y un selector con todas.
 - **Filtros:** rango de fecha y hora (el fin debe ser posterior al inicio, sin fechas futuras) y lugar (búsqueda de ciudad o dirección, o un pin puesto en el mapa con un área de 300 m alrededor), combinables. Si el filtro corta un viaje, se marca con extremos huecos y un aviso con «Ver viaje completo».
 - **Mapa:** marcadores de inicio, fin y posición actual, paradas (5 min dentro de 50 m), visitas a un lugar, reproductor del recorrido, ajuste a vías y seguimiento del punto actual.
-- **Diseño adaptable:** en pantallas pequeñas los paneles se compactan, el selector de fechas se abre como hoja inferior, el historial como hoja inferior en el celular y como columna lateral en pantalla ancha, y hay un botón para ocultar los paneles.
+- **Barra de herramientas** (`BarraHerramientas.jsx`): botones con nombre «Señales» (con el número de excesos; solo aparece si la ruta mostrada tiene señales), «Puntos», «Reproducir» y «Capas». Vertical a la derecha en pantalla ancha y horizontal abajo en modo compacto (celular). El ojo (ocultar paneles) y el seguimiento del punto actual van aparte, en la esquina inferior derecha.
+- **Panel lateral:** «Señales» y «Puntos» se abren juntos o por separado; cada sección se pliega desde su título y se cierra con «×». Columna a la derecha en pantalla ancha; en el celular, hoja inferior que se detiene sobre la barra para que esta siga funcionando como pestañas.
+- **Diseño adaptable:** en pantallas pequeñas los paneles se compactan y el selector de fechas se abre como hoja inferior.
 - **Ayuda:** botón «?» en la barra superior; su texto (`AyudaModal.jsx`) debe actualizarse cuando cambie la interfaz.
 
 ## 6. Branch Management & Workflow Integration

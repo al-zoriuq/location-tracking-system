@@ -12,6 +12,16 @@ export default function AyudaModal({ onCerrar }) {
       </section>
 
       <section>
+        <h3>Última posición</h3>
+        <p>
+          La tarjeta de arriba a la izquierda muestra la dirección aproximada del último punto
+          recibido, con su fecha y hora. La dirección se obtiene de OpenStreetMap a partir de las
+          coordenadas, así que puede no coincidir exactamente con el número de la casa. En el
+          celular la tarjeta está resumida en una línea: tócala para verla completa.
+        </p>
+      </section>
+
+      <section>
         <h3>Rutas</h3>
         <p>
           Una ruta es un viaje completo. Empieza otra cuando pasa más de 1 hora sin datos o
@@ -69,27 +79,48 @@ export default function AyudaModal({ onCerrar }) {
             <strong>Pausa con minutos:</strong> una parada, es decir, al menos 5 minutos dentro
             de un radio de 50 m. Tócala para ver la hora de llegada y de salida.
           </li>
+          <li>
+            <strong>Señales de tránsito:</strong> las que detectó la cámara del dispositivo
+            durante la ruta: límite de velocidad (círculo blanco con borde rojo y el número), pare
+            (octágono rojo) y ceda el paso (triángulo invertido). Un límite con brillo rojo es un
+            exceso de velocidad. Tócala para ver la hora, la velocidad medida por el GPS y por el
+            sensor de movimiento (y cuál se usó), la confianza de la detección y si se cumplió.
+          </li>
         </ul>
       </section>
 
       <section>
-        <h3>Botones redondos</h3>
+        <h3>Barra de herramientas</h3>
+        <p>
+          Está a la derecha del mapa en pantalla ancha y abajo en el celular. Cada botón dice lo
+          que hace:
+        </p>
         <ul>
           <li>
-            <strong>Capas:</strong> «Ajustar a vías» dibuja la ruta sobre las calles reales y
-            «Mostrar paradas» activa o quita las paradas.
+            <strong>Señales:</strong> abre o cierra la sección de señales de tránsito de la ruta.
+            El globo rojo indica cuántos excesos de velocidad hubo. El botón solo aparece cuando la
+            ruta mostrada tiene señales; si la sección estaba abierta, vuelve a aparecer en la
+            siguiente ruta que las tenga.
           </li>
           <li>
-            <strong>Ojo:</strong> oculta todos los paneles y deja solo el mapa.
+            <strong>Puntos:</strong> abre o cierra el historial de puntos de la ruta.
           </li>
           <li>
-            <strong>Lista:</strong> abre el historial de puntos (y las visitas de un lugar). Se
-            cierra con el mismo botón.
-          </li>
-          <li>
-            <strong>Play:</strong> reproduce el recorrido de la ruta mostrada. La barra tiene
+            <strong>Reproducir:</strong> reproduce el recorrido de la ruta mostrada. La barra tiene
             pausa, un deslizador para saltar a cualquier momento y la velocidad (×60, ×300 o
             ×1200 veces el tiempo real).
+          </li>
+          <li>
+            <strong>Capas:</strong> «Ajustar a vías» dibuja la ruta sobre las calles reales,
+            «Mostrar paradas» activa o quita las paradas y «Mostrar señales» activa o quita las
+            señales de tránsito.
+          </li>
+        </ul>
+        <p>En la esquina inferior derecha, aparte:</p>
+        <ul>
+          <li>
+            <strong>Ojo:</strong> oculta los paneles (tarjeta, rutas, filtros, leyenda y el panel
+            lateral) y deja solo el mapa.
           </li>
           <li>
             <strong>Mira:</strong> mantiene el punto actual en el centro sin cambiar tu zoom.
@@ -98,12 +129,26 @@ export default function AyudaModal({ onCerrar }) {
       </section>
 
       <section>
-        <h3>Historial de puntos</h3>
+        <h3>Señales y puntos</h3>
         <p>
-          Está plegado para dejar espacio al mapa. Ábrelo con el botón de la lista: muestra
-          los puntos de la ruta mostrada, del más reciente al más antiguo, con fecha, hora y
-          coordenadas. El botón redondo con el ícono de lista abre el historial (y las visitas de un lugar): en el celular sube como una hoja desde abajo y en pantalla ancha se abre como un panel a la derecha. Se cierra tocando fuera de la hoja, su título o el mismo botón.
+          «Señales» y «Puntos» se abren juntos o por separado. En pantalla ancha aparecen en un
+          panel a la derecha; en el celular, en una hoja que sube desde abajo y deja la barra a la
+          vista, así que puedes abrir o cerrar cada uno sin cerrar la hoja. Toca el título de una
+          sección para plegarla o desplegarla, y la «×» para cerrarla. En el celular, tocar fuera
+          de la hoja cierra las dos.
         </p>
+        <p>
+          <strong>Señales en la ruta</strong> muestra cuántas hubo, cuántos excesos de velocidad y
+          cada señal en el orden en que se pasó. «Cumple» y «Excede» se refieren al límite de
+          velocidad; un pare o un ceda el paso salen «Sin evaluar». Toca una señal para ir a ella
+          en el mapa sin cambiar tu zoom (en el celular, la hoja se cierra para que la veas).
+        </p>
+        <p>
+          <strong>Historial de puntos</strong> muestra los puntos de la ruta, del más reciente al
+          más antiguo, con fecha, hora y coordenadas. Si filtraste por lugar, las visitas a ese
+          lugar aparecen arriba del panel.
+        </p>
+        <p>Al cambiar de ruta, las dos secciones cambian con ella.</p>
       </section>
 
       <section>

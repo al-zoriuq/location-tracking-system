@@ -79,8 +79,9 @@ export default function MarcadoresVisitas({ visitas, indiceRuta, seleccionada, o
   });
 }
 
-// Flies the map to a spot whenever `destino` changes ({centro: [lat, lon], n}).
+// Flies the map to a spot whenever `destino` changes ({centro: [lat, lon], n, mantenerZoom}).
 // Never zooms out: if the user is already closer than the minimum, that zoom is kept.
+// With mantenerZoom (used by traffic signs) it only pans: the user's zoom never changes.
 // The spot lands in the middle of the part of the map NOT covered by the panels on
 // top: the map center is shifted up by half of `margenSuperior`.
 export function VolarA({ destino, margenSuperior }) {
@@ -88,7 +89,9 @@ export function VolarA({ destino, margenSuperior }) {
 
   useEffect(() => {
     if (!destino) return;
-    const zoom = Math.max(map.getZoom(), ZOOM_MINIMO_AL_VOLAR);
+    const zoom = destino.mantenerZoom
+      ? map.getZoom()
+      : Math.max(map.getZoom(), ZOOM_MINIMO_AL_VOLAR);
     const enPantalla = map.project(destino.centro, zoom).subtract([0, margenSuperior / 2]);
     map.flyTo(map.unproject(enPantalla, zoom), zoom, { duration: 0.8 });
     // Only a new destination triggers a flight, not a change of margin

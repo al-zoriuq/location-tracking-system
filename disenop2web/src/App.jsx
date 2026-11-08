@@ -7,6 +7,10 @@ import { normalizarPunto } from "./utils/viajes.js";
 import { detectarParadas } from "./utils/paradas.js";
 import MarcadoresVisitas, { VolarA } from "./MarcadoresVisitas.jsx";
 import PanelVisitas from "./PanelVisitas.jsx";
+import MarcadoresSenal from "./MarcadoresSenal.jsx";
+import PanelSenales from "./PanelSenales.jsx";
+import BarraHerramientas from "./BarraHerramientas.jsx";
+import { normalizarDeteccion, asignarSenalesARutas, contarExcesos } from "./senales.js";
 import { calcularVisitas } from "./visitas.js";
 import SelectorRuta from "./SelectorRuta.jsx";
 import { formatearHoraCorta } from "./utils/tiempo.js";
@@ -16,6 +20,7 @@ import AyudaModal from "./AyudaModal.jsx";
 import Toasts from "./Toasts.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
+import { useDireccion, textoDireccion } from "./useDireccion.js";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, Popup, Rectangle, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
@@ -220,9 +225,13 @@ function margenesLibres(map) {
     if (!visible(el)) return;
     b = Math.max(b, H - caja(el).top + 12);
   });
-  zona.querySelectorAll(".controles-mapa").forEach((el) => {
+  // Toolbar: vertical on the right (wide screens) or horizontal at the bottom (phones);
+  // the corner buttons (hide panels, follow position) are on the right
+  zona.querySelectorAll(".barra-herramientas, .esquina-mapa").forEach((el) => {
     if (!visible(el)) return;
-    r = Math.max(r, W - caja(el).left + 12);
+    const q = caja(el);
+    if (q.w > q.h * 1.5) b = Math.max(b, H - q.top + 12);
+    else r = Math.max(r, W - q.left + 12);
   });
   if (t + b > H * 0.7) { const k = (H * 0.7) / (t + b); t *= k; b *= k; }
   if (l + r > W * 0.7) { const k = (W * 0.7) / (l + r); l *= k; r *= k; }
@@ -706,10 +715,19 @@ function App() {
   const [vueloA, setVueloA] = useState(null);
   const [margenSuperior, setMargenSuperior] = useState(0);
   const [paradasVisibles, setParadasVisibles] = useState(true);
+  const [detecciones, setDetecciones] = useState([]); // traffic signs seen by the ESP32 camera
+  const [senalesVisibles, setSenalesVisibles] = useState(true);
+  const [senalSel, setSenalSel] = useState(null); // id of the sign picked in the sidebar
   const [reproductorAbierto, setReproductorAbierto] = useState(false);
   const [panelesOcultos, setPanelesOcultos] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
-  const [historialAbierto, setHistorialAbierto] = useState(false);
+  // Side panel: the traffic signs and the point history open and close on their own;
+  // the panel shows while at least one of them is open
+  const [senalesAbierto, setSenalesAbierto] = useState(false);
+  const [puntosAbierto, setPuntosAbierto] = useState(false);
+  const [senalesPlegado, setSenalesPlegado] = useState(false);
+  const [puntosPlegado, setPuntosPlegado] = useState(false);
+  const cerrarPanel = () => { setSenalesAbierto(false); setPuntosAbierto(false); };
   const [lugarSinHistorial, setLugarSinHistorial] = useState(null); // name of a place never visited
   const [sinResultadosLugar, setSinResultadosLugar] = useState(false);
   const [historialCargado, setHistorialCargado] = useState(false);
@@ -807,6 +825,19 @@ function App() {
   // Stops of the route on screen: at least 5 min within 50 m (see utils/paradas.js)
   const puntosNorm = useMemo(() => puntosRutaMostrada.map(normalizarPunto), [puntosRutaMostrada]);
   const paradas = useMemo(() => detectarParadas(puntosNorm), [puntosNorm]);
+
+  // Traffic signs, assigned to the routes by time (see senales.js)
+  const deteccionesNorm = useMemo(() => detecciones.map(normalizarDeteccion), [detecciones]);
+  const senalesPorRuta = useMemo(
+    () => asignarSenalesARutas(deteccionesNorm, rutas),
+    [deteccionesNorm, rutas]
+  );
+  const senalesRuta = senalesPorRuta[indiceMostrado] || [];
+  const excesosRuta = contarExcesos(senalesRuta);
+  // The signs section (and its toolbar button) only exist for a route with signs;
+  // senalesAbierto is kept, so it shows again on the next route that has them
+  const senalesVisiblesEnPanel = senalesAbierto && senalesRuta.length > 0;
+  const panelAbierto = senalesVisiblesEnPanel || puntosAbierto;
 
   // Distance, duration and speeds of the route on screen (for the popup)
   const estadisticasRuta = useMemo(
@@ -1096,6 +1127,20 @@ function App() {
     setVueloA({ centro: [visita.cercano.lat, visita.cercano.lon], n: Date.now() });
   };
 
+  // A picked sign only stays highlighted while its route is on screen
+  const senalElegida = senalesRuta.some((d) => d.id === senalSel) ? senalSel : null;
+
+  const elegirSenal = (senal) => {
+    setSenalSel(senal.id);
+    setSenalesVisibles(true);
+    // On phones the history is a bottom sheet over the map: close it to see the sign
+    if (window.matchMedia("(max-width: 900px) and (orientation: portrait)").matches) {
+      cerrarPanel();
+    }
+    // Only pans to the sign: the zoom the user chose is kept
+    setVueloA({ centro: [senal.lat, senal.lon], n: Date.now(), mantenerZoom: true });
+  };
+
   // Why there is nothing to show for the chosen place. Never leave it empty
   // without a reason: either it was never visited, or only outside the dates.
   const mensajeLugar = lugarSinHistorial
@@ -1287,8 +1332,32 @@ function App() {
       }
     };
 
+    // Traffic signs of the same period as the history. They are few, so the
+    // whole window is asked for again on every refresh.
+    const obtenerDetecciones = async () => {
+      try {
+        let url = import.meta.env.BASE_URL + "api/detecciones-senal";
+        if (rangoActivo) {
+          url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
+          if (rangoActivo.completar) url += `&margen_horas=${MARGEN_RANGO_H}`;
+        } else {
+          url += `?horas=${lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H}`;
+        }
+        const data = await pedirJSON(url);
+        if (cancelado) return;
+        setDetecciones(Array.isArray(data) ? data : []);
+        registrarExito("senales", MENSAJE_RECUPERADA);
+      } catch (error) {
+        if (cancelado) return;
+        const { clave, mensaje } = describirFallo(error, "senales");
+        registrarFallo("senales", clave, mensaje);
+        if (error instanceof ErrorApi && error.tipo === "solicitud") setDetecciones([]);
+      }
+    };
+
     obtenerUbicacion();
     obtenerHistorial(true);
+    obtenerDetecciones();
 
     // A fully past range can't receive new points, so stop polling the
     // history for it (the live marker keeps updating regardless).
@@ -1301,6 +1370,7 @@ function App() {
       if (lugarActivo || rangoEsPasado) return;
       const tocaCompleta = Date.now() - ultimaCompletaMs >= RECARGA_COMPLETA_MS;
       obtenerHistorial(!modoVivo || tocaCompleta);
+      obtenerDetecciones();
     };
 
     const intervalo = setInterval(tick, 10000);
@@ -1317,6 +1387,14 @@ function App() {
   }, [rangoActivo, lugarActivo]);
 
   const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+
+  // Approximate address of the last position, shown on the card instead of
+  // the raw coordinates
+  const direccion = useDireccion(
+    location ? Number(location.latitud) : NaN,
+    location ? Number(location.longitud) : NaN
+  );
+  const direccionTexto = textoDireccion(direccion);
 
   return (
     <div className="app">
@@ -1369,8 +1447,9 @@ function App() {
                 aria-expanded={panelExpandido}
               >
                 <span className={`dot dot-${estado.tier}`}></span>
-                <span className="panel-resumen-texto">
-                  {Number(location.latitud).toFixed(4)}, {Number(location.longitud).toFixed(4)} ·{" "}
+                {/* The address is cut with "…" when it does not fit; the time always shows */}
+                <span className="panel-resumen-texto">{direccionTexto}</span>
+                <span className="panel-resumen-hora">
                   {fechaGPS.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "2-digit", minute: "2-digit" })}
                 </span>
                 <span className="panel-flecha">{panelExpandido ? "▴" : "▾"}</span>
@@ -1378,21 +1457,14 @@ function App() {
 
               <div className="panel-detalle">
                 <p className="label">Última posición</p>
-                <div className="coords">
-                  <div className="coord-row">
-                    <span className="coord-label">Lat</span>
-                    <span>{Number(location.latitud).toFixed(4)}</span>
-                  </div>
-                  <div className="coord-row">
-                    <span className="coord-label">Lon</span>
-                    <span>{Number(location.longitud).toFixed(4)}</span>
-                  </div>
-                </div>
+                <p className={`direccion ${direccion.texto ? "" : "sin-texto"}`} title="Dirección aproximada">
+                  {direccionTexto}
+                </p>
+                <p className="direccion-nota">Dirección aproximada</p>
                 <div className="meta">
                   <span>{fechaGPS.toLocaleDateString("es-CO", OPCIONES_ZONA)}</span>
                   <span>{fechaGPS.toLocaleTimeString("es-CO", OPCIONES_ZONA)}</span>
                 </div>
-                <p className="ip">IP: {location.ip_origen}</p>
               </div>
             </div>
 
@@ -1415,14 +1487,18 @@ function App() {
                 <span className="filtros-toggle-flecha" aria-hidden="true">{filtrosVisibles ? "\u25B4" : "\u25BE"}</span>
               </button>
               {ruta.length > 0 && (
-                <div className="nav-rutas">
+                <div className="nav-rutas isla-rutas">
                   <button
-                    className="nav-btn"
+                    className="nav-btn nav-flecha"
                     onClick={verRutaAnterior}
                     disabled={indiceMostrado === 0}
                     aria-label="Ruta anterior"
+                    title="Ruta anterior"
                   >
-                    ← <span className="nav-texto">Anterior</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="15 18 9 12 15 6" />
+                    </svg>
                   </button>
                   <SelectorRuta
                     etiqueta={etiquetaRuta}
@@ -1431,12 +1507,16 @@ function App() {
                     onElegir={irARuta}
                   />
                   <button
-                    className="nav-btn"
+                    className="nav-btn nav-flecha"
                     onClick={verRutaSiguiente}
                     disabled={siguiendoActual}
                     aria-label="Ruta siguiente"
+                    title="Ruta siguiente"
                   >
-                    <span className="nav-texto">Siguiente</span> &rarr;
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
                   </button>
                   {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
                   {indiceMostrado < rutas.length - 2 && (
@@ -1615,37 +1695,64 @@ function App() {
 
             </div>
 
-            <div className="controles-mapa fab-columna">
-              {capasAbierto && (
-                <div className="capas-menu">
-                  <p className="capas-titulo">Opciones del mapa</p>
-                  <label className="capas-opcion">
-                    <span>
-                      Ajustar a vías
-                      {snapCargando && <em> · ajustando…</em>}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={snapActivo}
-                      onChange={() => setSnapActivo(!snapActivo)}
-                    />
-                    <span className="interruptor" />
-                  </label>
-                  <label className="capas-opcion">
-                    <span>
-                      Mostrar paradas
-                      {paradas.length > 0 && <em> &middot; {paradas.length}</em>}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={paradasVisibles}
-                      onChange={() => setParadasVisibles(!paradasVisibles)}
-                    />
-                    <span className="interruptor" />
-                  </label>
-                </div>
-              )}
+            <BarraHerramientas
+              senalesAbierto={senalesVisiblesEnPanel}
+              puntosAbierto={puntosAbierto}
+              onSenales={() => { setCapasAbierto(false); setSenalesAbierto(!senalesAbierto); }}
+              onPuntos={() => { setCapasAbierto(false); setPuntosAbierto(!puntosAbierto); }}
+              excesos={excesosRuta}
+              mostrarSenales={senalesRuta.length > 0}
+              reproductorAbierto={reproductorAbierto}
+              puedeReproducir={puntosNorm.length >= 2}
+              onReproducir={() => setReproductorAbierto(!reproductorAbierto)}
+              capasAbierto={capasAbierto}
+              onCapas={() => { setFiltrosVisibles(false); setCapasAbierto(!capasAbierto); }}
+              snapActivo={snapActivo}
+              menuCapas={
+              <div className="capas-menu">
+                <p className="capas-titulo">Opciones del mapa</p>
+                <label className="capas-opcion">
+                  <span>
+                    Ajustar a vías
+                    {snapCargando && <em> · ajustando…</em>}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={snapActivo}
+                    onChange={() => setSnapActivo(!snapActivo)}
+                  />
+                  <span className="interruptor" />
+                </label>
+                <label className="capas-opcion">
+                  <span>
+                    Mostrar paradas
+                    {paradas.length > 0 && <em> &middot; {paradas.length}</em>}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={paradasVisibles}
+                    onChange={() => setParadasVisibles(!paradasVisibles)}
+                  />
+                  <span className="interruptor" />
+                </label>
+                <label className="capas-opcion">
+                  <span>
+                    Mostrar se&ntilde;ales
+                    {senalesRuta.length > 0 && <em> &middot; {senalesRuta.length}</em>}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={senalesVisibles}
+                    onChange={() => setSenalesVisibles(!senalesVisibles)}
+                  />
+                  <span className="interruptor" />
+                </label>
+              </div>
+              }
+            />
 
+            {/* Bottom-right corner, on their own: speed (live only), hide panels, follow position */}
+            <div className="esquina-mapa">
               {velocidadActualKmh !== null && (
                 <div
                   className="velocidad-chip"
@@ -1655,22 +1762,6 @@ function App() {
                   <b>{Math.round(velocidadActualKmh)}</b> km/h
                 </div>
               )}
-
-              <button
-                className={`fab ${capasAbierto ? "activo" : ""}`}
-                onClick={() => { setFiltrosVisibles(false); setCapasAbierto(!capasAbierto); }}
-                aria-label="Opciones del mapa"
-                title="Opciones del mapa"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                  <polyline points="2 17 12 22 22 17" />
-                  <polyline points="2 12 12 17 22 12" />
-                </svg>
-                {snapActivo && <span className="fab-punto" />}
-              </button>
-
               <button
                 className={`fab ${panelesOcultos ? "activo" : ""}`}
                 onClick={() => setPanelesOcultos(!panelesOcultos)}
@@ -1685,38 +1776,6 @@ function App() {
                   {panelesOcultos && <line x1="3" y1="21" x2="21" y2="3" />}
                 </svg>
               </button>
-
-              <button
-                className={`fab fab-historial ${historialAbierto ? "activo" : ""}`}
-                onClick={() => { setCapasAbierto(false); setHistorialAbierto(!historialAbierto); }}
-                aria-pressed={historialAbierto}
-                aria-label="Historial de puntos"
-                title="Historial de puntos"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="8" y1="6" x2="21" y2="6" />
-                  <line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" />
-                  <line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" />
-                  <line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-              </button>
-
-              <button
-                className={`fab ${reproductorAbierto ? "activo" : ""}`}
-                onClick={() => setReproductorAbierto(!reproductorAbierto)}
-                disabled={puntosNorm.length < 2}
-                aria-label="Reproducir recorrido"
-                title="Reproduce el recorrido de la ruta mostrada"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"
-                  stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-                  <polygon points="7 4 20 12 7 20 7 4" />
-                </svg>
-              </button>
-
               <button
                 className={`fab ${centradoActivo ? "activo" : ""}`}
                 onClick={() => setCentradoActivo(!centradoActivo)}
@@ -1879,6 +1938,13 @@ function App() {
               />
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
             {paradasVisibles && <MarcadoresParada paradas={paradas} />}
+            {senalesVisibles && (
+              <MarcadoresSenal
+                senales={senalesRuta}
+                seleccionada={senalElegida}
+                margenSuperior={margenSuperior}
+              />
+            )}
             {reproductorAbierto && puntosNorm.length > 1 && (
               <Reproductor
                 puntos={puntosNorm}
@@ -1888,10 +1954,10 @@ function App() {
             </MapContainer>
             </div>
 
-            {historialAbierto && (
-              <div className="hoja-fondo" onClick={() => setHistorialAbierto(false)} aria-hidden="true" />
+            {panelAbierto && (
+              <div className="hoja-fondo" onClick={cerrarPanel} aria-hidden="true" />
             )}
-            <aside className={`sidebar ${historialAbierto ? "" : "plegado"} ${visitas.length > 0 ? "con-visitas" : ""}`}>
+            <aside className={`sidebar ${panelAbierto ? "" : "plegado"} ${visitas.length > 0 ? "con-visitas" : ""}`}>
               <PanelVisitas
                 visitas={visitas}
                 nombreLugar={lugarActivo ? lugarActivo.nombre : ""}
@@ -1899,16 +1965,40 @@ function App() {
                 seleccionada={visitaElegida}
                 onElegir={elegirVisita}
               />
-              <button
-                type="button"
-                className="sidebar-title sidebar-titulo-btn"
-                onClick={() => setHistorialAbierto(!historialAbierto)}
-                aria-expanded={historialAbierto}
-              >
-                <span className="sidebar-titulo-flecha" aria-hidden="true">{historialAbierto ? "▾" : "▸"}</span>
-                Historial de puntos ({historialReciente.length})
-              </button>
-              <div className={`sidebar-list ${historialAbierto ? "" : "oculto"}`}>
+              {senalesVisiblesEnPanel && (
+                <PanelSenales
+                  senales={senalesRuta}
+                  numeroRuta={indiceMostrado + 1}
+                  seleccionada={senalElegida}
+                  onElegir={elegirSenal}
+                  plegado={senalesPlegado}
+                  onPlegar={() => setSenalesPlegado(!senalesPlegado)}
+                  onCerrar={() => setSenalesAbierto(false)}
+                />
+              )}
+              {puntosAbierto && (
+                <div className="seccion-cabecera puntos-cabecera">
+                  <button
+                    type="button"
+                    className="seccion-titulo"
+                    onClick={() => setPuntosPlegado(!puntosPlegado)}
+                    aria-expanded={!puntosPlegado}
+                  >
+                    <span className="seccion-flecha" aria-hidden="true">{puntosPlegado ? "▸" : "▾"}</span>
+                    Historial de puntos ({historialReciente.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="seccion-cerrar"
+                    onClick={() => setPuntosAbierto(false)}
+                    aria-label="Cerrar el historial de puntos"
+                    title="Cerrar"
+                  >
+                    &times;
+                  </button>
+                </div>
+              )}
+              <div className={`sidebar-list ${puntosAbierto && !puntosPlegado ? "" : "oculto"}`}>
                 {historialReciente.map((punto, index) => {
                   const fecha = parsearFechaGPS(punto.timestamp_gps);
                   const esInicio = index === historialReciente.length - 1;

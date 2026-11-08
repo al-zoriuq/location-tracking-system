@@ -1,10 +1,14 @@
 from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 import psycopg2
+import psycopg2.errors  # UndefinedTable, see /api/detecciones-senal
 from psycopg2.extras import RealDictCursor
 import os
 import math
+import threading
+import time
 import requests
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -109,6 +113,121 @@ def buscar_lugar():
         })
 
     return jsonify(lugares)
+
+
+# API - REVERSE GEOCODING (coordinates -> approximate address)
+
+# Used by the "last position" card. Same free geocoder as /api/buscar-lugar.
+# Nominatim's usage policy asks for at most 1 request per second and for
+# caching results, so:
+#   - coordinates are rounded to 4 decimals (~11 m) and each rounded point is
+#     asked only once per server process (small LRU cache);
+#   - requests to Nominatim are spaced at least 1 s apart.
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
+DECIMALES_DIRECCION = 4
+MAX_CACHE_DIRECCIONES = 2000
+_cache_direcciones = OrderedDict()
+_candado_nominatim = threading.Lock()
+_ultima_consulta_nominatim = 0.0
+
+
+# Builds a short address from Nominatim's address parts, e.g.
+# "Carrera 51B #82-10, El Prado, Barranquilla". Falls back to the first parts
+# of display_name when the place has no street.
+def armar_direccion(resultado):
+    partes = resultado.get("address") or {}
+
+    calle = partes.get("road") or partes.get("pedestrian") or partes.get("footway")
+    if calle and partes.get("house_number"):
+        calle = f"{calle} #{partes['house_number']}"
+
+    sector = (
+        partes.get("neighbourhood")
+        or partes.get("suburb")
+        or partes.get("quarter")
+        or partes.get("city_district")
+    )
+    ciudad = (
+        partes.get("city")
+        or partes.get("town")
+        or partes.get("village")
+        or partes.get("municipality")
+        or partes.get("county")
+    )
+
+    elegidas = []
+    for parte in (calle, sector, ciudad):
+        if parte and parte not in elegidas:
+            elegidas.append(parte)
+
+    if elegidas:
+        return ", ".join(elegidas)
+
+    nombre = resultado.get("display_name") or ""
+    return ", ".join(p.strip() for p in nombre.split(",")[:3]) or None
+
+
+def consultar_nominatim_inverso(lat, lon):
+    global _ultima_consulta_nominatim
+
+    with _candado_nominatim:
+        espera = 1.0 - (time.monotonic() - _ultima_consulta_nominatim)
+        if espera > 0:
+            time.sleep(espera)
+        try:
+            respuesta = requests.get(
+                NOMINATIM_REVERSE_URL,
+                params={
+                    "lat": lat,
+                    "lon": lon,
+                    "format": "jsonv2",
+                    "zoom": 18,
+                    "addressdetails": 1,
+                    "accept-language": "es",
+                },
+                headers={"User-Agent": "GPSLink-location-tracking-system/1.0"},
+                timeout=5,
+            )
+        finally:
+            _ultima_consulta_nominatim = time.monotonic()
+
+    respuesta.raise_for_status()
+    return respuesta.json()
+
+
+@app.route("/api/direccion")
+def direccion():
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except ValueError:
+        return jsonify({"error": "Los parámetros lat y lon deben ser números"}), 400
+
+    if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
+        return jsonify({"error": "Coordenadas fuera de rango"}), 400
+
+    clave = (round(lat, DECIMALES_DIRECCION), round(lon, DECIMALES_DIRECCION))
+    if clave in _cache_direcciones:
+        _cache_direcciones.move_to_end(clave)
+        return jsonify(_cache_direcciones[clave])
+
+    try:
+        resultado = consultar_nominatim_inverso(*clave)
+    except (requests.RequestException, ValueError) as e:
+        app.logger.warning("Error consultando la dirección: %s", e)
+        return jsonify({"error": "No se pudo obtener la dirección"}), 502
+
+    # Points in the sea or with no data come back as {"error": "Unable to geocode"}
+    datos = {
+        "direccion": None if "error" in resultado else armar_direccion(resultado),
+        "completa": resultado.get("display_name"),
+    }
+
+    _cache_direcciones[clave] = datos
+    if len(_cache_direcciones) > MAX_CACHE_DIRECCIONES:
+        _cache_direcciones.popitem(last=False)
+
+    return jsonify(datos)
 
 
 # CONNECTION TO POSTGRESQL
@@ -410,6 +529,96 @@ def historial_ubicaciones():
         u["timestamp_gps"] = str(u["timestamp_gps"])
 
     return jsonify(ubicaciones)
+
+
+# API - TRAFFIC SIGN DETECTIONS (sparse events sent by the ESP32 camera)
+
+# Same window filters as /api/historial-ubicaciones, so the frontend asks for
+# the detections of exactly the period it is drawing and then assigns each one
+# to its route by time:
+#   ?horas=72 (default 24)              -> last N hours
+#   ?desde=...&hasta=...[&margen_horas=N] -> explicit range, optionally widened
+#   ?device_id=xyz                      -> defaults to the device of the latest point
+# Filtered by timestamp_evento (when the sign was seen), not by the GPS fix
+# that came with it, which may be up to a minute older ("pos-45s").
+@app.route("/api/detecciones-senal")
+def detecciones_senal():
+
+    horas = request.args.get("horas", default=24, type=int)
+    device_id = request.args.get("device_id", default=None, type=str)
+    desde = request.args.get("desde", default=None, type=str)
+    hasta = request.args.get("hasta", default=None, type=str)
+    margen_horas = request.args.get("margen_horas", default=0, type=int)
+
+    if desde or hasta:
+        desde, hasta, mensaje_error = validar_rango(desde, hasta)
+        if mensaje_error:
+            return jsonify({"error": mensaje_error}), 400
+        if margen_horas > 0:
+            margen = timedelta(hours=min(margen_horas, MARGEN_MAX_HORAS))
+            desde = desde - margen
+            hasta = min(hasta + margen, ahora_local())
+        filtro_fecha = "timestamp_evento BETWEEN %s AND %s"
+        params = [desde, hasta]
+    else:
+        filtro_fecha = (
+            "timestamp_evento >= (NOW() AT TIME ZONE 'America/Bogota')"
+            " - (%s || ' hours')::interval"
+        )
+        params = [horas]
+
+    if device_id:
+        filtro_device = "device_id = %s"
+        params.append(device_id)
+    else:
+        filtro_device = (
+            "device_id = (SELECT device_id FROM ubicaciones ORDER BY id DESC LIMIT 1)"
+        )
+
+    try:
+        detecciones = consultar_detecciones(filtro_fecha, filtro_device, params)
+    except psycopg2.errors.UndefinedTable:
+        # Database without the table (e.g. a new test database; SQL in the README):
+        # no detections to show, instead of an error toast every 10 s.
+        app.logger.warning("La tabla detecciones_senal no existe en esta base de datos")
+        return jsonify([])
+
+    for d in detecciones:
+        d["timestamp_evento"] = str(d["timestamp_evento"])
+
+    return jsonify(detecciones)
+
+
+def consultar_detecciones(filtro_fecha, filtro_device, params):
+    with cursor_bd() as cursor:
+        # Only the fixed SQL fragments above are concatenated; every value
+        # goes as a query parameter.
+        cursor.execute(f"""
+            SELECT
+                id,
+                latitud,
+                longitud,
+                timestamp_evento,
+                edad_posicion_s,
+                senal_texto,
+                senal_tipo,
+                senal_valor,
+                confianza,
+                vel_gps,
+                vel_mpu,
+                vel_fuente,
+                CASE vel_fuente
+                    WHEN 'GPS' THEN vel_gps
+                    WHEN 'MPU' THEN vel_mpu
+                END AS velocidad,
+                cumplimiento
+            FROM detecciones_senal
+            WHERE {filtro_fecha}
+              AND {filtro_device}
+            ORDER BY timestamp_evento ASC
+        """, tuple(params))
+
+        return cursor.fetchall()
 
 
 # API - VISITED PLACE CHECK
