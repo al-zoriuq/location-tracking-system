@@ -41,7 +41,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 HOST = "0.0.0.0"
-PORT = 5000
+PORT = 5005 #change when sent to production
 
 LOG_FILE = "ubicaciones_recibidas.log"
 
