@@ -131,7 +131,7 @@ timestamp_gps = timestamp_gps.replace(tzinfo=None)
 
 El ESP32 agrega al mensaje de ubicación la señal que detectó su cámara (`Senal: LIMITE 30, Conf: 0.99, Vel GPS: 2, Vel MPU: 22, Usa: GPS, SI`). Se guardan en la tabla `detecciones_senal`, aparte de `ubicaciones`.
 
-- `GET /api/detecciones-senal`: mismos filtros que el historial (`horas`, `desde`/`hasta`, `margen_horas`, `device_id`), filtrando por `timestamp_evento`. Si la tabla no existe en esa base de datos devuelve `[]`.
+- `GET /api/detecciones-senal`: mismos filtros que el historial (`horas`, `desde`/`hasta`, `margen_horas`, `device_id`), filtrando por `timestamp_gps`. Si la tabla no existe en esa base de datos devuelve `[]`.
 - La página asigna cada señal a su ruta por hora (`disenop2web/src/senales.js`), la dibuja en el mapa (`MarcadoresSenal.jsx`) y la lista en el panel lateral (`PanelSenales.jsx`).
 - Tabla `detecciones_senal`: ya creada en la base central `p2database`, que comparten las 4 EC2. Su SQL está en la sección siguiente.
 - Prueba sin el ESP32: `tests/sniffer_udpforesp32.py --guardar` (solo bases `*_test`) o `snifferwpostgresql.py --puerto N`, con `pruebas/enviar_senales_prueba.py --puerto N`.
@@ -141,7 +141,7 @@ El ESP32 agrega al mensaje de ubicación la señal que detectó su cámara (`Sen
 
 Creada a mano en `p2database` y en `alba_test` con este SQL. Sirve para recrearla o para preparar una base de pruebas nueva (`*_test`); se puede ejecutar varias veces sin problema (`IF NOT EXISTS`) y no toca `ubicaciones`. Si alguna EC2 se conecta con un usuario distinto al que creó la tabla, ese usuario necesita `GRANT SELECT, INSERT ON detecciones_senal` y `GRANT USAGE ON SEQUENCE detecciones_senal_id_seq`.
 
-Zonas horarias, igual que en `ubicaciones`: `timestamp_gps` y `timestamp_evento` en hora de Bogotá sin zona; `timestamp_recepcion` en UTC.
+Zona horaria, igual que en `ubicaciones`: `timestamp_gps` en hora de Bogotá sin zona. Es la hora de la ubicación con la que llegó la señal, guardada tal como viene en el mensaje.
 
 ```sql
 BEGIN;
@@ -152,10 +152,7 @@ CREATE TABLE IF NOT EXISTS detecciones_senal (
     ip_origen           VARCHAR(45),
     latitud             DOUBLE PRECISION NOT NULL,
     longitud            DOUBLE PRECISION NOT NULL,
-    timestamp_gps       TIMESTAMP        NOT NULL,
-    edad_posicion_s     INTEGER,                    -- del campo "pos-45s"; NULL = posición fresca
-    timestamp_evento    TIMESTAMP        NOT NULL,  -- timestamp_gps + edad: cuándo se vio la señal
-    timestamp_recepcion TIMESTAMP        NOT NULL,
+    timestamp_gps       TIMESTAMP        NOT NULL,  -- hora de la ubicación enviada con la señal
     senal_texto         VARCHAR(50)      NOT NULL,  -- "LIMITE 30"
     senal_tipo          VARCHAR(20)      NOT NULL,  -- LIMITE, PARE, CEDA...
     senal_valor         SMALLINT,                   -- 30 (NULL para PARE/CEDA)
@@ -164,17 +161,17 @@ CREATE TABLE IF NOT EXISTS detecciones_senal (
     vel_mpu             REAL,
     vel_fuente          VARCHAR(5)       NOT NULL,  -- "Usa": GPS / MPU / NA
     cumplimiento        VARCHAR(10)      NOT NULL,  -- SI / EXCEDE / NA
-    extra               TEXT,                       -- campos futuros del firmware
-    CONSTRAINT detecciones_senal_unica UNIQUE (device_id, timestamp_evento, senal_texto)
+    extra               TEXT,                       -- campos adicionales del firmware, tal cual (p. ej. "pos-45s")
+    CONSTRAINT detecciones_senal_unica UNIQUE (device_id, timestamp_gps, senal_texto)
 );
 
 -- Consulta de la página: un dispositivo en un rango de fechas
-CREATE INDEX IF NOT EXISTS idx_detecciones_device_evento
-    ON detecciones_senal (device_id, timestamp_evento);
+CREATE INDEX IF NOT EXISTS idx_detecciones_device_gps
+    ON detecciones_senal (device_id, timestamp_gps);
 
 -- Para contar o resaltar rápido los excesos de velocidad
 CREATE INDEX IF NOT EXISTS idx_detecciones_excesos
-    ON detecciones_senal (device_id, timestamp_evento)
+    ON detecciones_senal (device_id, timestamp_gps)
     WHERE cumplimiento = 'EXCEDE';
 
 COMMIT;

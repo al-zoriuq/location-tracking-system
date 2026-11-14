@@ -23,8 +23,8 @@ Detecciones que se envian y lo que debe quedar en detecciones_senal:
                                                               debe guardarse UNA sola vez)
     CEDA       vel 12 (GPS)            cumplimiento NA
     LIMITE 50  Vel GPS NA, MPU 47      cumplimiento SI
-    LIMITE 30  vel 36 (GPS), pos-45s   cumplimiento EXCEDE   (posicion de 45 s antes:
-                                                              timestamp_evento = gps + 45 s)
+    LIMITE 30  vel 36 (GPS), pos-45s   cumplimiento EXCEDE   (con la posicion de 45 s antes;
+                                                              "pos-45s" queda en extra)
 Cada deteccion va justo despues del punto normal con la MISMA hora GPS, como hace el
 ESP32: la ubicacion ya existe y la deteccion igual debe guardarse.
 Total esperado: 97 ubicaciones y 6 detecciones.
@@ -52,7 +52,7 @@ DEVICE_POR_DEFECTO = "esp32-prueba-001"
 CADA_SEGUNDOS = 5
 BOGOTA = timezone(timedelta(hours=-5))
 
-# (fraccion del recorrido, senal, conf, vel_gps, vel_mpu, usa, cumplimiento, edad_posicion_s)
+# (fraccion del recorrido, senal, conf, vel_gps, vel_mpu, usa, cumplimiento, edad de la posicion en s)
 DETECCIONES = [
     (0.15, "LIMITE 30", 0.97, "25", "24", "GPS", "SI", None),
     (0.30, "PARE", 1.00, "NA", "28", "MPU", "NA", None),

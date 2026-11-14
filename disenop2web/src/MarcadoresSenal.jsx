@@ -71,12 +71,6 @@ export default function MarcadoresSenal({ senales, seleccionada, margenSuperior 
             <p className="popup-parada-fila">
               <span>Confianza</span> <b>{Math.round(Number(d.confianza) * 100)} %</b>
             </p>
-            {d.edad_posicion_s > 0 && (
-              <p className="popup-senal-nota">
-                La posición es de {d.edad_posicion_s} s antes de la detección: el lugar exacto
-                puede estar un poco más adelante en la ruta.
-              </p>
-            )}
           </div>
         </Popup>
       </Marker>

@@ -539,8 +539,7 @@ def historial_ubicaciones():
 #   ?horas=72 (default 24)              -> last N hours
 #   ?desde=...&hasta=...[&margen_horas=N] -> explicit range, optionally widened
 #   ?device_id=xyz                      -> defaults to the device of the latest point
-# Filtered by timestamp_evento (when the sign was seen), not by the GPS fix
-# that came with it, which may be up to a minute older ("pos-45s").
+# Filtered by timestamp_gps, the time of the location sent with the sign.
 @app.route("/api/detecciones-senal")
 def detecciones_senal():
 
@@ -558,11 +557,11 @@ def detecciones_senal():
             margen = timedelta(hours=min(margen_horas, MARGEN_MAX_HORAS))
             desde = desde - margen
             hasta = min(hasta + margen, ahora_local())
-        filtro_fecha = "timestamp_evento BETWEEN %s AND %s"
+        filtro_fecha = "timestamp_gps BETWEEN %s AND %s"
         params = [desde, hasta]
     else:
         filtro_fecha = (
-            "timestamp_evento >= (NOW() AT TIME ZONE 'America/Bogota')"
+            "timestamp_gps >= (NOW() AT TIME ZONE 'America/Bogota')"
             " - (%s || ' hours')::interval"
         )
         params = [horas]
@@ -584,7 +583,7 @@ def detecciones_senal():
         return jsonify([])
 
     for d in detecciones:
-        d["timestamp_evento"] = str(d["timestamp_evento"])
+        d["timestamp_gps"] = str(d["timestamp_gps"])
 
     return jsonify(detecciones)
 
@@ -598,8 +597,7 @@ def consultar_detecciones(filtro_fecha, filtro_device, params):
                 id,
                 latitud,
                 longitud,
-                timestamp_evento,
-                edad_posicion_s,
+                timestamp_gps,
                 senal_texto,
                 senal_tipo,
                 senal_valor,
@@ -615,7 +613,7 @@ def consultar_detecciones(filtro_fecha, filtro_device, params):
             FROM detecciones_senal
             WHERE {filtro_fecha}
               AND {filtro_device}
-            ORDER BY timestamp_evento ASC
+            ORDER BY timestamp_gps ASC
         """, tuple(params))
 
         return cursor.fetchall()

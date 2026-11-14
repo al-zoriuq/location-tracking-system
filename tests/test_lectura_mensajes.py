@@ -23,8 +23,7 @@ def test_mensaje_de_la_captura():
     assert u.timestamp_gps == datetime(2026, 11, 3, 7, 50, 28)
     assert (d.senal_texto, d.senal_tipo, d.senal_valor) == ("LIMITE 30", "LIMITE", 30)
     assert (d.confianza, d.vel_gps, d.vel_mpu, d.vel_fuente, d.cumplimiento) == (0.99, 2.0, 22.0, "GPS", "SI")
-    assert d.timestamp_evento == u.timestamp_gps
-    assert d.edad_posicion_s is None and d.extra is None
+    assert d.extra is None
 
 
 def test_pare_de_la_segunda_captura():
@@ -42,11 +41,10 @@ def test_solo_ubicacion_esp32_y_android():
     assert u.timestamp_gps == datetime(2026, 8, 30, 17, 23, 4)
 
 
-def test_posicion_vieja():
-    _, d, _ = parsear(BASE + ", Senal: LIMITE 30, Conf: 0.95, Vel GPS: 36, Vel MPU: 35, Usa: GPS, EXCEDE, pos-45s")
-    assert d.edad_posicion_s == 45
-    assert d.timestamp_evento == datetime(2026, 11, 3, 7, 51, 13)
-    assert d.extra is None
+def test_campo_extra_se_guarda_tal_cual():
+    u, d, _ = parsear(BASE + ", Senal: LIMITE 30, Conf: 0.95, Vel GPS: 36, Vel MPU: 35, Usa: GPS, EXCEDE, pos-45s")
+    assert d.extra == "pos-45s"
+    assert u.timestamp_gps == datetime(2026, 11, 3, 7, 50, 28)
 
 
 def test_extra_desconocido_se_conserva():

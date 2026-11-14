@@ -7,10 +7,10 @@ Formatos aceptados:
 
   Ubicación + señal de tránsito detectada (ESP32-S3 + SIM7670G):
     Device: X, Lat: 11.03, Lon: -74.85, Timestamp GPS: 2026-11-03 07:50:28.000000 -0500,
-    Senal: LIMITE 30, Conf: 0.99, Vel GPS: 2, Vel MPU: 22, Usa: GPS, SI[, pos-45s]
+    Senal: LIMITE 30, Conf: 0.99, Vel GPS: 2, Vel MPU: 22, Usa: GPS, SI[, extra]
 
     Vel GPS / Vel MPU pueden ser NA. El cumplimiento es SI, EXCEDE o NA.
-    El campo opcional final "pos-<n>s" indica que la posición tenía n segundos.
+    Cualquier campo adicional al final (p. ej. "pos-45s") se guarda tal cual en "extra".
 
 La ubicación va a "ubicaciones" y la señal, si la hay, a "detecciones_senal",
 en la misma transacción. Un paquete mal formado se descarta sin detener el
@@ -30,7 +30,7 @@ import re
 import socket
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 import psycopg2
@@ -41,7 +41,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 HOST = "0.0.0.0"
-PORT = 5005 #change when sent to production
+PORT = 5000
 
 LOG_FILE = "ubicaciones_recibidas.log"
 
@@ -71,7 +71,6 @@ PATRON = re.compile(
 )
 
 FORMATO_TS = "%Y-%m-%d %H:%M:%S.%f %z"
-PATRON_EDAD = re.compile(r"\bpos-(\d+)s\b", re.IGNORECASE)
 
 # Valores de "Senal" que significan "no se detecto nada"
 SIN_SENAL = {"", "NA", "NINGUNA", "NONE"}
@@ -95,8 +94,6 @@ class Deteccion:
     vel_mpu: Optional[float]
     vel_fuente: str
     cumplimiento: str
-    edad_posicion_s: Optional[int]
-    timestamp_evento: datetime
     extra: Optional[str]
 
 
@@ -162,11 +159,6 @@ def parsear(mensaje):
             return ubicacion, None, f"senal descartada: {campo} demasiado largo ({texto[:20]}...)"
 
     extra = (g["extra"] or "").strip()
-    edad = None
-    e = PATRON_EDAD.search(extra)
-    if e:
-        edad = int(e.group(1))
-        extra = (extra[:e.start()] + extra[e.end():]).strip(" ,")
 
     deteccion = Deteccion(
         senal_texto=senal,
@@ -177,8 +169,6 @@ def parsear(mensaje):
         vel_mpu=_velocidad(g["vel_mpu"]),
         vel_fuente=g["usa"].upper(),
         cumplimiento=g["flag"].upper(),
-        edad_posicion_s=edad,
-        timestamp_evento=ubicacion.timestamp_gps + timedelta(seconds=edad or 0),
         extra=extra or None,
     )
     return ubicacion, deteccion, None
@@ -214,10 +204,10 @@ SQL_UBICACION = """
 # Ignora el mismo paquete repetido (dispositivo + momento + señal)
 SQL_DETECCION = """
     INSERT INTO detecciones_senal
-    (device_id, ip_origen, latitud, longitud, timestamp_gps, edad_posicion_s,
-     timestamp_evento, timestamp_recepcion, senal_texto, senal_tipo, senal_valor,
+    (device_id, ip_origen, latitud, longitud, timestamp_gps,
+     senal_texto, senal_tipo, senal_valor,
      confianza, vel_gps, vel_mpu, vel_fuente, cumplimiento, extra)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT ON CONSTRAINT detecciones_senal_unica DO NOTHING
 """
 
@@ -274,9 +264,6 @@ class Almacen:
                     ubicacion.latitud,
                     ubicacion.longitud,
                     ubicacion.timestamp_gps,
-                    deteccion.edad_posicion_s,
-                    deteccion.timestamp_evento,
-                    hora_recepcion,
                     deteccion.senal_texto,
                     deteccion.senal_tipo,
                     deteccion.senal_valor,
@@ -353,7 +340,6 @@ def procesar(mensaje, ip_origen, almacen, hora_recepcion):
             f"Señal: {deteccion.senal_texto} (conf {deteccion.confianza:.2f}) | "
             f"Vel GPS {deteccion.vel_gps} / MPU {deteccion.vel_mpu}, usa {deteccion.vel_fuente} | "
             f"cumple: {deteccion.cumplimiento}"
-            + (f" | posición de hace {deteccion.edad_posicion_s} s" if deteccion.edad_posicion_s else "")
         )
     if aviso:
         lineas.append(f"AVISO: {aviso}")
