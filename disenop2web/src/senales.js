@@ -11,7 +11,7 @@ export function normalizarDeteccion(fila) {
     ...fila,
     lat: Number(fila.latitud),
     lon: Number(fila.longitud),
-    fecha: parsearFechaGPS(fila.timestamp_evento),
+    fecha: parsearFechaGPS(fila.timestamp_gps),
   };
 }
 

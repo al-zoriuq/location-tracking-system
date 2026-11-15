@@ -2823,12 +2823,6 @@ html, body {
   font-weight: 600;
   margin-bottom: 6px !important;
 }
-.popup-senal-nota {
-  margin-top: 6px !important;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-dim);
-}
 
 /* Sidebar section: signs of the route on screen */
 .senales-panel {

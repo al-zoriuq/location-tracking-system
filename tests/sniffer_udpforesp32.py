@@ -46,7 +46,7 @@ import os
 import re
 import socket
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 NUM = r"[-+]?\d+(?:\.\d+)?"
 
@@ -164,7 +164,6 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Valores de "Senal" que significan "no se detectó nada"
 SIN_SENAL = {"", "NA", "NINGUNA", "NONE"}
-PATRON_EDAD = re.compile(r"\bpos-(\d+)s\b", re.IGNORECASE)
 
 SQL_UBICACION = """
     INSERT INTO ubicaciones
@@ -175,10 +174,10 @@ SQL_UBICACION = """
 
 SQL_DETECCION = """
     INSERT INTO detecciones_senal
-    (device_id, ip_origen, latitud, longitud, timestamp_gps, edad_posicion_s,
-     timestamp_evento, timestamp_recepcion, senal_texto, senal_tipo, senal_valor,
+    (device_id, ip_origen, latitud, longitud, timestamp_gps,
+     senal_texto, senal_tipo, senal_valor,
      confianza, vel_gps, vel_mpu, vel_fuente, cumplimiento, extra)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT ON CONSTRAINT detecciones_senal_unica DO NOTHING
 """
 
@@ -227,16 +226,10 @@ class Guardador:
             senal = d.get("senal", "").strip().upper()
             if d["formato"] == "nuevo" and senal not in SIN_SENAL:
                 extra = (d["extra"] or "").strip()
-                edad = None
-                m = PATRON_EDAD.search(extra)
-                if m:
-                    edad = int(m.group(1))
-                    extra = (extra[:m.start()] + extra[m.end():]).strip(" ,")
                 valor = d["senal_valor"]
 
                 cur.execute(SQL_DETECCION, (
-                    d["device"], ip, d["lat"], d["lon"], ts, edad,
-                    ts + timedelta(seconds=edad or 0), recepcion,
+                    d["device"], ip, d["lat"], d["lon"], ts,
                     senal, d["senal_tipo"].strip().upper(),
                     int(valor) if valor is not None else None,
                     d["conf"], d["vel_gps"], d["vel_mpu"], d["usa"], d["flag"],

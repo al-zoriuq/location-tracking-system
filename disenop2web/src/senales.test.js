@@ -13,7 +13,7 @@ import {
 
 const punto = (ts) => ({ timestamp_gps: ts, latitud: 11, longitud: -74.8 });
 const det = (id, ts, extra = {}) =>
-  normalizarDeteccion({ id, timestamp_evento: ts, latitud: "11.03", longitud: "-74.86", ...extra });
+  normalizarDeteccion({ id, timestamp_gps: ts, latitud: "11.03", longitud: "-74.86", ...extra });
 
 // Route A 09:00-09:10, route B starts 09:11 (split by distance, 1 min apart),
 // route C 12:00-12:30

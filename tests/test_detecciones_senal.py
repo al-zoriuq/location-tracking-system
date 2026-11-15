@@ -48,7 +48,7 @@ def cliente(monkeypatch):
 def conexion(monkeypatch):
     con = ConexionFalsa([{
         "id": 1, "latitud": 11.03, "longitud": -74.86,
-        "timestamp_evento": datetime(2026, 11, 3, 7, 50, 28),
+        "timestamp_gps": datetime(2026, 11, 3, 7, 50, 28),
         "senal_texto": "LIMITE 30", "senal_tipo": "LIMITE", "senal_valor": 30,
         "velocidad": 2.0, "cumplimiento": "SI",
     }])
@@ -72,7 +72,7 @@ def test_por_defecto_ultimas_24h_del_ultimo_dispositivo(cliente, conexion):
     r = cliente.get("/api/detecciones-senal")
     assert r.status_code == 200
     fila = r.get_json()[0]
-    assert fila["timestamp_evento"] == "2026-11-03 07:50:28"
+    assert fila["timestamp_gps"] == "2026-11-03 07:50:28"
     assert fila["senal_valor"] == 30
     sql, params = conexion.cursor_falso.ejecutadas[0]
     assert "FROM detecciones_senal" in sql

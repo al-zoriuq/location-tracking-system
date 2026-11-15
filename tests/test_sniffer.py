@@ -44,7 +44,7 @@ class CursorFalso:
         elif "INSERT INTO detecciones_senal" in sql:
             if bd.falla_detecciones:
                 raise psycopg2.errors.CheckViolation("violates check constraint")
-            clave = (params[0], params[6], params[8])
+            clave = (params[0], params[4], params[5])
             self.rowcount = 0 if clave in bd.detecciones else 1
             bd.pendientes.append(("detecciones", clave, params))
 
@@ -103,8 +103,8 @@ def test_mensaje_con_senal_guarda_ubicacion_y_deteccion():
     assert lineas[-1] == "BD: ubicación nueva, señal nueva"
     assert len(bd.ubicaciones) == 1 and len(bd.detecciones) == 1
     params = next(iter(bd.detecciones.values()))
-    assert params[8:11] == ("LIMITE 30", "LIMITE", 30)
-    assert params[7] == RECEPCION
+    assert params[5:8] == ("LIMITE 30", "LIMITE", 30)
+    assert params[4] == datetime(2026, 11, 3, 7, 50, 28)  # timestamp_gps del mensaje
 
 
 def test_mensaje_sin_senal_solo_ubicacion():
