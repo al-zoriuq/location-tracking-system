@@ -154,6 +154,7 @@ def test_historial_sin_rango_sigue_usando_ultimas_horas(cliente, conexion):
 RUTAS_BD = [
     "/api/ultima-ubicacion",
     "/api/historial-ubicaciones",
+    "/api/dispositivos",
 ]
 
 
@@ -266,3 +267,49 @@ def test_lugar_visitado_bd_caida_da_503_json(cliente, monkeypatch):
     r = cliente.get("/api/lugar-visitado?" + CAJA)
     assert r.status_code == 503
     assert "error" in r.get_json()
+
+
+# ---------- /api/dispositivos y device_id en /api/ultima-ubicacion ----------
+
+def test_dispositivos_devuelve_ultima_posicion_de_cada_device(cliente, monkeypatch):
+    con = ConexionFalsa([
+        {"device_id": "carro-a", "ip_origen": "1.2.3.4", "latitud": 10.9, "longitud": -74.8,
+         "timestamp_gps": datetime(2026, 9, 25, 9, 0, 0),
+         "timestamp_recepcion": datetime(2026, 9, 25, 9, 0, 1)},
+        {"device_id": "carro-b", "ip_origen": "5.6.7.8", "latitud": 11.0, "longitud": -74.9,
+         "timestamp_gps": datetime(2026, 9, 25, 9, 5, 0),
+         "timestamp_recepcion": datetime(2026, 9, 25, 9, 5, 2)},
+    ])
+    monkeypatch.setattr(servidorweb, "obtener_conexion", lambda: con)
+
+    r = cliente.get("/api/dispositivos")
+    assert r.status_code == 200
+    datos = r.get_json()
+    assert [d["device_id"] for d in datos] == ["carro-a", "carro-b"]
+    assert datos[1]["timestamp_gps"] == "2026-09-25 09:05:00"
+    sql, _ = con.cursor_falso.ejecutadas[0]
+    assert "DISTINCT ON (device_id)" in sql
+    assert con.cerrada
+
+
+def test_dispositivos_sin_datos_da_lista_vacia(cliente, monkeypatch):
+    monkeypatch.setattr(servidorweb, "obtener_conexion", lambda: ConexionFalsa([]))
+    r = cliente.get("/api/dispositivos")
+    assert r.status_code == 200
+    assert r.get_json() == []
+
+
+def test_ultima_ubicacion_filtra_por_device_id(cliente, monkeypatch):
+    con = ConexionFalsa([
+        {"device_id": "carro-b", "ip_origen": "5.6.7.8", "latitud": 11.0, "longitud": -74.9,
+         "timestamp_gps": datetime(2026, 9, 25, 9, 5, 0),
+         "timestamp_recepcion": datetime(2026, 9, 25, 9, 5, 2)},
+    ])
+    monkeypatch.setattr(servidorweb, "obtener_conexion", lambda: con)
+
+    r = cliente.get("/api/ultima-ubicacion?device_id=carro-b")
+    assert r.status_code == 200
+    assert r.get_json()["device_id"] == "carro-b"
+    sql, params = con.cursor_falso.ejecutadas[0]
+    assert "device_id = %s" in sql
+    assert params == ("carro-b",)
