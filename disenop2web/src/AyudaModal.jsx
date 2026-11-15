@@ -17,8 +17,8 @@ export default function AyudaModal({ onCerrar }) {
           carro activo centra el mapa en él.
         </p>
         <p>
-          Cada carro muestra su ruta más reciente y su último punto, aunque lleve más de un día sin reportar. Los filtros de fecha y lugar se aplican a los
-          dos: del otro carro se ve, más tenue, su ruta más reciente dentro del filtro, con un
+          Sin filtros, el mapa muestra solo el último punto de cada carro, aunque lleve más de
+          un día sin reportar. Los filtros de fecha y lugar se aplican a los dos: del otro carro se ve, más tenue, su ruta más reciente dentro del filtro, con un
           punto donde termina. Si no tiene rutas en ese filtro, no aparece en el mapa. Al buscar un
           lugar con los dos carros en el mapa, cuenta como visitado si cualquiera de los dos pasó por allí.
         </p>
@@ -40,9 +40,12 @@ export default function AyudaModal({ onCerrar }) {
         <h3>Rutas</h3>
         <p>
           Una ruta es un viaje completo. Empieza otra cuando pasa más de 1 hora sin datos o
-          el dispositivo aparece a más de 1 km. Con las flechas te mueves entre rutas, «Actual»
-          salta a la más reciente y el título abre la lista de todas, con fecha, horario y
-          cantidad de puntos.
+          el dispositivo aparece a más de 1 km. Sin filtros, al abrir la página solo se ve el
+          último punto («Último punto» en la barra de rutas): la flecha de la izquierda muestra
+          la ruta más reciente y las demás flechas te mueven entre rutas. «Actual» vuelve al
+          último punto, y el título abre la lista de todas las rutas, con fecha, horario y
+          cantidad de puntos. Al moverte entre carros o tocar la tarjeta del carro activo, el
+          zoom que elegiste se conserva.
         </p>
       </section>
 
