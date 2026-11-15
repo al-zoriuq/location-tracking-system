@@ -17,9 +17,10 @@ export default function AyudaModal({ onCerrar }) {
           carro activo centra el mapa en él.
         </p>
         <p>
-          Cada carro muestra su ruta más reciente. Los filtros de fecha y lugar se aplican a los
+          Cada carro muestra su ruta más reciente y su último punto, aunque lleve más de un día sin reportar. Los filtros de fecha y lugar se aplican a los
           dos: del otro carro se ve, más tenue, su ruta más reciente dentro del filtro, con un
-          punto donde termina. Si no tiene rutas en ese filtro, no aparece en el mapa.
+          punto donde termina. Si no tiene rutas en ese filtro, no aparece en el mapa. Al buscar un
+          lugar con los dos carros en el mapa, cuenta como visitado si cualquiera de los dos pasó por allí.
         </p>
       </section>
 

@@ -705,9 +705,38 @@ function consultarLugarVisitado(lugar, deviceId) {
   return pedirJSON(import.meta.env.BASE_URL + `api/lugar-visitado?${parametros}`);
 }
 
+// Visited check for several cars at once (the active one first): the place
+// counts as visited if any of them has been there. Resolves
+// {visitado, porPrimero}, where porPrimero is the answer for the first car.
+// A failure for the active car is an error; for the others it counts as "no".
+async function consultarLugarVariosCarros(lugar, ids) {
+  const respuestas = await Promise.all(
+    ids.map((id, i) =>
+      consultarLugarVisitado(lugar, id).catch((error) => {
+        if (i === 0) throw error;
+        console.error("Error comprobando el historial del lugar:", error);
+        return { visitado: false };
+      })
+    )
+  );
+  return {
+    visitado: respuestas.some((r) => r.visitado),
+    porPrimero: Boolean(respuestas[0] && respuestas[0].visitado),
+  };
+}
+
 // A car is reporting when its last point is at most 2 minutes old
 function reportandoAhora(fecha) {
   return Boolean(fecha) && Date.now() - fecha.getTime() <= 120000;
+}
+
+// Hours of history to load in live mode: the usual MARGEN_VIVO_H, or more for
+// a car that stopped reporting long ago, so its most recent route still loads
+// (it is shown even when it is older than the live window).
+function horasVivo(ultimoTsCarro) {
+  if (!ultimoTsCarro) return MARGEN_VIVO_H;
+  const horasDesde = (Date.now() - aMsBogota(ultimoTsCarro)) / 3600000;
+  return Math.max(MARGEN_VIVO_H, Math.ceil(horasDesde) + VENTANA_VIVO_H);
 }
 
 // Routes kept on screen for the active filters. The same rules apply to
@@ -734,9 +763,11 @@ function filtrarRutas(todas, rangoActivo, lugarActivo) {
     // Live mode: keep the routes that still have a point inside the live
     // window, and show them complete (never cut at the window edge).
     const corte = Date.now() - VENTANA_VIVO_H * 3600 * 1000;
-    base = base.filter(
+    const recientes = base.filter(
       (puntos) => aMsBogota(puntos[puntos.length - 1].timestamp_gps) >= corte
     );
+    // A car with no route in the live window still shows its most recent one
+    base = recientes.length > 0 ? recientes : base.slice(-1);
   }
 
   if (!lugarActivo) return base;
@@ -760,8 +791,14 @@ function filtrarRutas(todas, rangoActivo, lugarActivo) {
 // the new points every 10 s, with a full reload every RECARGA_COMPLETA_MS),
 // the date filter's period, or the last 30 days for a place filter. Failures
 // stay quiet here: the active car's requests already raise the toasts.
-function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo) {
+function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo, ultimoTsCarro) {
   const [datos, setDatos] = useState({ clave: null, puntos: [] });
+  // Last point of the car (from /api/dispositivos): read when loading, so a
+  // car that stopped reporting long ago still gets its most recent route
+  const ultimoTsCarroRef = useRef(ultimoTsCarro);
+  useEffect(() => {
+    ultimoTsCarroRef.current = ultimoTsCarro;
+  }, [ultimoTsCarro]);
   // Device + filters: a new key means a fresh load
   const clave = deviceId
     ? [
@@ -781,6 +818,7 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo) {
     let cancelado = false;
     let ultimoTs = null;
     let ultimaCompletaMs = 0;
+    let horasCarga = MARGEN_VIVO_H; // hours of the last full live load
     const base =
       import.meta.env.BASE_URL +
       `api/historial-ubicaciones?device_id=${encodeURIComponent(deviceId)}`;
@@ -795,7 +833,8 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo) {
       } else if (!completo) {
         url += `&despues_de=${encodeURIComponent(aTextoBogota(aMsBogota(ultimoTs) - 60 * 1000))}`;
       } else {
-        url += `&horas=${lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H}`;
+        if (!lugarActivo) horasCarga = horasVivo(ultimoTsCarroRef.current);
+        url += `&horas=${lugarActivo ? VENTANA_LUGAR_H : horasCarga}`;
       }
       try {
         const data = await pedirJSON(url);
@@ -809,7 +848,7 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo) {
           ultimaCompletaMs = Date.now();
           setDatos({ clave, puntos: filas });
         } else {
-          const corte = Date.now() - MARGEN_VIVO_H * 3600 * 1000;
+          const corte = Date.now() - horasCarga * 3600 * 1000;
           setDatos((previo) => {
             const puntos = fusionarHistorial(previo.clave === clave ? previo.puntos : [], filas, corte);
             return puntos === previo.puntos ? previo : { clave, puntos };
@@ -1018,6 +1057,13 @@ function App() {
     return () => observador.disconnect();
   }, [hayUbicacion]);
 
+  // Cars a place is checked against: the given (active) one, plus the other
+  // one while both are on the map
+  const idsParaLugar = (deviceId) => [
+    deviceId,
+    ...(verAmbos ? carros.filter((c) => c.device_id !== deviceId).map((c) => c.device_id) : []),
+  ];
+
   useEffect(() => {
     if (busquedaLugar.trim().length < 3 || busquedaLugar === textoElegido.current) {
       setSugerenciasLugar([]);
@@ -1042,8 +1088,9 @@ function App() {
 
         // Mark each suggestion with / without history as the answers arrive.
         // A failed check only leaves that suggestion unmarked: picking it asks again.
+        // With both cars on the map, a place has history if either car was there
         lugares.forEach((lugar, i) => {
-          consultarLugarVisitado(lugar, dispositivoActivo)
+          consultarLugarVariosCarros(lugar, idsParaLugar(dispositivoActivo))
             .then(({ visitado }) => {
               if (cancelado) return;
               setSugerenciasLugar((lista) =>
@@ -1072,7 +1119,9 @@ function App() {
     };
   }, [busquedaLugar]);
 
-  // deviceId: the car to check the place against (by default, the active one)
+  // deviceId: the car to check the place against (by default, the active one).
+  // In "Ambos" the filter applies when either car has been there;
+  // sinVisitasActivo marks a place only the other car visited.
   const elegirLugar = async (lugar, deviceId = dispositivoActivo) => {
     const eleccion = ++eleccionActual.current;
     textoElegido.current = lugar.nombre;
@@ -1083,11 +1132,14 @@ function App() {
     setIndiceRuta(null);
 
     try {
-      const { visitado } = await consultarLugarVisitado(lugar, deviceId);
+      const { visitado, porPrimero } = await consultarLugarVariosCarros(
+        lugar,
+        idsParaLugar(deviceId)
+      );
       if (eleccion !== eleccionActual.current) return;
 
       if (visitado) {
-        setLugarActivo(lugar);
+        setLugarActivo({ ...lugar, sinVisitasActivo: !porPrimero });
         setFiltrosVisibles(false);
       } else {
         setLugarActivo(null);
@@ -1269,7 +1321,9 @@ function App() {
   const mensajeLugar = lugarSinHistorial
     ? "Este lugar nunca se ha visitado."
     : lugarActivo && historialCargado && rutas.length === 0
-      ? rangoActivo
+      ? lugarActivo.sinVisitasActivo
+        ? "Nunca ha pasado por este lugar (el otro carro s\u00ed)."
+        : rangoActivo
         ? "Se ha visitado antes, pero no en el rango de fechas seleccionado."
         : "Se ha visitado antes, pero no en los \u00faltimos 30 d\u00edas."
       : null;
@@ -1434,10 +1488,18 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Last point of each car, read by the history loads below (a car that stopped
+  // reporting long ago needs a longer window to bring its most recent route)
+  const ultimosTs = useRef({});
+  useEffect(() => {
+    ultimosTs.current = Object.fromEntries(carros.map((c) => [c.device_id, c.timestamp_gps]));
+  }, [carros]);
+
   useEffect(() => {
     // Nothing to ask for until /api/dispositivos says which car is active
     if (!dispositivoActivo) return undefined;
     const paramDevice = `device_id=${encodeURIComponent(dispositivoActivo)}`;
+    let horasCarga = MARGEN_VIVO_H; // hours of the last full live load
 
     const modoVivo = !rangoActivo && !lugarActivo;
     let cancelado = false; // a newer run of this effect supersedes this one
@@ -1458,7 +1520,8 @@ function App() {
           const desdeTxt = aTextoBogota(aMsBogota(ultimoTs) - 60 * 1000);
           url += `?despues_de=${encodeURIComponent(desdeTxt)}`;
         } else {
-          const horas = lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H;
+          if (!lugarActivo) horasCarga = horasVivo(ultimosTs.current[dispositivoActivo]);
+          const horas = lugarActivo ? VENTANA_LUGAR_H : horasCarga;
           url += `?horas=${horas}`;
         }
         url += `&${paramDevice}`;
@@ -1474,7 +1537,7 @@ function App() {
             if (!ultimoTs || ultimo > ultimoTs) ultimoTs = ultimo;
           }
           setHistorial((previo) =>
-            fusionarHistorial(previo, filas, Date.now() - MARGEN_VIVO_H * 3600 * 1000)
+            fusionarHistorial(previo, filas, Date.now() - horasCarga * 3600 * 1000)
           );
         } else {
           ultimoTs = filas.length ? filas[filas.length - 1].timestamp_gps : null;
@@ -1502,7 +1565,7 @@ function App() {
           url += `?desde=${encodeURIComponent(rangoActivo.desde)}&hasta=${encodeURIComponent(rangoActivo.hasta)}`;
           if (rangoActivo.completar) url += `&margen_horas=${MARGEN_RANGO_H}`;
         } else {
-          url += `?horas=${lugarActivo ? VENTANA_LUGAR_H : MARGEN_VIVO_H}`;
+          url += `?horas=${lugarActivo ? VENTANA_LUGAR_H : horasCarga}`;
         }
         url += `&${paramDevice}`;
         const data = await pedirJSON(url);
@@ -1585,7 +1648,8 @@ function App() {
     otroCarro ? otroCarro.device_id : null,
     mostrarOtro,
     rangoActivo,
-    lugarActivo
+    lugarActivo,
+    otroCarro ? otroCarro.timestamp_gps : null
   );
   const rutaOtro = useMemo(() => {
     const rutasOtro = filtrarRutas(dividirEnRutas(puntosOtro), rangoActivo, lugarActivo);
@@ -2117,7 +2181,7 @@ function App() {
               {mostrarOtro && lineaOtro.length > 1 && (
                 <Polyline
                   positions={lineaOtro}
-                  pathOptions={{ color: otroCarro.color, weight: 3, opacity: 0.45 }}
+                  pathOptions={{ color: otroCarro.color, weight: 3, opacity: 0.6 }}
                   eventHandlers={{ click: () => elegirDispositivo(otroCarro.device_id) }}
                 />
               )}
@@ -2131,6 +2195,17 @@ function App() {
                       : `${otroCarro.device_id}: fin de su ruta m\u00e1s reciente en el filtro. Toca para ver sus rutas`
                   }
                   eventHandlers={{ click: () => elegirDispositivo(otroCarro.device_id) }}
+                />
+              )}
+
+              {/* Last known position of the active car, in live mode, when the route
+                  on screen does not already end there (no route loaded yet, or an
+                  older route picked in the route list) */}
+              {location && sinFiltros && !(finEsActual && ruta.length > 0) && (
+                <Marker
+                  position={[Number(location.latitud), Number(location.longitud)]}
+                  icon={iconoCarro(colorActivo, !reportandoAhora(fechaGPS))}
+                  title={`${location.device_id}: \u00faltima posici\u00f3n`}
                 />
               )}
 
