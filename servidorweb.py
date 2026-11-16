@@ -284,25 +284,42 @@ def error_bd(e):
 
 # API - LATEST LOCATION
 
-# Returns only the single most recent GPS point (used for the map marker
-# and the "last position" panel in the frontend).
+# Returns only the single most recent GPS point.
+#   ?device_id=xyz  -> the most recent point of that device
 @app.route("/api/ultima-ubicacion")
 def ultima_ubicacion():
 
+    device_id = request.args.get("device_id", default=None, type=str)
+
     with cursor_bd() as cursor:
 
-        cursor.execute("""
-            SELECT
-                device_id,
-                ip_origen,
-                latitud,
-                longitud,
-                timestamp_gps,
-                timestamp_recepcion
-            FROM ubicaciones
-            ORDER BY id DESC
-            LIMIT 1
-        """)
+        if device_id:
+            cursor.execute("""
+                SELECT
+                    device_id,
+                    ip_origen,
+                    latitud,
+                    longitud,
+                    timestamp_gps,
+                    timestamp_recepcion
+                FROM ubicaciones
+                WHERE device_id = %s
+                ORDER BY id DESC
+                LIMIT 1
+            """, (device_id,))
+        else:
+            cursor.execute("""
+                SELECT
+                    device_id,
+                    ip_origen,
+                    latitud,
+                    longitud,
+                    timestamp_gps,
+                    timestamp_recepcion
+                FROM ubicaciones
+                ORDER BY id DESC
+                LIMIT 1
+            """)
 
         ubicacion = cursor.fetchone()
 
@@ -325,6 +342,37 @@ def ultima_ubicacion():
 
 
     return jsonify(ubicacion)
+
+
+# API - DEVICES
+
+# Every device that has ever reported, each with its most recent GPS point
+# (newest by GPS time). The frontend uses it for the device cards and the
+# current-position markers, so one request covers all the cars.
+@app.route("/api/dispositivos")
+def dispositivos():
+
+    with cursor_bd() as cursor:
+
+        cursor.execute("""
+            SELECT DISTINCT ON (device_id)
+                device_id,
+                ip_origen,
+                latitud,
+                longitud,
+                timestamp_gps,
+                timestamp_recepcion
+            FROM ubicaciones
+            ORDER BY device_id, timestamp_gps DESC, id DESC
+        """)
+
+        filas = cursor.fetchall()
+
+    for fila in filas:
+        fila["timestamp_gps"] = str(fila["timestamp_gps"])
+        fila["timestamp_recepcion"] = str(fila["timestamp_recepcion"])
+
+    return jsonify(filas)
 
 
 # DATE FILTER PARSING

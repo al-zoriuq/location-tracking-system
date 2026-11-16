@@ -3113,3 +3113,227 @@ html, body {
   /* While the sheet is open, the eye button (and the speed chip) would peek out under it */
   .main:has(.mapa-zona.compacto):has(> .sidebar:not(.plegado)) .esquina-mapa > :not(:last-child) { visibility: hidden; }
 }
+
+
+/* ============ Two cars: selector, cards and per-car colours ============ */
+/* Each car carries its colour in --color-carro (set inline on its card,
+   selector button and map marker). */
+
+/* Segmented control in the top bar: Ambos | car 1 | car 2 */
+.selector-carros {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px;
+  background: var(--glass, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.selector-carros button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 14px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.selector-carros button:hover { color: var(--text); }
+.selector-carros button.activo { background: rgba(179, 127, 235, 0.22); color: var(--text); }
+.selector-carros button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+
+.selector-carros-color,
+.tarjeta-carro-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--color-carro);
+  flex-shrink: 0;
+}
+
+.selector-carros-texto {
+  min-width: 0;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+
+/* Phones: the selector takes its own full-width row under the brand */
+@media (max-width: 640px) {
+  .topbar { flex-wrap: wrap; row-gap: 10px; }
+  .topbar > .selector-carros { order: 3; flex: 1 1 100%; }
+  .selector-carros button { flex: 1 1 0; padding: 0 8px; min-height: 36px; }
+}
+
+/* Panel with one card per car (replaces the single "last position" card) */
+.panel.panel-carros {
+  width: 290px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tarjeta-carro {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px 11px 16px;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+/* Colour bar on the left edge: which car this card is, at a glance */
+.tarjeta-carro::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--color-carro);
+}
+
+.tarjeta-carro:hover { background: rgba(255, 255, 255, 0.04); }
+.tarjeta-carro:focus-visible { outline: 2px solid var(--color-carro); outline-offset: 1px; }
+
+/* The active car (the one the tools work on) when both are shown */
+.tarjeta-carro.activa {
+  background: color-mix(in srgb, var(--color-carro) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-carro) 45%, transparent);
+}
+
+.tarjeta-carro-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tarjeta-carro-id {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tarjeta-carro-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.tarjeta-carro-estado .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+.tarjeta-carro-direccion {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-carro);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tarjeta-carro-direccion.sin-texto { font-size: 13px; font-weight: 400; color: var(--text-dim); }
+
+.tarjeta-carro-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.tarjeta-carro-meta b { color: var(--text); font-weight: 600; }
+
+/* Compact map zone (phones): each card is one row
+   colour | id | address… | time | status dot */
+.mapa-zona.compacto .panel.panel-carros { padding: 3px; gap: 2px; }
+
+.mapa-zona.compacto .tarjeta-carro {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px 16px;
+}
+
+.mapa-zona.compacto .tarjeta-carro::before { top: 9px; bottom: 9px; }
+.mapa-zona.compacto .tarjeta-carro-cabecera { display: contents; }
+/* The id is what tells the cars apart: it keeps its full width, the address is what shrinks */
+.mapa-zona.compacto .tarjeta-carro-id { flex: 0 0 auto; max-width: 16ch; font-size: 12px; }
+.mapa-zona.compacto .tarjeta-carro-color { display: none; }
+
+.mapa-zona.compacto .tarjeta-carro-direccion {
+  order: 3;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+.mapa-zona.compacto .tarjeta-carro-meta { order: 4; flex-shrink: 0; font-size: 12px; }
+.mapa-zona.compacto .tarjeta-carro-vel { display: none; }
+.mapa-zona.compacto .tarjeta-carro-estado { order: 5; }
+.mapa-zona.compacto .tarjeta-carro-estado-texto { display: none; }
+
+/* Current-position marker in the car's colour (falls back to the accent) */
+.marker-current {
+  background: var(--color-carro, var(--accent));
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-carro, var(--accent)) 30%, transparent);
+  animation-name: pulso-carro;
+}
+
+@keyframes pulso-carro {
+  0%,
+  100% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-carro, var(--accent)) 30%, transparent); }
+  50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--color-carro, var(--accent)) 15%, transparent); }
+}
+
+/* Not reporting: no pulse, and the car's colour toned down (still tells the two cars apart) */
+.marker-current.inactivo {
+  animation: none;
+  background: color-mix(in srgb, var(--color-carro, var(--accent)) 65%, var(--text-dim));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-carro, var(--accent)) 18%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marker-current { animation: none; }
+}

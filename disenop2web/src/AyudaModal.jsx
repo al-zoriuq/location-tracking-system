@@ -4,20 +4,35 @@ export default function AyudaModal({ onCerrar }) {
   return (
     <Modal titulo="Cómo usar esta página" onCerrar={onCerrar}>
       <section>
-        <h3>Estado (arriba a la derecha)</h3>
+        <h3>Carros</h3>
         <p>
-          Indica qué tan reciente es la última ubicación. «En línea» significa que llegó hace
-          2 minutos o menos; «hace 3 h» o «hace 2 d» indican cuánto tiempo lleva sin señal.
+          Cuando hay dos carros, cada uno tiene su color (azul o naranja) en su tarjeta, su
+          ruta y su punto en el mapa. Arriba eliges qué ver: «Ambos» muestra los dos a la vez y
+          el botón de cada carro muestra solo ese.
+        </p>
+        <p>
+          Las herramientas (rutas, filtros, reproductor, señales e historial de puntos) siempre
+          trabajan sobre el <strong>carro activo</strong>, el de la tarjeta resaltada. Para
+          cambiarlo, toca la tarjeta del otro carro o su punto en el mapa. Tocar la tarjeta del
+          carro activo centra el mapa en él.
+        </p>
+        <p>
+          Sin filtros, el mapa muestra solo el último punto de cada carro, aunque lleve más de
+          un día sin reportar. Los filtros de fecha y lugar se aplican a los dos: del otro carro se ve, más tenue, su ruta más reciente dentro del filtro, con un
+          punto donde termina. Si no tiene rutas en ese filtro, no aparece en el mapa. Al buscar un
+          lugar con los dos carros en el mapa, cuenta como visitado si cualquiera de los dos pasó por allí.
         </p>
       </section>
 
       <section>
-        <h3>Última posición</h3>
+        <h3>Estado y última posición</h3>
         <p>
-          La tarjeta de arriba a la izquierda muestra la dirección aproximada del último punto
-          recibido, con su fecha y hora. La dirección se obtiene de OpenStreetMap a partir de las
-          coordenadas, así que puede no coincidir exactamente con el número de la casa. En el
-          celular la tarjeta está resumida en una línea: tócala para verla completa.
+          Cada tarjeta muestra la dirección aproximada del último punto del carro, la hora y su
+          estado: «en línea» significa que llegó hace 2 minutos o menos; «hace 3 h» o «hace 2 d»
+          indican cuánto tiempo lleva sin señal. Mientras el carro reporta también se ve su
+          velocidad. La dirección se obtiene de OpenStreetMap a partir de las coordenadas, así
+          que puede no coincidir exactamente con el número de la casa. En el celular cada
+          tarjeta ocupa una sola línea.
         </p>
       </section>
 
@@ -25,9 +40,12 @@ export default function AyudaModal({ onCerrar }) {
         <h3>Rutas</h3>
         <p>
           Una ruta es un viaje completo. Empieza otra cuando pasa más de 1 hora sin datos o
-          el dispositivo aparece a más de 1 km. Con las flechas te mueves entre rutas, «Actual»
-          salta a la más reciente y el título abre la lista de todas, con fecha, horario y
-          cantidad de puntos.
+          el dispositivo aparece a más de 1 km. Sin filtros, al abrir la página solo se ve el
+          último punto («Último punto» en la barra de rutas): la flecha de la izquierda muestra
+          la ruta más reciente y las demás flechas te mueven entre rutas. «Actual» vuelve al
+          último punto, y el título abre la lista de todas las rutas, con fecha, horario y
+          cantidad de puntos. Al moverte entre carros o tocar la tarjeta del carro activo, el
+          zoom que elegiste se conserva.
         </p>
       </section>
 
