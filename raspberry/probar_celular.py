@@ -1,8 +1,7 @@
 # probar_celular.py
-# Hace de "celular": manda posiciones y comandos a la Raspberry por UDP.
-# Uso:  python probar_celular.py 127.0.0.1            (posiciones cada 1 s, Ctrl+C para parar)
-#       python probar_celular.py 127.0.0.1 ESTADO     (o PAUSA, REANUDA, APAGAR)
-# Puerto 5000: el mismo que usa la app GPSLink (detector con --celular 5000).
+# Hace de "celular" desde el PC: manda posiciones y comandos a la Raspberry por UDP (puerto 5000).
+# Uso:  python probar_celular.py 172.20.10.3            (posiciones cada 1 s, Ctrl+C para parar)
+#       python probar_celular.py 172.20.10.3 ESTADO      (o PAUSA, REANUDA, APAGAR)
 import socket
 import sys
 import time
