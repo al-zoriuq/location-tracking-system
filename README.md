@@ -214,3 +214,8 @@ La aplicación frontend en React (`disenop2web`) cuenta con:
 1. **Development & Isolation:** Las features y pruebas de integración se desarrollan en branches de staging (p. ej. `sthefany-test`).
 2. **Synchronization with Main:** Los merges de branches traen los cambios entrantes desde `main` (`git fetch origin` → `git merge origin/main`), resolviendo conflictos localmente (p. ej. `App.jsx`, migraciones de esquema) antes de hacer push.
 3. **Automated Continuous Deployment:** Hacer push o mergear Pull Requests hacia `main` dispara automáticamente `deploy-main.yml`, ejecutando scripts de despliegue SSH en paralelo hacia todos los targets EC2 configurados.
+
+## In-vehicle devices
+
+- [`gpslink-android/`](gpslink-android/): GPSLink app, sends the location every 1 s. The APK is in [`gpslink-android/releases/`](gpslink-android/releases/).
+- [`raspberry/`](raspberry/): scripts and service for the Raspberry Pi that detects traffic signs (the full `pipeline_pi.py` lives on the Pi).

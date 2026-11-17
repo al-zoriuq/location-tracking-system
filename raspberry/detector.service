@@ -1,0 +1,15 @@
+[Unit]
+Description=Detector de senales (modo celular, envio doble)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=gpslink
+WorkingDirectory=/home/gpslink
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/gpslink/ei-env/bin/python /home/gpslink/pipeline_pi.py /home/gpslink/detector.eim /home/gpslink/clasificador.eim --celular 5000 --udp --device-celular --sin-monitor
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

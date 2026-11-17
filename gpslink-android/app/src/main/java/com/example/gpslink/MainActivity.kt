@@ -15,8 +15,12 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 
 class MainActivity : AppCompatActivity() {
 
@@ -28,6 +32,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnGuardarServidor: Button
     private lateinit var btnMenuOculto: Button
     private lateinit var tvEstado: TextView
+    private lateinit var tvEstadoPi: TextView
+
+    // The Pi listens for commands on the same UDP port the app sends to.
+    private val PUERTO_PI = 5000
 
     // Receives live status updates broadcast by UbicacionService, so the
     // screen shows something useful if the app happens to be open — but the
@@ -73,6 +81,19 @@ class MainActivity : AppCompatActivity() {
 
         btnGuardarServidor.setOnClickListener { guardarServidor() }
         btnMenuOculto.setOnClickListener { mostrarMenuOculto(it) }
+
+        tvEstadoPi = findViewById(R.id.tvEstadoPi)
+        findViewById<Button>(R.id.btnPiEstado).setOnClickListener { enviarComandoPi("ESTADO") }
+        findViewById<Button>(R.id.btnPiPausa).setOnClickListener { enviarComandoPi("PAUSA") }
+        findViewById<Button>(R.id.btnPiReanuda).setOnClickListener { enviarComandoPi("REANUDA") }
+        findViewById<Button>(R.id.btnPiApagar).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Apagar la Raspberry")
+                .setMessage("¿Seguro? Para volver a encenderla hay que desconectarla y conectarla.")
+                .setPositiveButton("Apagar") { _, _ -> enviarComandoPi("APAGAR") }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
 
         pedirPermisosYArrancar()
     }
@@ -148,6 +169,39 @@ class MainActivity : AppCompatActivity() {
             }
         }
         popup.show()
+    }
+
+    // --- Raspberry Pi commands ---
+
+    // Sends CMD,<comando> to the first saved IP and shows the Pi's answer
+    // (EST,<device>,<ACTIVO|PAUSADO|APAGANDO>,<senales>).
+    private fun enviarComandoPi(comando: String) {
+        val servidor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(KEY_SERVIDOR, null)
+        val ipPi = servidor?.split(";")?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
+        if (ipPi == null) {
+            tvEstadoPi.text = "Pi: guarda primero la IP de la Raspberry"
+            return
+        }
+        tvEstadoPi.text = "Pi: enviando $comando a $ipPi…"
+        Thread {
+            val respuesta = try {
+                DatagramSocket().use { s ->
+                    s.soTimeout = 2000
+                    val datos = "CMD,$comando".toByteArray(Charsets.UTF_8)
+                    s.send(DatagramPacket(datos, datos.size, InetAddress.getByName(ipPi), PUERTO_PI))
+                    val buf = ByteArray(200)
+                    val p = DatagramPacket(buf, buf.size)
+                    s.receive(p)
+                    String(p.data, 0, p.length, Charsets.UTF_8).trim()
+                }
+            } catch (e: Exception) {
+                "Sin respuesta de la Pi ($ipPi). ¿Mismo wifi? ¿Detector con --celular 5000?"
+            }
+            val partes = respuesta.split(",")
+            val texto = if (partes.size >= 4 && partes[0] == "EST")
+                "Pi: ${partes[2]} · señales: ${partes[3]}" else respuesta
+            runOnUiThread { tvEstadoPi.text = texto }
+        }.start()
     }
 
     // --- Saved IP(s) ---
