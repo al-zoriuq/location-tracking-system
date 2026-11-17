@@ -29,7 +29,6 @@ def rep(viejo, nuevo, obligatorio=True):
 if "class Celular(" not in s:
     # 1) Mensaje: Device de la ESP32 y hora sin fracciones de segundo
     s = re.sub(r'^DEVICE_ID = ".*"', 'DEVICE_ID = "ESP32S3-SIM7670G"', s, count=1, flags=re.M)
-
     if "replace(microsecond=0)" not in s:
         rep('    hora = d["hora"].strftime("%Y-%m-%d %H:%M:%S.%f %z")\n',
             '    hora = d["hora"].replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S.%f %z")\n')

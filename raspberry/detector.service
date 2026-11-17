@@ -1,3 +1,7 @@
+# /etc/systemd/system/detector.service
+# Arranca el detector solo al encender la Pi (modo celular, envio doble, con visor web en :8000).
+# Instalar:  sudo cp detector.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#            sudo systemctl enable --now detector
 [Unit]
 Description=Detector de senales (modo celular, envio doble)
 After=network-online.target
@@ -7,7 +11,7 @@ Wants=network-online.target
 User=gpslink
 WorkingDirectory=/home/gpslink
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/gpslink/ei-env/bin/python /home/gpslink/pipeline_pi.py /home/gpslink/detector.eim /home/gpslink/clasificador.eim --celular 5000 --udp --device-celular --sin-monitor
+ExecStart=/home/gpslink/ei-env/bin/python /home/gpslink/pipeline_pi.py /home/gpslink/detector.eim /home/gpslink/clasificador.eim --celular 5000 --udp --device-celular
 Restart=always
 RestartSec=3
 
