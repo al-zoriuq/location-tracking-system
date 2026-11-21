@@ -81,7 +81,8 @@ class Cursor:
                     continue
                 if dev not in ultimos or (ts, id_) > ultimos[dev][:2]:
                     ultimos[dev] = (ts, id_, dev)
-            filas = sorted(ultimos.values(), key=lambda x: x[2])
+            # NULL device_id sorts last, like PostgreSQL
+            filas = sorted(ultimos.values(), key=lambda x: (x[2] is None, x[2] or ""))
             if "LIMIT 1" in sql:
                 filas = sorted(ultimos.values(), key=lambda x: x[1])[-1:]
             self.filas = [{
@@ -155,6 +156,15 @@ def test_dispositivos_conserva_alias_existentes_y_no_reutiliza(cliente, monkeypa
 def test_dispositivos_sin_faltantes_no_escribe(cliente, monkeypatch):
     bd = usar(monkeypatch, BD([(1, "a", T)], alias={"a": 1}))
     cliente.get("/api/dispositivos")
+    assert not any("INSERT" in sql for sql, _ in bd.ejecutadas)
+    assert bd.commits == 0
+
+
+def test_dispositivo_sin_device_id_no_escribe_ni_aparece(cliente, monkeypatch):
+    # Old rows with an empty device_id: never shown, and no INSERT on every request
+    bd = usar(monkeypatch, BD([(1, None, T), (2, "a", T)], alias={"a": 1}))
+    datos = cliente.get("/api/dispositivos").get_json()
+    assert [d["vehiculo"] for d in datos] == ["A01"]
     assert not any("INSERT" in sql for sql, _ in bd.ejecutadas)
     assert bd.commits == 0
 

@@ -513,7 +513,12 @@ def dispositivos():
             cursor.execute(SQL_DISPOSITIVOS)
             filas = cursor.fetchall()
 
-            sin_alias = [f["device_id"] for f in filas if f["numero"] is None]
+            # Rows with an empty device_id (old data) can never get an alias:
+            # skipping them avoids a pointless write on every request
+            sin_alias = [
+                f["device_id"] for f in filas
+                if f["numero"] is None and f["device_id"] is not None
+            ]
             if sin_alias:
                 asignar_alias_faltantes(cursor, sin_alias)
                 cursor.execute(SQL_DISPOSITIVOS)
