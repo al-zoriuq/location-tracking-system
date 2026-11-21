@@ -1,57 +1,60 @@
 # GPSLink · Location Tracking System
 
-Sistema de rastreo de vehículos en tiempo real. Los dispositivos de cada vehículo (celular con la app GPSLink, Raspberry Pi, ESP32-S3) envían su ubicación por UDP; un servidor la guarda en PostgreSQL y una página web muestra en un mapa la posición actual, las rutas, las paradas y las señales de tránsito detectadas.
+Real-time vehicle tracking. The devices in each vehicle (a phone running the GPSLink app, a Raspberry Pi, an ESP32-S3) send their location over UDP; a server stores it in PostgreSQL, and a web page shows the current position, routes, stops and detected traffic signs on a map.
 
-Este documento explica cómo ponerlo en marcha desde cero, cómo probarlo y cómo se despliega.
+This document explains how to set the project up from scratch, how to test it and how it is deployed.
 
 ---
 
-## 1. Cómo funciona
+## 1. How it works
 
 ```
- Celular (GPSLink) ─┐
- Raspberry Pi      ─┼─ UDP :5000 ─► snifferwpostgresql.py ─► PostgreSQL (RDS)
- ESP32-S3          ─┘                                              ▲
-                                                                   │
- Navegador ◄── HTTP ── Nginx :80 ──► Gunicorn ── servidorweb.py ───┘
-                                     (API /api/* + página React compilada)
+ Phone (GPSLink) ──┐
+ Raspberry Pi     ─┼─ UDP :5000 ─► snifferwpostgresql.py ─► PostgreSQL (RDS)
+ ESP32-S3         ─┘                                              ▲
+                                                                  │
+ Browser ◄── HTTP ── Nginx :80 ──► Gunicorn ── servidorweb.py ────┘
+                                   (API /api/* + built React page)
 ```
 
-- **`snifferwpostgresql.py`**: servidor UDP (puerto `5000`). Lee cada mensaje, guarda la ubicación en `ubicaciones` y, si trae una señal de tránsito, la guarda en `detecciones_senal`. También asigna el alias de cada dispositivo nuevo (ver [Alias de vehículos](#alias-de-vehículos)).
-- **`servidorweb.py`**: API en Flask (servida con Gunicorn detrás de Nginx). Sirve también la página compilada (`disenop2web/dist/`).
-- **`disenop2web/`**: página web en React + Leaflet (Vite). Consulta la API cada 10 s.
+- **`snifferwpostgresql.py`**: UDP server (port `5000`). Parses each message, stores the location in `ubicaciones` and, if the message carries a traffic sign, stores it in `detecciones_senal`. It also assigns the alias of every new device (see [Vehicle aliases](#vehicle-aliases)).
+- **`servidorweb.py`**: Flask API, served by Gunicorn behind Nginx. It also serves the built page (`disenop2web/dist/`).
+- **`disenop2web/`**: web page in React + Leaflet (Vite). It polls the API every 10 s.
 
-| Carpeta / archivo | Contenido |
+| Folder / file | Contents |
 |---|---|
-| `snifferwpostgresql.py` | Servidor UDP que guarda los mensajes |
-| `servidorweb.py` | API y servidor de la página |
+| `snifferwpostgresql.py` | UDP server that stores the messages |
+| `servidorweb.py` | API and page server |
 | `disenop2web/` | Frontend (React) |
-| `tests/` | Tests automáticos (pytest) |
-| `pruebas/` | Scripts para enviar o insertar datos de prueba |
-| `gpslink-android/` | App Android GPSLink (ver [Dispositivos en el vehículo](#11-dispositivos-en-el-vehículo)) |
-| `raspberry/` | Scripts de la Raspberry Pi que detecta señales |
-| `.github/workflows/` | Despliegue automático a las EC2 |
-| `script.sh` | Instala el entorno de Python en una EC2 nueva |
+| `tests/` | Automated tests (pytest) |
+| `pruebas/` | Scripts that send or insert test data |
+| `gpslink-android/` | GPSLink Android app (see [In-vehicle devices](#11-in-vehicle-devices)) |
+| `raspberry/` | Scripts for the Raspberry Pi that detects traffic signs |
+| `.github/workflows/` | Automatic deployment to the EC2 instances |
+| `script.sh` | Sets up the Python environment on a new EC2 |
 
 ---
 
-## 2. Requisitos
+## 2. Requirements
 
-- **Servidor:** EC2 con Ubuntu, Python 3.11 o superior, Node.js 20 o superior y npm.
-- **Base de datos:** PostgreSQL en Amazon RDS (conexión con SSL).
-- **Puertos abiertos en el Security Group de la EC2:**
+- **Server:** EC2 running Ubuntu, with:
+  - Python 3.11 (the version CI uses) and `python3-venv`;
+  - Node.js **20.19+ or 22.13+** and npm (required by Vite 8 and ESLint 10);
+  - `postgresql-client` (`psql`), to create the tables.
+- **Database:** PostgreSQL on Amazon RDS (SSL connection).
+- **Ports open in the EC2 Security Group:**
 
-| Puerto | Protocolo | Para qué |
+| Port | Protocol | Used for |
 |---|---|---|
-| 22 | TCP | SSH (los workflows lo abren solo durante el despliegue) |
-| 80 | TCP | Página web (Nginx) |
-| 5000 | **UDP** | Mensajes de los dispositivos al sniffer |
+| 22 | TCP | SSH (the workflows open it only while deploying) |
+| 80 | TCP | Web page (Nginx) |
+| 5000 | **UDP** | Device messages to the sniffer |
 
 ---
 
-## 3. Puesta en marcha (primera vez)
+## 3. First-time setup
 
-### 3.1 Clonar e instalar
+### 3.1 Clone and install
 
 ```bash
 git clone https://github.com/al-zoriuq/location-tracking-system.git
@@ -61,9 +64,17 @@ chmod +x script.sh
 source venv/bin/activate
 ```
 
-`script.sh` actualiza los paquetes, crea el entorno virtual `venv` e instala `requirements.txt`. El entorno se activa con `source venv/bin/activate` en cada sesión nueva de SSH.
+`script.sh` updates the system packages, creates the `venv` virtual environment and installs `requirements.txt`. Run `source venv/bin/activate` again in every new SSH session.
 
-### 3.2 Credenciales de la base de datos
+`script.sh` does **not** install Node.js or the PostgreSQL client. For example, with the NodeSource packages:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs postgresql-client
+node --version   # must be 20.19+ or 22.13+
+```
+
+### 3.2 Database credentials
 
 ```bash
 cp .env-template .env
@@ -71,29 +82,35 @@ nano .env
 ```
 
 ```env
-rdspass="CONTRASEÑA"
-rdsdbname="NOMBRE_DE_LA_BASE"
-rdshost="ENDPOINT_DE_LA_RDS"
-rdsuser="USUARIO"
+rdspass="PASSWORD"
+rdsdbname="DATABASE_NAME"
+rdshost="RDS_ENDPOINT"
+rdsuser="USER"
 ```
 
-El `.env` tiene datos sensibles: **nunca** se sube a GitHub (ya está en `.gitignore`).
+The `.env` file holds secrets: **never** commit it (it is already in `.gitignore`).
 
-Certificado SSL de RDS, necesario para conectarse (va en la raíz del proyecto):
+The RDS SSL certificate is required to connect. It goes in the project root:
 
 ```bash
 curl -o global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 ```
 
-### 3.3 Base de datos
+### 3.3 Database
 
-Las tablas se crean a mano con `psql`. **Créalas antes de arrancar el sniffer y la página.** Todo el SQL se puede ejecutar varias veces sin problema (`IF NOT EXISTS`).
+The tables are created by hand with `psql`. **Create them before starting the sniffer and the web page.** Every statement below can be run more than once safely (`IF NOT EXISTS`).
 
-> Las 4 EC2 de producción comparten una sola base de datos: las tablas se crean **una vez** ahí. Una base de pruebas debe llamarse `*_test` (los scripts de `pruebas/` se niegan a escribir en cualquier otra).
+To open `psql` with the same SSL settings the application uses:
+
+```bash
+psql "host=<RDS_ENDPOINT> dbname=<DATABASE_NAME> user=<USER> sslmode=verify-full sslrootcert=global-bundle.pem"
+```
+
+> The 4 production EC2 instances share a single database: the tables are created **once** there. A test database must be named `*_test` (the `pruebas/` scripts refuse to write anywhere else).
 
 #### `ubicaciones`
 
-Un punto GPS por fila. `(device_id, timestamp_gps)` es único, así que un paquete repetido se ignora.
+One GPS point per row. `(device_id, timestamp_gps)` is unique, so a repeated packet is ignored.
 
 ```sql
 CREATE TABLE IF NOT EXISTS ubicaciones (
@@ -101,49 +118,49 @@ CREATE TABLE IF NOT EXISTS ubicaciones (
     ip_origen            VARCHAR(45),
     latitud              DOUBLE PRECISION,
     longitud             DOUBLE PRECISION,
-    timestamp_gps        TIMESTAMP,          -- hora de Bogotá, sin zona (ver sección 7)
+    timestamp_gps        TIMESTAMP,          -- Bogotá time, without zone (see section 7)
     timestamp_recepcion  TIMESTAMP,          -- UTC
     device_id            TEXT,
     CONSTRAINT ubicacion_unica UNIQUE (device_id, timestamp_gps)
 );
 ```
 
-Es el esquema tal como está en producción: las columnas admiten `NULL`, aunque el sniffer actual siempre rellena `device_id`, `latitud`, `longitud` y `timestamp_gps`. Las filas antiguas sin `device_id` no reciben alias y no aparecen en la página.
+This is the schema as it exists in production. The columns allow `NULL`, but the current sniffer always fills `device_id`, `latitud`, `longitud` and `timestamp_gps`. Old rows without a `device_id` get no alias and do not appear on the page.
 
 #### `detecciones_senal`
 
-Señales de tránsito detectadas por la cámara del ESP32 (ver sección 7).
+Traffic signs detected by the ESP32 camera (see section 7).
 
 ```sql
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS detecciones_senal (
     id                   BIGSERIAL PRIMARY KEY,
-    device_id            TEXT             NOT NULL,  -- mismo tipo que ubicaciones.device_id
+    device_id            TEXT             NOT NULL,  -- same type as ubicaciones.device_id
     ip_origen            VARCHAR(45),
     latitud              DOUBLE PRECISION NOT NULL,
     longitud             DOUBLE PRECISION NOT NULL,
-    timestamp_gps        TIMESTAMP        NOT NULL,  -- hora de la ubicación enviada con la señal
-    edad_posicion_s      INTEGER,                    -- existe en producción; el código actual no la rellena
-    timestamp_evento     TIMESTAMP,                  -- existe en producción; el código actual no la rellena
-    timestamp_recepcion  TIMESTAMP,                  -- existe en producción; el código actual no la rellena
+    timestamp_gps        TIMESTAMP        NOT NULL,  -- time of the location sent with the sign
+    edad_posicion_s      INTEGER,                    -- exists in production; not filled by the current code
+    timestamp_evento     TIMESTAMP,                  -- exists in production; not filled by the current code
+    timestamp_recepcion  TIMESTAMP,                  -- exists in production; not filled by the current code
     senal_texto          VARCHAR(50)      NOT NULL,  -- "LIMITE 30"
     senal_tipo           VARCHAR(20)      NOT NULL,  -- LIMITE, PARE, CEDA...
-    senal_valor          SMALLINT,                   -- 30 (NULL para PARE/CEDA)
+    senal_valor          SMALLINT,                   -- 30 (NULL for PARE/CEDA)
     confianza            REAL             NOT NULL CHECK (confianza BETWEEN 0 AND 1),
-    vel_gps              REAL,                       -- NULL cuando llega NA
+    vel_gps              REAL,                       -- NULL when the device sends NA
     vel_mpu              REAL,
     vel_fuente           VARCHAR(5)       NOT NULL,  -- "Usa": GPS / MPU / NA
     cumplimiento         VARCHAR(10)      NOT NULL,  -- SI / EXCEDE / NA
-    extra                TEXT,                       -- campos adicionales del firmware, tal cual (p. ej. "pos-45s")
+    extra                TEXT,                       -- extra firmware fields, stored as-is (e.g. "pos-45s")
     CONSTRAINT detecciones_senal_unica UNIQUE (device_id, timestamp_gps, senal_texto)
 );
 
--- Consulta de la página: un dispositivo en un rango de fechas
+-- Page query: one device over a date range
 CREATE INDEX IF NOT EXISTS idx_detecciones_device_gps
     ON detecciones_senal (device_id, timestamp_gps);
 
--- Para contar o resaltar rápido los excesos de velocidad
+-- Fast counting / highlighting of speeding events
 CREATE INDEX IF NOT EXISTS idx_detecciones_excesos
     ON detecciones_senal (device_id, timestamp_gps)
     WHERE cumplimiento = 'EXCEDE';
@@ -151,11 +168,11 @@ CREATE INDEX IF NOT EXISTS idx_detecciones_excesos
 COMMIT;
 ```
 
-Si esta tabla no existe, el sniffer guarda solo las ubicaciones y lo avisa; cuando se crea, empieza a guardar señales en menos de un minuto, sin reiniciarlo.
+If this table does not exist, the sniffer stores locations only and prints a warning. Once the table is created, it starts storing signs within a minute, without a restart.
 
 #### `alias_dispositivos`
 
-**Obligatoria para la página.** La página nunca muestra el `device_id`: cada dispositivo recibe un alias (`A01`, `A02`…), que se muestra como «Vehículo A01». Si esta tabla no existe, la API responde un error 503 y la página no muestra vehículos (el sniffer sigue guardando ubicaciones).
+**Required by the web page.** The page never shows a `device_id`: each device gets an alias (`A01`, `A02`, …), displayed as "Vehículo A01". If this table does not exist, the API answers with a 503 error and the page shows no vehicles. The sniffer keeps storing locations.
 
 ```sql
 CREATE TABLE IF NOT EXISTS alias_dispositivos (
@@ -165,7 +182,7 @@ CREATE TABLE IF NOT EXISTS alias_dispositivos (
 );
 ```
 
-Opcional: numerar ya los dispositivos que existen, por orden de aparición (si no, la página los numera sola la primera vez que se abre):
+Optional: number the existing devices right away, in order of first appearance. Otherwise the web page numbers them the first time it is opened.
 
 ```sql
 INSERT INTO alias_dispositivos (device_id)
@@ -178,18 +195,18 @@ ORDER BY MIN(id);
 SELECT numero, device_id, creado_en FROM alias_dispositivos ORDER BY numero;
 ```
 
-Si un `INSERT` falla con la tabla todavía vacía, la secuencia ya habrá gastado números; antes de repetirlo, reiníciala (solo con la tabla vacía): `ALTER TABLE alias_dispositivos ALTER COLUMN numero RESTART WITH 1;`
+If an `INSERT` fails while the table is still empty, the sequence has already used up numbers. Before trying again, reset it (only while the table is empty): `ALTER TABLE alias_dispositivos ALTER COLUMN numero RESTART WITH 1;`
 
-#### Permisos
+#### Permissions
 
-Si la aplicación se conecta con un usuario distinto al que creó las tablas:
+If the application connects with a different user than the one that created the tables:
 
 ```sql
-GRANT SELECT, INSERT ON ubicaciones, detecciones_senal, alias_dispositivos TO <usuario>;
-GRANT USAGE ON SEQUENCE ubicaciones_id_seq, detecciones_senal_id_seq, alias_dispositivos_numero_seq TO <usuario>;
+GRANT SELECT, INSERT ON ubicaciones, detecciones_senal, alias_dispositivos TO <user>;
+GRANT USAGE ON SEQUENCE ubicaciones_id_seq, detecciones_senal_id_seq, alias_dispositivos_numero_seq TO <user>;
 ```
 
-### 3.4 Compilar la página
+### 3.4 Build the web page
 
 ```bash
 cd disenop2web
@@ -198,10 +215,10 @@ npm run build
 cd ..
 ```
 
-Genera `disenop2web/dist/`, que `servidorweb.py` sirve directamente.
+This generates `disenop2web/dist/`, which `servidorweb.py` serves directly.
 
-- **Nombre en la cabecera:** opcional, con `VITE_NOMBRE_PERSONA=Nombre` en un archivo `disenop2web/.env` (por defecto «GPSLink»). Se lee al compilar.
-- **Servir bajo una subruta** (p. ej. el entorno de test en `/test/`): compilar con `BASE_PATH=/test/ npm run build`.
+- **Name in the header:** optional, set `VITE_NOMBRE_PERSONA=Name` in a `disenop2web/.env` file (defaults to "GPSLink"). It is read at build time.
+- **Serving under a sub-path** (e.g. the test environment at `/test/`): build with `BASE_PATH=/test/ npm run build`.
 
 ### 3.5 Nginx
 
@@ -209,7 +226,7 @@ Genera `disenop2web/dist/`, que `servidorweb.py` sirve directamente.
 sudo apt install nginx -y
 ```
 
-Crea `/etc/nginx/sites-available/location-tracker`:
+Create `/etc/nginx/sites-available/location-tracker`:
 
 ```nginx
 server {
@@ -232,9 +249,9 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### 3.6 Servicio de Gunicorn
+### 3.6 Gunicorn service
 
-Crea `/etc/systemd/system/gunicorn-location.service`:
+Create `/etc/systemd/system/gunicorn-location.service`:
 
 ```ini
 [Unit]
@@ -252,7 +269,7 @@ ExecStart=/home/ubuntu/location-tracking-system/venv/bin/gunicorn --bind 127.0.0
 WantedBy=multi-user.target
 ```
 
-Actívalo y arráncalo:
+Enable and start it:
 
 ```bash
 sudo systemctl daemon-reload
@@ -260,175 +277,227 @@ sudo systemctl enable --now gunicorn-location
 sudo systemctl status gunicorn-location
 ```
 
-> El nombre del servicio debe coincidir con el `service` de tu servidor en `.github/workflows/deploy-main.yml` (`gunicorn-location` o `gunicorn`), porque el despliegue automático lo reinicia por ese nombre.
+> The service name must match the `service` of your server in `.github/workflows/deploy-main.yml` (`gunicorn-location` or `gunicorn`), because the automatic deployment restarts it by that name.
 
-### 3.7 Sniffer UDP
+### 3.7 UDP sniffer
 
 ```bash
 source venv/bin/activate
-python snifferwpostgresql.py              # puerto 5000
-python snifferwpostgresql.py --puerto 5006 # otro puerto, p. ej. para probar una versión nueva
+python snifferwpostgresql.py               # port 5000
+python snifferwpostgresql.py --puerto 5006 # another port, e.g. to try a new version
 ```
 
-Debe quedar corriendo de forma permanente (en una sesión de `tmux`/`screen` o como servicio de systemd). Al arrancar avisa si falta alguna tabla.
+It must keep running permanently, in a `tmux`/`screen` session or as a systemd service. On startup it warns if `detecciones_senal` or `alias_dispositivos` is missing.
 
-- Acepta los dos formatos de mensaje: solo ubicación (app Android, firmware antiguo) y ubicación + señal de tránsito (ESP32-S3). Ver el lector de mensajes al principio de `snifferwpostgresql.py`.
-- Descarta los paquetes mal formados sin detenerse y se reconecta solo si se cae la conexión con la base de datos.
-- La primera vez que ve un `device_id` le asigna su alias. Si eso falla, la ubicación se guarda igual.
+- It accepts both message formats: location only (Android app, old firmware) and location + traffic sign (ESP32-S3). See the message parser at the top of `snifferwpostgresql.py`.
+- It discards malformed packets without stopping, and reconnects on its own if the database connection drops.
+- The first time it sees a `device_id` it assigns its alias. If that fails, the location is stored anyway.
 
-**El despliegue automático no reinicia el sniffer.** Después de actualizar su código hay que detenerlo y arrancarlo de nuevo a mano en cada servidor.
+**The automatic deployment does not restart the sniffer.** After updating its code, stop it and start it again by hand on every server.
 
 ---
 
-## 4. Comprobar que funciona
+## 4. Checking that it works
 
 ```bash
-# La API responde y cada vehículo sale con su alias (nunca con su device_id)
+# The API answers, and each vehicle comes with its alias (never with its device_id)
 curl http://localhost/api/dispositivos
 
-# Enviar rutas de prueba por UDP, como un celular (¡solo contra un sniffer de PRUEBAS!)
+# Send test routes over UDP, like a phone would (ONLY to a TEST sniffer!)
 python pruebas/enviar_rutas_prueba.py --dry-run
-python pruebas/enviar_rutas_prueba.py --host <IP-del-sniffer> --device <id-de-prueba>
+python pruebas/enviar_rutas_prueba.py --host <sniffer-IP> --device <test-id>
 ```
 
-Luego abre `http://<IP-de-la-EC2>/`: debe aparecer «Vehículo A0X» con su ruta más reciente.
+Then open `http://<EC2-IP>/`: you should see "Vehículo A0X" with its most recent route.
 
 ### Tests
 
 ```bash
 pip install pytest
-pytest tests/ -v                        # backend: no necesita base de datos (usa una simulada)
-node --test disenop2web/src/*.test.js   # funciones del frontend
+pytest tests/ -v                        # backend: needs no database (uses a fake one)
+node --test disenop2web/src/*.test.js   # frontend helper functions
 cd disenop2web && npm run lint && npm run build
 ```
 
-El despliegue de test ejecuta `pytest tests/` antes de desplegar; si un test falla, no se despliega.
+The test deployment runs `pytest tests/` first; if any test fails, nothing is deployed.
 
 ---
 
-## 5. Entorno de pruebas
+## 5. Test environment
 
-- **Base de datos:** una base `*_test` con las mismas tablas (sección 3.3).
-- **Servidor de test:** el workflow `deploy-test.yml` despliega la rama de test en `/home/ubuntu/location-tracking-system-test`, compila con `BASE_PATH=/test/` y reinicia el servicio `gunicorn-test`. Nginx debe dirigir `/test/` a ese Gunicorn.
-- **Scripts de `pruebas/`** (los `insertar_*` escriben directo en la base y se niegan si su nombre no termina en `_test`; los `enviar_*` mandan por UDP al sniffer que indiques, así que comprueba que sea uno de pruebas):
+- **Database:** a `*_test` database with the same tables (section 3.3).
+- **Test server:**
+  - the `deploy-test.yml` workflow deploys the test branch to `/home/ubuntu/location-tracking-system-test`;
+  - it builds with `BASE_PATH=/test/` and restarts the `gunicorn-test` service;
+  - Nginx must route `/test/` to that Gunicorn.
+- **`pruebas/` scripts:**
+  - the `insertar_*` scripts write straight to the database and refuse to run unless its name ends in `_test`;
+  - the `enviar_*` scripts send over UDP to the sniffer you point them at, so make sure it is a test one.
 
-| Script | Qué hace |
+| Script | What it does |
 |---|---|
-| `enviar_rutas_prueba.py` | Envía por UDP rutas de varios días (viajes, paradas, un salto GPS imposible) |
-| `enviar_senales_prueba.py` | Envía por UDP mensajes con señales de tránsito |
-| `insertar_rutas_prueba.py` | Inserta las mismas rutas directo en la base (sin pasar por el sniffer) |
-| `insertar_dos_carros_prueba.py` | Dos vehículos; con `--vivo N` los mueve en tiempo real durante N minutos |
-| `insertar_senales_dos_carros_prueba.py` | Señales de tránsito para los dos vehículos |
-| `insertar_salto_prueba.py` | Dos puntos GPS erróneos muy lejos (Azores) antes de una ruta real en Cartagena |
-| `insertar_ruta_1s_prueba.py` | Ruta a 1 punto por segundo; `--verificar` comprueba el muestreo de 10 s contra la base real |
+| `enviar_rutas_prueba.py` | Sends routes spread over several days over UDP (trips, stops, an impossible GPS jump) |
+| `enviar_senales_prueba.py` | Sends messages with traffic signs over UDP |
+| `insertar_rutas_prueba.py` | Inserts the same routes straight into the database (bypassing the sniffer) |
+| `insertar_dos_carros_prueba.py` | Two vehicles; with `--vivo N` they move in real time for N minutes |
+| `insertar_senales_dos_carros_prueba.py` | Traffic signs for the two vehicles |
+| `insertar_salto_prueba.py` | Two wrong GPS points far away (Azores) before a real route in Cartagena |
+| `insertar_ruta_1s_prueba.py` | A route at 1 point per second; `--verificar` checks the 10 s sampling against the real database |
 
-Todos tienen `--dry-run` (no tocan nada) y los que insertan tienen `--borrar` para limpiar sus datos.
+All of them support `--dry-run` (touches nothing), and the inserting ones support `--borrar` to remove their data.
 
 ---
 
-## 6. Despliegue automático
+## 6. Automatic deployment
 
-| Acción | Workflow | Despliega en | Reinicia |
+| Action | Workflow | Deploys to | Restarts |
 |---|---|---|---|
-| Push a la rama de test (`alba-test`) | `deploy-test.yml` | EC2 de test (`/test/`) | `gunicorn-test` |
-| Merge / push a `main` | `deploy-main.yml` | **Las 4 EC2 de producción a la vez** | `gunicorn` / `gunicorn-location` |
+| Push to the test branch (`alba-test`) | `deploy-test.yml` | Test EC2 (`/test/`) | `gunicorn-test` |
+| Merge / push to `main` | `deploy-main.yml` | **All 4 production EC2 instances at once** | `gunicorn` / `gunicorn-location` |
 
-Cada despliegue hace `git pull`, `pip install -r requirements.txt`, `npm install`, `npm run build` y reinicia Gunicorn.
+Each deployment runs `git pull`, `pip install -r requirements.txt`, `npm install` and `npm run build`, and then restarts Gunicorn.
 
-**Importante:**
+**Important:**
 
-1. **Solo se reinicia Gunicorn, nunca el sniffer.** Si el cambio toca `snifferwpostgresql.py`, reinícialo a mano en cada EC2.
-2. **Los cambios en la base de datos van antes del despliegue:** primero en la base `*_test` (antes del push a test) y luego en la base de producción (**antes del merge a `main`**). Si el código nuevo llega sin su tabla, las 4 páginas de producción fallan a la vez.
-3. El código web sigue funcionando con un sniffer antiguo todavía corriendo (por ejemplo, los alias que falten los asigna la página).
+1. **Only Gunicorn is restarted, never the sniffer.** If a change touches `snifferwpostgresql.py`, restart it by hand on each EC2.
+2. **Database changes go before the deployment:**
+   - first in the `*_test` database, before pushing to the test branch;
+   - then in the production database, **before merging to `main`**.
+
+   If new code arrives without its table, the 4 production pages fail at the same time.
+3. The web code keeps working while an older sniffer is still running. For example, the web page assigns any missing aliases itself.
 
 ---
 
-## 7. Datos y convenciones
+## 7. Data and conventions
 
-### Zona horaria
+### Time zone
 
-Los paquetes GPS traen la hora con offset explícito (p. ej. `-05:00`). El sniffer conserva la hora local y descarta el offset, sin convertir a UTC:
+GPS packets carry the time with an explicit offset (e.g. `-05:00`). The sniffer keeps the local time and drops the offset, without converting to UTC:
 
 ```python
 timestamp_gps = timestamp_gps.replace(tzinfo=None)
 ```
 
-- `timestamp_gps` se guarda como **hora de Bogotá sin zona** (UTC−5 todo el año).
-- `timestamp_recepcion` se guarda en **UTC** (la RDS corre en UTC).
-- Toda comparación con «ahora» debe usar `NOW() AT TIME ZONE 'America/Bogota'` en el servidor, o `-05:00` al interpretar la fecha en el navegador (`parsearFechaBogota` en `disenop2web/src/utils/tiempo.js`). Comparar `timestamp_gps` con `NOW()` directamente desplaza el resultado 5 horas.
+- `timestamp_gps` is stored as **Bogotá time without zone** (UTC−5 all year round).
+- `timestamp_recepcion` is stored in **UTC** (the RDS runs in UTC).
+- Any comparison with "now" must use:
+  - on the server: `NOW() AT TIME ZONE 'America/Bogota'`;
+  - in the browser: `-05:00` when parsing the date (`parsearFechaBogota` in `disenop2web/src/utils/tiempo.js`).
 
-### Alias de vehículos
+  Comparing `timestamp_gps` with `NOW()` directly shifts the result by 5 hours.
 
-- La API **nunca** devuelve el `device_id`. Cada vehículo se identifica por su alias (`vehiculo: "A01"`) y se muestra con su nombre (`nombre: "Vehículo A01"`).
-- Formato: `A01`…`A99`, luego `B01`…`B99`, …, `Z99`, `AA01`… El número sale de `alias_dispositivos.numero`, que crece por orden de aparición y **nunca se reutiliza**, aunque se borre una fila.
-- Lo asigna el sniffer al ver un dispositivo nuevo y, como respaldo, `/api/dispositivos` a los que aún no tengan.
-- Los endpoints aceptan `?vehiculo=A01`. `?device_id=` se sigue aceptando para los scripts de prueba, pero ninguna respuesta lo incluye.
+### Vehicle aliases
 
-### Muestreo de puntos (dispositivos que reportan cada segundo)
+- The API **never** returns a `device_id`. Each vehicle is identified by its alias (`vehiculo: "A01"`) and displayed with its name (`nombre: "Vehículo A01"`).
+- Format: `A01`…`A99`, then `B01`…`B99`, …, `Z99`, `AA01`…
+- The number comes from `alias_dispositivos.numero`. It grows in order of first appearance and is **never reused**, even if a row is deleted.
+- Who assigns it: the sniffer, when it sees a new device; and, as a fallback, `/api/dispositivos`, for any device that still has none.
+- The endpoints accept `?vehiculo=A01`. `?device_id=` is still accepted for the test scripts, but no response includes it.
 
-La app GPSLink envía la ubicación cada segundo. La base guarda **todos** los puntos, pero la página pide el historial con `intervalo_s=10`: el servidor devuelve solo el primer punto de cada bloque de 10 s por vehículo. Así la página recibe unas 10 veces menos datos sin perder ni duplicar puntos. Los bloques están alineados al reloj, así que el mismo bloque devuelve siempre el mismo punto, también en las consultas incrementales (`despues_de`).
+### Point sampling (devices that report every second)
 
-### Señales de tránsito (ESP32-S3)
+The GPSLink app sends the location every second. The database keeps **every** point, but the page requests the history with `intervalo_s=10`, so the server returns only the first point of each 10 s block per vehicle:
 
-El ESP32 agrega al mensaje de ubicación la señal que detectó su cámara (`Senal: LIMITE 30, Conf: 0.99, Vel GPS: 2, Vel MPU: 22, Usa: GPS, SI`). Se guardan en `detecciones_senal`, aparte de `ubicaciones`, en la misma transacción.
+- the page receives about 10 times less data, without losing or duplicating points;
+- the blocks are aligned to the clock, so a block always returns the same point, including in incremental requests (`despues_de`).
 
-- La página asigna cada señal a su ruta por hora (`disenop2web/src/senales.js`), la dibuja en el mapa (`MarcadoresSenal.jsx`) y la lista en el panel lateral (`PanelSenales.jsx`).
-- Prueba sin el ESP32: `tests/sniffer_udpforesp32.py --guardar` (solo bases `*_test`) o `snifferwpostgresql.py --puerto N`, con `pruebas/enviar_senales_prueba.py --puerto N`.
+### Traffic signs (ESP32-S3)
 
-### Dirección aproximada
+The ESP32 appends the sign its camera detected to the location message (`Senal: LIMITE 30, Conf: 0.99, Vel GPS: 2, Vel MPU: 22, Usa: GPS, SI`). Signs are stored in `detecciones_senal`, separate from `ubicaciones`, in the same transaction.
 
-Las tarjetas de los vehículos muestran la dirección de su último punto.
+- The page:
+  - assigns each sign to its route by time (`disenop2web/src/senales.js`);
+  - draws it on the map (`MarcadoresSenal.jsx`);
+  - lists it in the side panel (`PanelSenales.jsx`).
+- Testing without the ESP32: run `tests/sniffer_udpforesp32.py --guardar` (`*_test` databases only), or `snifferwpostgresql.py --puerto N` together with `pruebas/enviar_senales_prueba.py --puerto N`.
 
-- `GET /api/direccion?lat=..&lon=..` consulta Nominatim (OpenStreetMap) y devuelve `{"direccion": "Calle 72 #57-43, Alto Prado, Barranquilla", "completa": "..."}`. `direccion` es `null` si el punto no tiene dirección.
-- Para respetar la política de uso de Nominatim (máximo 1 consulta por segundo y uso de caché), las coordenadas se redondean a 4 decimales (~11 m), cada punto se consulta una sola vez por proceso del servidor y las consultas se separan al menos 1 s.
-- En el navegador: `disenop2web/src/useDireccion.js`.
+### Approximate address
+
+The vehicle cards show the address of each vehicle's last point.
+
+- `GET /api/direccion?lat=..&lon=..` queries Nominatim (OpenStreetMap) and returns `{"direccion": "Calle 72 #57-43, Alto Prado, Barranquilla", "completa": "..."}`. `direccion` is `null` when the point has no address.
+- To follow the Nominatim usage policy (at most 1 request per second, and caching):
+  - coordinates are rounded to 4 decimals (~11 m);
+  - each point is queried only once per server process;
+  - requests are spaced at least 1 s apart.
+- In the browser: `disenop2web/src/useDireccion.js`.
 
 ---
 
 ## 8. API
 
-Todas las respuestas son JSON. Los errores tienen la forma `{"error": "mensaje"}`: 400 parámetros inválidos, 404 sin datos o vehículo inexistente, 503 base de datos no disponible o falta la tabla de alias.
+Every response is JSON. Errors look like `{"error": "message"}`:
 
-| Endpoint | Para qué | Parámetros |
+| Code | Meaning |
+|---|---|
+| 400 | Invalid parameters |
+| 404 | No data, or the vehicle does not exist |
+| 503 | Database unavailable, or the alias table is missing |
+
+| Endpoint | Purpose | Parameters |
 |---|---|---|
-| `GET /api/dispositivos` | Último punto de cada vehículo, con `vehiculo` y `nombre` | — |
-| `GET /api/historial-ubicaciones` | Puntos de un vehículo, del más antiguo al más reciente | `vehiculo`, `horas` (por defecto 24), `desde` + `hasta` (`AAAA-MM-DD HH:MM[:SS]`, hora de Bogotá, sin fechas futuras), `margen_horas` (amplía el rango, máx. 168), `despues_de` (solo los puntos nuevos), `intervalo_s` (1–300, un punto por bloque) |
-| `GET /api/detecciones-senal` | Señales de tránsito de un vehículo (`[]` si la tabla no existe) | `vehiculo`, `horas`, `desde` + `hasta`, `margen_horas` |
-| `GET /api/lugar-visitado` | Si el vehículo pasó alguna vez por un área | `vehiculo`, `lat_min`, `lat_max`, `lon_min`, `lon_max` |
-| `GET /api/buscar-lugar` | Busca una ciudad o dirección (Nominatim) | `q` |
-| `GET /api/direccion` | Dirección aproximada de un punto | `lat`, `lon` |
-| `GET /api/ultima-ubicacion` | Último punto recibido (la página no lo usa) | `vehiculo` |
+| `GET /api/dispositivos` | Last point of each vehicle, with `vehiculo` and `nombre` | — |
+| `GET /api/historial-ubicaciones` | A vehicle's points, oldest first | `vehiculo`, `horas` (default 24), `desde` + `hasta`, `margen_horas`, `despues_de`, `intervalo_s` (see below) |
+| `GET /api/detecciones-senal` | A vehicle's traffic signs (`[]` if the table does not exist) | `vehiculo`, `horas`, `desde` + `hasta`, `margen_horas` |
+| `GET /api/lugar-visitado` | Whether the vehicle has ever been inside an area | `vehiculo`, `lat_min`, `lat_max`, `lon_min`, `lon_max` |
+| `GET /api/buscar-lugar` | Searches a city or address (Nominatim) | `q` |
+| `GET /api/direccion` | Approximate address of a point | `lat`, `lon` |
+| `GET /api/ultima-ubicacion` | Last point received (not used by the page) | `vehiculo` |
 
-Sin `vehiculo`, los endpoints de un vehículo usan el del último punto recibido.
+Date and sampling parameters of `/api/historial-ubicaciones`:
 
----
+- `desde` + `hasta`: `YYYY-MM-DD HH:MM[:SS]`, in Bogotá time; future dates are rejected.
+- `margen_horas`: widens the range on both sides, up to 168.
+- `despues_de`: returns only the points newer than that time.
+- `intervalo_s`: between 1 and 300; one point per block of that many seconds.
 
-## 9. Interfaz de usuario
-
-- **Vehículos:** con dos vehículos, cada uno tiene su color (por orden de alias) en su tarjeta, su ruta y su marcador. Arriba se elige qué ver: «Ambos» muestra las dos rutas a la vez, actualizándose en tiempo real; el botón de cada vehículo muestra solo ese. Las herramientas trabajan sobre el vehículo activo (tarjeta resaltada). Cambiar de vehículo o de pestaña conserva el zoom.
-- **Rutas:** al abrir se ve la ruta más reciente de cada vehículo. El historial se divide en viajes (más de 1 h sin datos, más de 1 km entre puntos o velocidad implícita mayor a 180 km/h). Se navega con anterior, siguiente, «Actual» y un selector con todas; cambiar de ruta reencuadra el mapa en ella.
-- **Filtros:** rango de fecha y hora (al abrirlo, por defecto desde hoy a las 00:00 hasta la hora actual; el fin debe ser posterior al inicio, sin fechas futuras) y lugar (búsqueda de ciudad o dirección, o un pin en el mapa con un área de 300 m), combinables. Si el filtro corta un viaje, se marca con extremos huecos y un aviso con «Ver viaje completo».
-- **Mapa:** marcadores de inicio, fin y posición actual, paradas (5 min dentro de 50 m), visitas a un lugar, reproductor del recorrido, ajuste a vías y seguimiento del punto actual.
-- **Barra de herramientas** (`BarraHerramientas.jsx`): «Señales» (con el número de excesos; solo aparece si la ruta mostrada tiene señales), «Puntos», «Reproducir» y «Capas». Vertical a la derecha en pantalla ancha y horizontal abajo en modo compacto. El ojo (ocultar paneles) y el seguimiento van aparte, en la esquina inferior derecha.
-- **Panel lateral:** «Señales» y «Puntos» se abren juntos o por separado; columna a la derecha en pantalla ancha y hoja inferior en el celular.
-- **Ayuda:** botón «?» en la barra superior. Su texto (`AyudaModal.jsx`) debe actualizarse cuando cambie la interfaz.
+Without `vehiculo`, the per-vehicle endpoints use the device of the last point received.
 
 ---
 
-## 10. Ramas y flujo de trabajo
+## 9. User interface
 
-1. **Desarrollo:** cada persona trabaja en su rama de test (p. ej. `alba-test`, `sthefany-test`), que se despliega en su EC2 de test.
-2. **Sincronizar con `main`:** antes de abrir el Pull Request, traer los cambios de `main` (`git fetch origin` → `git merge origin/main`) y resolver los conflictos localmente.
-3. **Producción:** el merge del Pull Request a `main` despliega en las 4 EC2. Antes del merge: crear en la base de producción las tablas o columnas nuevas, y después del merge reiniciar el sniffer si cambió (sección 6).
+- **Vehicles:**
+  - with two vehicles, each one has its own colour (by alias order) on its card, its route and its marker;
+  - the selector at the top chooses what to show: "Ambos" shows both routes at once, updating in real time, and each vehicle's button shows only that one;
+  - the tools work on the active vehicle (the highlighted card);
+  - switching vehicle or tab keeps the zoom.
+- **Routes:**
+  - on opening, the most recent route of each vehicle is shown;
+  - the history is split into trips: a new trip starts after more than 1 h without data or more than 1 km between points, and points implying more than 180 km/h are discarded;
+  - navigation: previous, next, "Actual" and a selector listing every route. Changing route re-fits the map to it.
+- **Filters** (they can be combined):
+  - date and time range: on opening it defaults to today 00:00 → now; the end must be after the start, and future dates are not allowed;
+  - place: a city or address search, or a pin dropped on the map with a 300 m area around it.
+
+  If a filter cuts a trip, its ends are drawn hollow and a notice offers "Ver viaje completo".
+- **Map:** start, end and current-position markers, stops (5 min within 50 m), visits to a place, route player, snap-to-roads and follow the current point.
+- **Toolbar** (`BarraHerramientas.jsx`):
+  - buttons: "Señales" (with the number of speeding events; only shown when the route on screen has signs), "Puntos", "Reproducir" and "Capas";
+  - vertical on the right on wide screens, horizontal at the bottom in compact mode;
+  - the eye (hide panels) and the follow button sit apart, in the bottom-right corner.
+- **Side panel:** "Señales" and "Puntos" open together or separately. A right-hand column on wide screens; a bottom sheet on phones.
+- **Help:** the "?" button in the top bar. Its text (`AyudaModal.jsx`) must be updated whenever the interface changes.
 
 ---
 
-## 11. Dispositivos en el vehículo
+## 10. Branches and workflow
 
-- [`gpslink-android/`](gpslink-android/): app GPSLink, envía la ubicación cada 1 s. El APK está en [`gpslink-android/releases/`](gpslink-android/releases/).
-- [`raspberry/`](raspberry/): scripts y servicio de la Raspberry Pi que detecta señales de tránsito (el `pipeline_pi.py` completo vive en la Pi).
+1. **Development:** each person works on their own test branch (e.g. `alba-test`, `sthefany-test`), which deploys to their test EC2.
+2. **Sync with `main`:** before opening the Pull Request, bring in the changes from `main` (`git fetch origin` → `git merge origin/main`) and resolve any conflicts locally.
+3. **Production:** merging the Pull Request into `main` deploys to the 4 EC2 instances.
+   - Before the merge: create any new tables or columns in the production database.
+   - After the merge: restart the sniffer if it changed (section 6).
 
-Formato del mensaje de ubicación (lo que espera el sniffer):
+---
+
+## 11. In-vehicle devices
+
+- [`gpslink-android/`](gpslink-android/): GPSLink app, sends the location every 1 s. The APK is in [`gpslink-android/releases/`](gpslink-android/releases/).
+- [`raspberry/`](raspberry/): scripts and service for the Raspberry Pi that detects traffic signs (the full `pipeline_pi.py` lives on the Pi).
+
+Location message format (what the sniffer expects):
 
 ```
 Device: <id>, Lat: 11.03, Lon: -74.85, Timestamp GPS: 2026-11-03 07:50:28.000 -05:00
