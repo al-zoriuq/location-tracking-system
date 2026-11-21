@@ -1,0 +1,3 @@
+# /etc/sudoers.d/010-gpslink-shutdown  (permisos 440; revisar con: sudo visudo -c)
+# Permite al usuario gpslink SOLO apagar la Pi sin clave (boton APAGAR de la app).
+gpslink ALL=(root) NOPASSWD: /usr/sbin/shutdown, /sbin/shutdown
