@@ -20,6 +20,10 @@ Si la base no tiene la tabla detecciones_senal (p. ej. una base de pruebas nueva
 el sniffer guarda solo las ubicaciones y avisa; cuando la tabla aparece, empieza
 a guardar las señales sin tener que reiniciarlo.
 
+Cada device_id nuevo recibe un alias (A01, A02...) en la tabla alias_dispositivos,
+que es lo que muestra la página web en lugar del device_id. Si esa tabla no
+existe o falla, la ubicación se guarda igual.
+
 Uso:
     python snifferwpostgresql.py               # puerto 5000
     python snifferwpostgresql.py --puerto 5006 # otro puerto (p. ej. para probar en la EC2)
@@ -213,6 +217,19 @@ SQL_DETECCION = """
 
 SQL_EXISTE_TABLA = "SELECT to_regclass('public.detecciones_senal') IS NOT NULL"
 
+# Alias (A01, A02...) of each device for the web page, which never shows the
+# device_id. A device that already has one is skipped BEFORE drawing a number,
+# so no number of the sequence is wasted. The web server runs the same
+# assignment for devices that still lack one, so it does not matter which of
+# the two gets there first.
+SQL_EXISTE_TABLA_ALIAS = "SELECT to_regclass('public.alias_dispositivos') IS NOT NULL"
+SQL_ALIAS = """
+    INSERT INTO alias_dispositivos (device_id)
+    SELECT %s
+    WHERE NOT EXISTS (SELECT 1 FROM alias_dispositivos WHERE device_id = %s)
+    ON CONFLICT (device_id) DO NOTHING
+"""
+
 
 class Almacen:
     """Conexión a la base de datos y escritura de cada mensaje."""
@@ -224,6 +241,11 @@ class Almacen:
         self.tabla_senales = False
         self._revisada_en = 0.0
         self.revisar_tabla(forzar=True)
+        # Devices whose alias is already in alias_dispositivos (in this run)
+        self.alias_conocidos = set()
+        self.tabla_alias = False
+        self._alias_revisada_en = 0.0
+        self.revisar_tabla_alias(forzar=True)
 
     def revisar_tabla(self, forzar=False):
         """¿Existe detecciones_senal? Se consulta al inicio y luego cada
@@ -242,8 +264,45 @@ class Almacen:
                   "Se guardarán solo las ubicaciones hasta que se cree la tabla "
                   "(SQL en el README, «Esquema de detecciones_senal»; no hace falta reiniciar).")
 
+    def revisar_tabla_alias(self, forzar=False):
+        """¿Existe alias_dispositivos? Igual que revisar_tabla: al inicio y
+        luego cada REVISAR_TABLA_CADA_S mientras no exista."""
+        if self.tabla_alias or (not forzar and time.monotonic() - self._alias_revisada_en < REVISAR_TABLA_CADA_S):
+            return
+        self._alias_revisada_en = time.monotonic()
+        with self.conn.cursor() as cur:
+            cur.execute(SQL_EXISTE_TABLA_ALIAS)
+            self.tabla_alias = bool(cur.fetchone()[0])
+        self.conn.commit()
+        if self.tabla_alias:
+            print("Tabla alias_dispositivos encontrada: se asignará un alias a cada dispositivo nuevo.")
+        elif forzar:
+            print("AVISO: la tabla alias_dispositivos no existe en esta base de datos. "
+                  "Se guardan las ubicaciones igual; los alias los asignará la página web "
+                  "cuando exista la tabla (no hace falta reiniciar).")
+
+    def _registrar_alias(self, cur, device_id):
+        """Da alias al dispositivo si aún no tiene. Va dentro de un SAVEPOINT:
+        si falla (tabla borrada, permisos), la ubicación de la misma
+        transacción se guarda igual. Devuelve True si quedó registrado."""
+        if device_id in self.alias_conocidos or not self.tabla_alias:
+            return False
+        cur.execute("SAVEPOINT alias")
+        try:
+            cur.execute(SQL_ALIAS, (device_id, device_id))
+        except psycopg2.Error as e:
+            cur.execute("ROLLBACK TO SAVEPOINT alias")
+            print(f"AVISO: no se pudo asignar el alias de {device_id} ({str(e).strip()}). "
+                  "La ubicación se guarda igual.")
+            self.tabla_alias = False
+            self._alias_revisada_en = time.monotonic()
+            return False
+        cur.execute("RELEASE SAVEPOINT alias")
+        return True
+
     def _insertar(self, ubicacion, deteccion, ip_origen, hora_recepcion):
         self.revisar_tabla()
+        self.revisar_tabla_alias()
         resultado = []
 
         with self.conn.cursor() as cur:
@@ -256,6 +315,8 @@ class Almacen:
                 hora_recepcion,
             ))
             resultado.append("ubicación nueva" if cur.rowcount else "ubicación ya existía")
+
+            alias_registrado = self._registrar_alias(cur, ubicacion.device_id)
 
             if deteccion is not None and self.tabla_senales:
                 cur.execute(SQL_DETECCION, (
@@ -279,6 +340,9 @@ class Almacen:
                 resultado.append("señal NO guardada (falta la tabla detecciones_senal)")
 
         self.conn.commit()
+        # Only after the commit: a lost connection must not leave it marked as known
+        if alias_registrado:
+            self.alias_conocidos.add(ubicacion.device_id)
         return ", ".join(resultado)
 
     def guardar(self, ubicacion, deteccion, ip_origen, hora_recepcion):

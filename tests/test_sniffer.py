@@ -208,3 +208,92 @@ def test_bd_caida_no_detiene_el_servidor():
     # When the database comes back, the next packet is saved
     bd.caida = False
     assert sniffer.procesar(CON_SENAL, "1.2.3.4", a, RECEPCION)[-1].startswith("BD: ubicación nueva")
+
+
+# ---------- alias de dispositivos (alias_dispositivos) ----------
+
+class CursorAlias(CursorFalso):
+    def execute(self, sql, params=None):
+        bd = self.bd
+        if "to_regclass('public.alias_dispositivos')" in sql:
+            self._uno = (bd.tabla_alias,)
+            return
+        if sql.startswith("SAVEPOINT") or sql.startswith("RELEASE"):
+            return
+        if sql.startswith("ROLLBACK TO SAVEPOINT"):
+            bd.pendientes[:] = [p for p in bd.pendientes if p[0] != "alias"]
+            return
+        if "INSERT INTO alias_dispositivos" in sql:
+            bd.inserts_alias += 1
+            if bd.falla_alias:
+                raise psycopg2.errors.InsufficientPrivilege("permission denied for table alias_dispositivos")
+            bd.pendientes.append(("alias", params[0], params))
+            return
+        super().execute(sql, params)
+
+
+class ConexionAlias(ConexionFalsa):
+    def cursor(self):
+        return CursorAlias(self.bd)
+
+
+class BDAlias(BDFalsa):
+    def __init__(self, tabla_alias=True):
+        super().__init__()
+        self.tabla_alias = tabla_alias
+        self.falla_alias = False
+        self.alias = {}
+        self.inserts_alias = 0
+
+    def conectar(self):
+        super().conectar()
+        return ConexionAlias(self)
+
+
+def test_dispositivo_nuevo_recibe_alias_una_sola_vez():
+    bd = BDAlias()
+    a = sniffer.Almacen(conectar_bd=bd.conectar)
+    lineas = sniffer.procesar(BASE, "1.2.3.4", a, RECEPCION)
+    assert lineas[-1] == "BD: ubicación nueva"
+    assert list(bd.alias) == ["ESP32S3-SIM7670G"]
+    # Later messages of the same device do not query the alias again
+    otro = BASE.replace("07:50:28", "07:50:29")
+    sniffer.procesar(otro, "1.2.3.4", a, RECEPCION)
+    assert bd.inserts_alias == 1
+    assert len(bd.ubicaciones) == 2
+
+
+def test_sin_tabla_de_alias_guarda_la_ubicacion():
+    bd = BDAlias(tabla_alias=False)
+    a = sniffer.Almacen(conectar_bd=bd.conectar)
+    lineas = sniffer.procesar(BASE, "1.2.3.4", a, RECEPCION)
+    assert lineas[-1] == "BD: ubicación nueva"
+    assert len(bd.ubicaciones) == 1
+    assert bd.inserts_alias == 0
+
+
+def test_fallo_del_alias_no_pierde_la_ubicacion_ni_la_senal():
+    bd = BDAlias()
+    bd.falla_alias = True
+    a = sniffer.Almacen(conectar_bd=bd.conectar)
+    lineas = sniffer.procesar(CON_SENAL, "1.2.3.4", a, RECEPCION)
+    assert lineas[-1] == "BD: ubicación nueva, señal nueva"
+    assert len(bd.ubicaciones) == 1 and len(bd.detecciones) == 1
+    assert bd.alias == {}
+    # It stops trying until the next check, instead of failing on every message
+    otro = CON_SENAL.replace("07:50:28", "07:50:29")
+    sniffer.procesar(otro, "1.2.3.4", a, RECEPCION)
+    assert bd.inserts_alias == 1
+
+
+def test_tabla_de_alias_creada_con_el_sniffer_corriendo(monkeypatch):
+    bd = BDAlias(tabla_alias=False)
+    reloj = [1000.0]
+    monkeypatch.setattr(sniffer.time, "monotonic", lambda: reloj[0])
+    a = sniffer.Almacen(conectar_bd=bd.conectar)
+    sniffer.procesar(BASE, "1.2.3.4", a, RECEPCION)
+    assert bd.alias == {}
+    bd.tabla_alias = True
+    reloj[0] += sniffer.REVISAR_TABLA_CADA_S + 1
+    sniffer.procesar(BASE.replace("07:50:28", "07:50:29"), "1.2.3.4", a, RECEPCION)
+    assert list(bd.alias) == ["ESP32S3-SIM7670G"]

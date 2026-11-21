@@ -110,7 +110,7 @@ const VENTANA_LUGAR_H = 720; // 30 days
 const RADIO_PIN_M = 300;
 const METROS_POR_GRADO_LAT = 111320;
 const COLOR_PIN = "#ffd166"; // same yellow as the visits to a place
-// One colour per car (by device_id order), used on its card, route and marker.
+// One colour per car (by alias order: A01, A02...), used on its card, route and marker.
 // Blue and orange stay apart from the green start, coral end and yellow status.
 const COLORES_CARRO = ["#4dabf7", "#ff9f43"];
 // Cars shown at the same time (the ones that reported most recently)
@@ -756,7 +756,7 @@ function consultarLugarVisitado(lugar, deviceId) {
     lon_min: lugar.lon_min,
     lon_max: lugar.lon_max,
   });
-  if (deviceId) parametros.set("device_id", deviceId);
+  if (deviceId) parametros.set("vehiculo", deviceId);
   return pedirJSON(import.meta.env.BASE_URL + `api/lugar-visitado?${parametros}`);
 }
 
@@ -887,7 +887,7 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo, ultimoTsCa
     let horasCarga = MARGEN_VIVO_H; // hours of the last full live load
     const base =
       import.meta.env.BASE_URL +
-      `api/historial-ubicaciones?device_id=${encodeURIComponent(deviceId)}` +
+      `api/historial-ubicaciones?vehiculo=${encodeURIComponent(deviceId)}` +
       `&intervalo_s=${INTERVALO_MUESTREO_S}`;
 
     const cargar = async () => {
@@ -950,7 +950,9 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo, ultimoTsCa
 
 function App() {
   // Every car with its last position (/api/dispositivos): at most MAX_CARROS,
-  // ordered by device_id so each one always keeps the same colour
+  // ordered by alias (A01, A02...) so each one always keeps the same colour.
+  // The API never sends the real device id: a car is identified by its alias
+  // (vehiculo, "A01") and shown by its name (nombre, "Vehículo A01").
   const [carros, setCarros] = useState([]);
   // The car the tools work on (routes, filters, player, signs, point history)
   const [dispositivoActivo, setDispositivoActivo] = useState(null);
@@ -1027,9 +1029,9 @@ function App() {
   const [lugarActivo, setLugarActivo] = useState(null); // {nombre, lat_min, lat_max, lon_min, lon_max}
 
   // Last position of the active car, and the other car (if there are two)
-  const location = carros.find((c) => c.device_id === dispositivoActivo) || null;
+  const location = carros.find((c) => c.vehiculo === dispositivoActivo) || null;
   const colorActivo = location ? location.color : COLORES_CARRO[0];
-  const otroCarro = carros.find((c) => c.device_id !== dispositivoActivo) || null;
+  const otroCarro = carros.find((c) => c.vehiculo !== dispositivoActivo) || null;
   const mostrarOtro = verAmbos && Boolean(location) && Boolean(otroCarro);
   // Live mode: no date or place filter (the filters apply to both cars)
   const sinFiltros = !rangoActivo && !lugarActivo;
@@ -1126,7 +1128,7 @@ function App() {
   // one while both are on the map
   const idsParaLugar = (deviceId) => [
     deviceId,
-    ...(verAmbos ? carros.filter((c) => c.device_id !== deviceId).map((c) => c.device_id) : []),
+    ...(verAmbos ? carros.filter((c) => c.vehiculo !== deviceId).map((c) => c.vehiculo) : []),
   ];
 
   useEffect(() => {
@@ -1528,19 +1530,19 @@ function App() {
           // the cars that reported most recently...
           .sort((a, b) => (a.timestamp_gps < b.timestamp_gps ? 1 : -1))
           .slice(0, MAX_CARROS)
-          // ...in device_id order, so the colours never swap
-          .sort((a, b) => String(a.device_id).localeCompare(String(b.device_id)))
+          // ...in alias order, so the colours never swap
+          .sort((a, b) => String(a.vehiculo).localeCompare(String(b.vehiculo)))
           .map((carro, i) => ({ ...carro, color: COLORES_CARRO[i] }));
         setCarros(lista);
         // Default active car: the one that reported last (what the page showed
         // with a single device). A car that is still listed stays active.
         setDispositivoActivo((actual) => {
-          if (lista.some((c) => c.device_id === actual)) return actual;
+          if (lista.some((c) => c.vehiculo === actual)) return actual;
           const reciente = lista.reduce(
             (m, c) => (!m || c.timestamp_gps > m.timestamp_gps ? c : m),
             null
           );
-          return reciente ? reciente.device_id : null;
+          return reciente ? reciente.vehiculo : null;
         });
         registrarExito("ubicacion", MENSAJE_RECUPERADA);
       } catch (error) {
@@ -1571,13 +1573,13 @@ function App() {
   // reporting long ago needs a longer window to bring its most recent route)
   const ultimosTs = useRef({});
   useEffect(() => {
-    ultimosTs.current = Object.fromEntries(carros.map((c) => [c.device_id, c.timestamp_gps]));
+    ultimosTs.current = Object.fromEntries(carros.map((c) => [c.vehiculo, c.timestamp_gps]));
   }, [carros]);
 
   useEffect(() => {
     // Nothing to ask for until /api/dispositivos says which car is active
     if (!dispositivoActivo) return undefined;
-    const paramDevice = `device_id=${encodeURIComponent(dispositivoActivo)}`;
+    const paramDevice = `vehiculo=${encodeURIComponent(dispositivoActivo)}`;
     let horasCarga = MARGEN_VIVO_H; // hours of the last full live load
 
     const modoVivo = !rangoActivo && !lugarActivo;
@@ -1714,8 +1716,8 @@ function App() {
 
   // Tapping the active car's card flies to it; tapping the other one makes it active
   const alTocarTarjeta = (carro) => {
-    if (carro.device_id !== dispositivoActivo) {
-      elegirDispositivo(carro.device_id);
+    if (carro.vehiculo !== dispositivoActivo) {
+      elegirDispositivo(carro.vehiculo);
     } else {
       setVueloA({
         centro: [Number(carro.latitud), Number(carro.longitud)],
@@ -1728,7 +1730,7 @@ function App() {
   // The other car, as the page worked with a single device: its most recent
   // route within the active filters (live window, dates or place), drawn fainter
   const puntosOtro = useHistorialOtro(
-    otroCarro ? otroCarro.device_id : null,
+    otroCarro ? otroCarro.vehiculo : null,
     mostrarOtro,
     rangoActivo,
     lugarActivo,
@@ -1781,7 +1783,7 @@ function App() {
   // Data for the cards over the map: both cars, or only the active one
   const tarjetas = (mostrarOtro ? carros : location ? [location] : []).map((carro) => {
     const f = parsearFechaGPS(carro.timestamp_gps);
-    const esActivo = carro.device_id === dispositivoActivo;
+    const esActivo = carro.vehiculo === dispositivoActivo;
     return {
       carro,
       estado: calcularEstado(f),
@@ -1855,9 +1857,9 @@ function App() {
             <div className={`panel panel-carros ${tarjetas.length > 1 ? "dos" : ""}`}>
               {tarjetas.map((t) => (
                 <TarjetaCarro
-                  key={t.carro.device_id}
+                  key={t.carro.vehiculo}
                   carro={t.carro}
-                  activa={tarjetas.length > 1 && t.carro.device_id === dispositivoActivo}
+                  activa={tarjetas.length > 1 && t.carro.vehiculo === dispositivoActivo}
                   estado={t.estado}
                   hora={t.hora}
                   fecha={t.fecha}
@@ -2088,7 +2090,7 @@ function App() {
               {mensajeLugar && (
                 <p className="lugar-mensaje" role="status">
                   {/* With two cars, say which one the message is about (the active one) */}
-                  {carros.length > 1 ? `${dispositivoActivo}: ${mensajeLugar}` : mensajeLugar}
+                  {carros.length > 1 && location ? `${location.nombre}: ${mensajeLugar}` : mensajeLugar}
                 </p>
               )}
             </div>
@@ -2280,7 +2282,7 @@ function App() {
                 <Polyline
                   positions={lineaOtro}
                   pathOptions={{ color: otroCarro.color, weight: 3, opacity: 0.6 }}
-                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.device_id) }}
+                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.vehiculo) }}
                 />
               )}
               {marcadorOtro && (
@@ -2289,10 +2291,10 @@ function App() {
                   icon={iconoCarro(otroCarro.color, marcadorOtro.inactivo)}
                   title={
                     sinFiltros
-                      ? `${otroCarro.device_id}: toca para ver sus rutas`
-                      : `${otroCarro.device_id}: fin de su ruta m\u00e1s reciente en el filtro. Toca para ver sus rutas`
+                      ? `${otroCarro.nombre}: toca para ver sus rutas`
+                      : `${otroCarro.nombre}: fin de su ruta m\u00e1s reciente en el filtro. Toca para ver sus rutas`
                   }
-                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.device_id) }}
+                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.vehiculo) }}
                 />
               )}
 
@@ -2303,7 +2305,7 @@ function App() {
                 <Marker
                   position={[Number(location.latitud), Number(location.longitud)]}
                   icon={iconoCarro(colorActivo, !reportandoAhora(fechaGPS))}
-                  title={`${location.device_id}: \u00faltima posici\u00f3n`}
+                  title={`${location.nombre}: \u00faltima posici\u00f3n`}
                 />
               )}
 
@@ -2327,7 +2329,7 @@ function App() {
                             ? "Posici\u00f3n actual"
                             : "\u00daltima posici\u00f3n conocida"
                           : "Fin de la ruta") +
-                        (carros.length > 1 ? ` · ${dispositivoActivo}` : "")
+                        (carros.length > 1 && location ? ` · ${location.nombre}` : "")
                       }
                       punto={ultimaLectura}
                       velocidadKmh={velocidadActualKmh}
