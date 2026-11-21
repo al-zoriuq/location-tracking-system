@@ -751,6 +751,17 @@ async function consultarLugarVariosCarros(lugar, ids) {
   };
 }
 
+// Initial values of the date filter, computed at call time (not at page load):
+// "Desde" = today 00:00 and "Hasta" = now, both in Bogota time, as
+// "YYYY-MM-DDTHH:mm" strings
+function valoresInicialesFiltro() {
+  const ahora = new Date();
+  const dia = ahora.toLocaleDateString("en-CA", OPCIONES_ZONA);
+  const [h, m] = formatearHoraCorta(ahora).split(":").map(Number);
+  const dos = (n) => String(n).padStart(2, "0");
+  return { desde: `${dia}T00:00`, hasta: `${dia}T${dos(h)}:${dos(m)}` };
+}
+
 // A car is reporting when its last point is at most 2 minutes old
 function reportandoAhora(fecha) {
   return Boolean(fecha) && Date.now() - fecha.getTime() <= 120000;
@@ -963,8 +974,6 @@ function App() {
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
-  // Default end of the range: right now (the server rejects future dates)
-  const [ahoraH, ahoraM] = formatearHoraCorta(new Date()).split(":").map(Number);
   const [filtroAbierto, setFiltroAbierto] = useState(false);
   // Re-render every 30 s while the date panel is open, so the "now" limit of the pickers stays current
   const [, setTickLimite] = useState(0);
@@ -974,10 +983,10 @@ function App() {
     return () => clearInterval(id);
   }, [filtroAbierto]);
   // Range as "YYYY-MM-DDTHH:mm" strings (Bogota time), one per end
-  const [desdeFH, setDesdeFH] = useState(`${hoy}T00:00`);
-  const [hastaFH, setHastaFH] = useState(
-    `${hoy}T${String(ahoraH).padStart(2, "0")}:${String(ahoraM).padStart(2, "0")}`
-  );
+  // Default end of the range: right now (the server rejects future dates).
+  // Recomputed each time the panel is opened in live mode (see abrirFiltroFecha).
+  const [desdeFH, setDesdeFH] = useState(() => valoresInicialesFiltro().desde);
+  const [hastaFH, setHastaFH] = useState(() => valoresInicialesFiltro().hasta);
   const [fhAbierto, setFhAbierto] = useState(null); // "desde" | "hasta" | null
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
@@ -1472,6 +1481,19 @@ function App() {
     setIndiceRuta(null);
     setFiltroAbierto(false);
     if (!rangoInvalido) setFiltrosVisibles(false);
+  };
+
+  // Opens the date panel. With no range applied, the fields start from the
+  // current moment (today 00:00 -> now), not from when the page was loaded;
+  // an applied range keeps the user's values so they can adjust them.
+  const abrirFiltroFecha = () => {
+    if (!rangoActivo) {
+      const { desde, hasta } = valoresInicialesFiltro();
+      setDesdeFH(desde);
+      setHastaFH(hasta);
+    }
+    setFhAbierto(null);
+    setFiltroAbierto(true);
   };
 
   const quitarFiltro = () => {
@@ -1976,7 +1998,7 @@ function App() {
               </div>
               ) : (
                 <div className="filtros-chips">
-                  <button className={`filtro-toggle ${rangoActivo ? "activo" : ""}`} onClick={() => { setFhAbierto(null); setFiltroAbierto(true); }}>
+                  <button className={`filtro-toggle ${rangoActivo ? "activo" : ""}`} onClick={abrirFiltroFecha}>
                     <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <rect x="3" y="5" width="18" height="16" rx="3" />
