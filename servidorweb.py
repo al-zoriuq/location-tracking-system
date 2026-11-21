@@ -436,6 +436,42 @@ def validar_rango(desde_texto, hasta_texto):
     return desde, hasta, None
 
 
+# Limits of the intervalo_s sampling param of /api/historial-ubicaciones
+INTERVALO_MIN_S = 1
+INTERVALO_MAX_S = 300
+
+
+# Start of the intervalo_s block that contains a (naive) timestamp. Same
+# alignment as muestrear_sql: PostgreSQL's EXTRACT(EPOCH FROM timestamp) reads
+# a timestamp without zone as if it were UTC, so this does the same.
+def inicio_bloque(fecha, intervalo_s):
+    segundos = (fecha - datetime(1970, 1, 1)).total_seconds()
+    return datetime(1970, 1, 1) + timedelta(seconds=math.floor(segundos / intervalo_s) * intervalo_s)
+
+
+# Wraps a history query (one device, ordered by timestamp_gps) so it returns
+# only the FIRST point of each fixed block of intervalo_s seconds. Blocks are
+# aligned to the clock (epoch // N), so the same block always yields the same
+# point: repeated or overlapping requests (despues_de) never produce two
+# different points for one complete block, and the client's merge by
+# timestamp_gps drops the repeats. Without intervalo_s the query is unchanged.
+# intervalo_s is an int already validated against the limits above.
+def muestrear_sql(sql, intervalo_s):
+    if not intervalo_s:
+        return sql
+    n = int(intervalo_s)
+    return f"""
+        SELECT ip_origen, latitud, longitud, timestamp_gps
+        FROM (
+            SELECT DISTINCT ON (FLOOR(EXTRACT(EPOCH FROM t.timestamp_gps) / {n}))
+                t.ip_origen, t.latitud, t.longitud, t.timestamp_gps
+            FROM ({sql}) AS t
+            ORDER BY FLOOR(EXTRACT(EPOCH FROM t.timestamp_gps) / {n}), t.timestamp_gps ASC
+        ) AS muestreo
+        ORDER BY timestamp_gps ASC
+    """
+
+
 # API - LOCATION HISTORY (used to draw the route line and list every point)
 
 # Returns all points within the last N hours (defaults to 24), ordered oldest
@@ -456,6 +492,21 @@ def historial_ubicaciones():
     despues_de = request.args.get("despues_de", default=None, type=str)
     margen_horas = request.args.get("margen_horas", default=0, type=int)
 
+    # Optional sampling: one point per block of N seconds (see muestrear_sql).
+    # Devices may report every second; the web map only needs one point every
+    # few seconds, and the full detail stays in the database.
+    intervalo_texto = request.args.get("intervalo_s", default=None, type=str)
+    intervalo_s = None
+    if intervalo_texto is not None:
+        try:
+            intervalo_s = int(intervalo_texto)
+        except ValueError:
+            intervalo_s = None
+        if intervalo_s is None or not (INTERVALO_MIN_S <= intervalo_s <= INTERVALO_MAX_S):
+            return jsonify({
+                "error": f"'intervalo_s' debe ser un entero entre {INTERVALO_MIN_S} y {INTERVALO_MAX_S}"
+            }), 400
+
     # Validate before touching the database: a bad range answers 400 with JSON
     rango_explicito = bool(desde or hasta)
     if rango_explicito:
@@ -474,6 +525,12 @@ def historial_ubicaciones():
                 "error": "Formato de fecha inválido en 'despues_de' (usa AAAA-MM-DD HH:MM:SS)"
             }), 400
 
+    # With sampling, move the incremental lower bound back to the start of its
+    # block: a bound in the middle of a block would pick a different "first
+    # point" for it than the full load did, adding an extra point each poll.
+    if despues_de_fecha is not None and intervalo_s:
+        despues_de_fecha = inicio_bloque(despues_de_fecha, intervalo_s) - timedelta(microseconds=1)
+
     # Widen a validated range on both sides so the client can complete routes
     # that cross its edges. The far end is clamped to the server's own "now":
     # a widened range is never a future date.
@@ -484,10 +541,14 @@ def historial_ubicaciones():
 
     with cursor_bd() as cursor:
 
+        # Every query below goes through here, so sampling applies to all of them
+        def ejecutar(sql, params):
+            cursor.execute(muestrear_sql(sql, intervalo_s), params)
+
         # Incremental polling takes priority over the rest
         if despues_de_fecha is not None:
             if device_id:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -499,7 +560,7 @@ def historial_ubicaciones():
                     ORDER BY timestamp_gps ASC
                 """, (despues_de_fecha, device_id))
             else:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -516,7 +577,7 @@ def historial_ubicaciones():
         # Explicit date range takes priority over the "last N hours" default
         elif rango_explicito:
             if device_id:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -528,7 +589,7 @@ def historial_ubicaciones():
                     ORDER BY timestamp_gps ASC
                 """, (desde, hasta, device_id))
             else:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -543,7 +604,7 @@ def historial_ubicaciones():
                 """, (desde, hasta))
 
         elif device_id:
-            cursor.execute("""
+            ejecutar("""
                 SELECT
                     ip_origen,
                     latitud,
@@ -556,7 +617,7 @@ def historial_ubicaciones():
             """, (horas, device_id))
 
         else:
-            cursor.execute("""
+            ejecutar("""
                 SELECT
                     ip_origen,
                     latitud,

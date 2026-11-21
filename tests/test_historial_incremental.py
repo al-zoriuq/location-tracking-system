@@ -147,3 +147,65 @@ def test_ultimas_horas_con_device_id_tambien_usa_hora_de_bogota(cliente, conexio
     sql, params = conexion.cursor_falso.ejecutadas[0]
     assert "AT TIME ZONE 'America/Bogota'" in sql
     assert params == (24, "abc")
+
+
+# ---------- intervalo_s (one point per block of N seconds) ----------
+
+def test_sin_intervalo_la_consulta_no_cambia(cliente, conexion):
+    cliente.get("/api/historial-ubicaciones?horas=24&device_id=abc")
+    sql, _ = conexion.cursor_falso.ejecutadas[0]
+    assert "DISTINCT ON" not in sql
+
+
+@pytest.mark.parametrize("consulta, params", [
+    ("horas=24&device_id=abc", (24, "abc")),
+    ("horas=24", (24,)),
+    # despues_de is moved back to the start of its block (see the test below)
+    ("despues_de=2026-09-25 09:00:00&device_id=abc", (datetime(2026, 9, 25, 8, 59, 59, 999999), "abc")),
+    ("despues_de=2026-09-25 09:00:00", (datetime(2026, 9, 25, 8, 59, 59, 999999),)),
+    (RANGO + "&device_id=abc", (datetime(2026, 9, 25, 8, 0, 0), datetime(2026, 9, 25, 9, 30, 59), "abc")),
+    (RANGO, (datetime(2026, 9, 25, 8, 0, 0), datetime(2026, 9, 25, 9, 30, 59))),
+])
+def test_intervalo_muestrea_todas_las_variantes(cliente, conexion, consulta, params):
+    r = cliente.get(f"/api/historial-ubicaciones?{consulta}&intervalo_s=10")
+    assert r.status_code == 200
+    sql, params_sql = conexion.cursor_falso.ejecutadas[0]
+    assert "DISTINCT ON (FLOOR(EXTRACT(EPOCH FROM t.timestamp_gps) / 10))" in sql
+    # The first point of each block, and the result in chronological order
+    assert "t.timestamp_gps ASC" in sql
+    assert sql.rstrip().endswith("ORDER BY timestamp_gps ASC")
+    # The original query is wrapped, not changed: same parameters
+    assert params_sql == params
+
+
+def test_intervalo_conserva_las_columnas(cliente, conexion):
+    r = cliente.get("/api/historial-ubicaciones?horas=24&device_id=abc&intervalo_s=10")
+    fila = r.get_json()[0]
+    assert set(fila) == {"ip_origen", "latitud", "longitud", "timestamp_gps"}
+
+
+@pytest.mark.parametrize("valor", ["0", "301", "-5", "diez", "1.5", ""])
+def test_intervalo_invalido_da_400(cliente, sin_bd, valor):
+    r = cliente.get(f"/api/historial-ubicaciones?horas=24&intervalo_s={valor}")
+    assert r.status_code == 400
+    assert "intervalo_s" in r.get_json()["error"]
+
+
+@pytest.mark.parametrize("valor", ["1", "300"])
+def test_intervalo_en_los_limites_es_valido(cliente, conexion, valor):
+    r = cliente.get(f"/api/historial-ubicaciones?horas=24&intervalo_s={valor}")
+    assert r.status_code == 200
+
+
+def test_intervalo_alinea_despues_de_al_inicio_del_bloque(cliente, conexion):
+    cliente.get("/api/historial-ubicaciones?despues_de=2026-09-25 09:00:27&device_id=abc&intervalo_s=10")
+    sql, params = conexion.cursor_falso.ejecutadas[0]
+    assert "timestamp_gps > %s" in sql
+    # 09:00:27 belongs to the block 09:00:20-09:00:29: the whole block is included
+    assert params == (datetime(2026, 9, 25, 9, 0, 19, 999999), "abc")
+
+
+def test_sin_intervalo_despues_de_no_se_alinea(cliente, conexion):
+    cliente.get("/api/historial-ubicaciones?despues_de=2026-09-25 09:00:27&device_id=abc")
+    _, params = conexion.cursor_falso.ejecutadas[0]
+    assert params == (datetime(2026, 9, 25, 9, 0, 27), "abc")

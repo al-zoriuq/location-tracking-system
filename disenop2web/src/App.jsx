@@ -131,6 +131,9 @@ const aTextoBogota = (ms) =>
 // In live mode the history is loaded once and then topped up with only the new
 // points. A full reload happens every RECARGA_COMPLETA_MS as a safety net.
 const RECARGA_COMPLETA_MS = 5 * 60 * 1000;
+// The devices may report every second; the server sends the map one point per
+// block of this many seconds (the database keeps every point)
+const INTERVALO_MUESTREO_S = 10;
 
 // Merges freshly fetched rows into the history already on screen, keyed by
 // timestamp_gps, and drops rows older than the cutoff. Returns the same array
@@ -858,7 +861,8 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo, ultimoTsCa
     let horasCarga = MARGEN_VIVO_H; // hours of the last full live load
     const base =
       import.meta.env.BASE_URL +
-      `api/historial-ubicaciones?device_id=${encodeURIComponent(deviceId)}`;
+      `api/historial-ubicaciones?device_id=${encodeURIComponent(deviceId)}` +
+      `&intervalo_s=${INTERVALO_MUESTREO_S}`;
 
     const cargar = async () => {
       const completo =
@@ -1595,7 +1599,7 @@ function App() {
           const horas = lugarActivo ? VENTANA_LUGAR_H : horasCarga;
           url += `?horas=${horas}`;
         }
-        url += `&${paramDevice}`;
+        url += `&${paramDevice}&intervalo_s=${INTERVALO_MUESTREO_S}`;
         const data = await pedirJSON(url);
         if (cancelado) return;
         const filas = Array.isArray(data) ? data : [];
