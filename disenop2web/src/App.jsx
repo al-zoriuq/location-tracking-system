@@ -250,23 +250,46 @@ function margenesLibres(map) {
   return { l, t, r, b };
 }
 
-// conservarZoom: only the cars' last points are shown. The user's zoom is kept:
-// a single point is centred, and several are fitted (only zooming out) just
-// when one of them is off screen or under a panel.
-function AjustarVista({ puntos, resetKey, conservarZoom = false }) {
+// conservarZoom: the user's zoom is kept: a single point is centred, and
+// several are fitted (only zooming out) just when one of them is off screen or
+// under a panel.
+//
+// It also applies by itself after a change of car or tab (claveCarros):
+// switching between "Ambos" and one car keeps the zoom the user chose. A new
+// route, list pick or filter (claveRuta) fits the route again with any zoom,
+// since it may be in another city. Refits caused only by data arriving
+// (resetKey) keep whichever of the two modes the last change set.
+function AjustarVista({ puntos, resetKey, claveCarros = "", claveRuta = "", conservarZoom = false }) {
   const map = useMap();
   const yaAjustado = useRef(false);
+  const huboAjuste = useRef(false); // the map was fitted at least once
+  const conservarPorCarros = useRef(false);
   const resetKeyAnterior = useRef(resetKey);
+  const claveCarrosAnterior = useRef(claveCarros);
+  const claveRutaAnterior = useRef(claveRuta);
 
   useEffect(() => {
+    if (claveRuta !== claveRutaAnterior.current) {
+      claveRutaAnterior.current = claveRuta;
+      conservarPorCarros.current = false;
+      yaAjustado.current = false;
+    }
+    // Checked after claveRuta: switching cars also resets the picked route,
+    // and then the car change decides (the zoom is kept)
+    if (claveCarros !== claveCarrosAnterior.current) {
+      claveCarrosAnterior.current = claveCarros;
+      conservarPorCarros.current = huboAjuste.current;
+      yaAjustado.current = false;
+    }
     if (resetKey !== resetKeyAnterior.current) {
       yaAjustado.current = false;
       resetKeyAnterior.current = resetKey;
     }
 
     if (yaAjustado.current) return;
+    const conservar = conservarZoom || conservarPorCarros.current;
 
-    if (conservarZoom && puntos.length > 0) {
+    if (conservar && puntos.length > 0) {
       const m = margenesLibres(map);
       if (puntos.length === 1) {
         map.setView(puntos[0], map.getZoom(), { animate: false });
@@ -286,6 +309,7 @@ function AjustarVista({ puntos, resetKey, conservarZoom = false }) {
         }
       }
       yaAjustado.current = true;
+      huboAjuste.current = true;
       return;
     }
 
@@ -293,13 +317,15 @@ function AjustarVista({ puntos, resetKey, conservarZoom = false }) {
       const m = margenesLibres(map);
       map.fitBounds(puntos, { paddingTopLeft: [m.l, m.t], paddingBottomRight: [m.r, m.b] });
       yaAjustado.current = true;
+      huboAjuste.current = true;
     } else if (puntos.length === 1) {
       const m = margenesLibres(map);
       map.setView(puntos[0], 13, { animate: false });
       map.panBy([-(m.l - m.r) / 2, -(m.t - m.b) / 2], { animate: false });
       yaAjustado.current = true;
+      huboAjuste.current = true;
     }
-  }, [puntos, map, resetKey, conservarZoom]);
+  }, [puntos, map, resetKey, claveCarros, claveRuta, conservarZoom]);
 
   return null;
 }
@@ -935,9 +961,6 @@ function App() {
   // null = "follow the most recent trip live". A number = pinned to that
   // specific trip index, regardless of new data arriving later.
   const [indiceRuta, setIndiceRuta] = useState(null);
-  // Live mode shows only the cars' last points by default; a route is drawn
-  // once one is picked (arrows, route list, player or a sign)
-  const [soloPunto, setSoloPunto] = useState(true);
 
   // Map view toggles
   const [centradoActivo, setCentradoActivo] = useState(false);
@@ -1010,8 +1033,6 @@ function App() {
   const mostrarOtro = verAmbos && Boolean(location) && Boolean(otroCarro);
   // Live mode: no date or place filter (the filters apply to both cars)
   const sinFiltros = !rangoActivo && !lugarActivo;
-  // Only the last point(s) on the map, no route (live mode, by default)
-  const modoSoloPunto = soloPunto && sinFiltros;
 
   const fechaGPS = location ? parsearFechaGPS(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
@@ -1210,7 +1231,6 @@ function App() {
     setSugerenciasLugar([]);
     setSinResultadosLugar(false);
     setIndiceRuta(null);
-    setSoloPunto(true);
   };
 
   // ----- Pin filter: a point chosen on the map instead of a searched place -----
@@ -1315,30 +1335,17 @@ function App() {
     return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}${cortadaInicio || cortadaFin ? " · recortada" : ""}`;
   }, [puntosRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
 
-  // In live mode the "last point only" view sits after the newest route:
-  // Anterior from it shows the newest route, Siguiente from the newest route
-  // goes back to it.
   const verRutaAnterior = () => {
-    if (modoSoloPunto) {
-      setSoloPunto(false);
-      setIndiceRuta(null);
-      return;
-    }
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
 
   const verRutaSiguiente = () => {
-    if (sinFiltros && siguiendoActual) {
-      setSoloPunto(true);
-      return;
-    }
     const siguiente = indiceMostrado + 1;
     setIndiceRuta(siguiente >= rutas.length - 1 ? null : siguiente);
   };
 
   // The newest route is always "following the live position" (null)
   const irARuta = (indice) => {
-    setSoloPunto(false);
     setIndiceRuta(indice >= rutas.length - 1 ? null : indice);
   };
 
@@ -1364,7 +1371,6 @@ function App() {
   const senalElegida = senalesRuta.some((d) => d.id === senalSel) ? senalSel : null;
 
   const elegirSenal = (senal) => {
-    setSoloPunto(false);
     setSenalSel(senal.id);
     setSenalesVisibles(true);
     // On phones the history is a bottom sheet over the map: close it to see the sign
@@ -1423,10 +1429,9 @@ function App() {
     });
   }, [rutas]);
 
-  // "Actual": back to the newest route, or to the last point in live mode
+  // "Actual": back to the newest route
   const volverARutaActual = () => {
     setIndiceRuta(null);
-    if (sinFiltros) setSoloPunto(true);
   };
 
   const dosDigitos = (n) => String(n).padStart(2, "0");
@@ -1503,7 +1508,6 @@ function App() {
   const quitarFiltro = () => {
     setRangoActivo(null);
     setIndiceRuta(null);
-    setSoloPunto(true);
     setFiltroAbierto(false);
   };
 
@@ -1692,7 +1696,6 @@ function App() {
   const elegirDispositivo = (id) => {
     if (id === dispositivoActivo) return;
     setDispositivoActivo(id);
-    setSoloPunto(true);
     setHistorial([]);
     setDetecciones([]);
     setIndiceRuta(null);
@@ -1756,20 +1759,24 @@ function App() {
   // With a filter it also fits when only the other car has a matching route.
   const extraAjuste = !mostrarOtro
     ? []
-    : !sinFiltros && lineaOtro.length > 0
+    : lineaOtro.length > 0
       ? lineaOtro
       : marcadorOtro
         ? [marcadorOtro.pos]
         : [];
-  // Last point only: fit the cars' points (keeping the zoom); otherwise the routes
-  const puntosAjuste = modoSoloPunto
+  // Fit the routes on screen. Following the newest route, the other car's route
+  // (in "Ambos") is fitted too; in live mode a car with no route yet is fitted
+  // by its last position.
+  const puntosAjuste = siguiendoActual
     ? [
-        ...(location ? [[Number(location.latitud), Number(location.longitud)]] : []),
+        ...(ruta.length > 0
+          ? ruta
+          : sinFiltros && location
+            ? [[Number(location.latitud), Number(location.longitud)]]
+            : []),
         ...extraAjuste,
       ]
-    : siguiendoActual && (ruta.length > 0 || !sinFiltros)
-      ? [...ruta, ...extraAjuste]
-      : ruta;
+    : ruta;
 
   // Data for the cards over the map: both cars, or only the active one
   const tarjetas = (mostrarOtro ? carros : location ? [location] : []).map((carro) => {
@@ -1883,7 +1890,7 @@ function App() {
                   <button
                     className="nav-btn nav-flecha"
                     onClick={verRutaAnterior}
-                    disabled={!modoSoloPunto && indiceMostrado === 0}
+                    disabled={indiceMostrado === 0}
                     aria-label="Ruta anterior"
                     title="Ruta anterior"
                   >
@@ -1893,19 +1900,15 @@ function App() {
                     </svg>
                   </button>
                   <SelectorRuta
-                    etiqueta={
-                      modoSoloPunto
-                        ? `\u00daltimo punto \u00b7 ${rutas.length} ${rutas.length === 1 ? "ruta reciente" : "rutas recientes"}`
-                        : etiquetaRuta
-                    }
+                    etiqueta={etiquetaRuta}
                     opciones={opcionesRutas}
-                    indice={modoSoloPunto ? -1 : indiceMostrado}
+                    indice={indiceMostrado}
                     onElegir={irARuta}
                   />
                   <button
                     className="nav-btn nav-flecha"
                     onClick={verRutaSiguiente}
-                    disabled={modoSoloPunto || (siguiendoActual && !sinFiltros)}
+                    disabled={siguiendoActual}
                     aria-label="Ruta siguiente"
                     title="Ruta siguiente"
                   >
@@ -1915,7 +1918,7 @@ function App() {
                     </svg>
                   </button>
                   {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
-                  {!modoSoloPunto && indiceMostrado < rutas.length - (sinFiltros ? 1 : 2) && (
+                  {indiceMostrado < rutas.length - 2 && (
                     <button className="nav-btn primario" onClick={volverARutaActual} aria-label="Ruta actual">
                       <span className="nav-texto">Actual</span> &raquo;
                     </button>
@@ -2102,8 +2105,6 @@ function App() {
               reproductorAbierto={reproductorAbierto}
               puedeReproducir={puntosNorm.length >= 2}
               onReproducir={() => {
-                // The player shows its route on the map
-                if (!reproductorAbierto) setSoloPunto(false);
                 setReproductorAbierto(!reproductorAbierto);
               }}
               capasAbierto={capasAbierto}
@@ -2196,7 +2197,7 @@ function App() {
             </div>
 
             
-            {!modoSoloPunto && ruta.length > 1 && (
+            {ruta.length > 1 && (
               <div className="legend">
                 <div className="legend-item">
                   <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
@@ -2263,18 +2264,19 @@ function App() {
 
               <AjustarVista
                 puntos={puntosAjuste}
-                conservarZoom={modoSoloPunto}
-                resetKey={modoSoloPunto ? `punto|${mostrarOtro ? "ambos" : dispositivoActivo}` : `${dispositivoActivo}|${mostrarOtro ? "ambos" : ""}${lineaOtro.length > 0 ? "+" : ""}|${indiceMostrado}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}|${puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : ""}`}
+                claveCarros={`${dispositivoActivo}|${mostrarOtro ? "ambos" : "solo"}`}
+                claveRuta={`${indiceRuta ?? "actual"}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}`}
+                resetKey={`${dispositivoActivo}|${mostrarOtro ? "ambos" : ""}${lineaOtro.length > 0 ? "+" : ""}|${indiceMostrado}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}|${puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : ""}`}
               />
 
               <SeguirPunto
-                lat={modoSoloPunto && location ? Number(location.latitud) : ultimoPunto ? ultimoPunto[0] : null}
-                lon={modoSoloPunto && location ? Number(location.longitud) : ultimoPunto ? ultimoPunto[1] : null}
+                lat={ultimoPunto ? ultimoPunto[0] : sinFiltros && location ? Number(location.latitud) : null}
+                lon={ultimoPunto ? ultimoPunto[1] : sinFiltros && location ? Number(location.longitud) : null}
                 activo={centradoActivo}
               />
 
               {/* The other car, in its colour and fainter; tapping it makes it the active one */}
-              {mostrarOtro && !sinFiltros && lineaOtro.length > 1 && (
+              {mostrarOtro && lineaOtro.length > 1 && (
                 <Polyline
                   positions={lineaOtro}
                   pathOptions={{ color: otroCarro.color, weight: 3, opacity: 0.6 }}
@@ -2305,11 +2307,11 @@ function App() {
                 />
               )}
 
-              {!modoSoloPunto && rutaDibujada.length > 1 && (
+              {rutaDibujada.length > 1 && (
                 <Polyline positions={rutaDibujada} pathOptions={{ color: colorActivo, weight: 3, opacity: 0.8 }} />
               )}
 
-              {!modoSoloPunto && ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
+              {ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
 
               {ruta.length > 0 && (
                 <Marker
@@ -2373,8 +2375,8 @@ function App() {
                 etiquetaAbajo={Boolean(pinActivo)}
               />
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
-            {!modoSoloPunto && paradasVisibles && <MarcadoresParada paradas={paradas} />}
-            {!modoSoloPunto && senalesVisibles && (
+            {paradasVisibles && <MarcadoresParada paradas={paradas} />}
+            {senalesVisibles && (
               <MarcadoresSenal
                 senales={senalesRuta}
                 seleccionada={senalElegida}
