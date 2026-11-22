@@ -273,10 +273,10 @@ def test_lugar_visitado_bd_caida_da_503_json(cliente, monkeypatch):
 
 def test_dispositivos_devuelve_ultima_posicion_de_cada_device(cliente, monkeypatch):
     con = ConexionFalsa([
-        {"device_id": "carro-a", "ip_origen": "1.2.3.4", "latitud": 10.9, "longitud": -74.8,
+        {"device_id": "carro-a", "numero": 1, "ip_origen": "1.2.3.4", "latitud": 10.9, "longitud": -74.8,
          "timestamp_gps": datetime(2026, 9, 25, 9, 0, 0),
          "timestamp_recepcion": datetime(2026, 9, 25, 9, 0, 1)},
-        {"device_id": "carro-b", "ip_origen": "5.6.7.8", "latitud": 11.0, "longitud": -74.9,
+        {"device_id": "carro-b", "numero": 2, "ip_origen": "5.6.7.8", "latitud": 11.0, "longitud": -74.9,
          "timestamp_gps": datetime(2026, 9, 25, 9, 5, 0),
          "timestamp_recepcion": datetime(2026, 9, 25, 9, 5, 2)},
     ])
@@ -285,10 +285,13 @@ def test_dispositivos_devuelve_ultima_posicion_de_cada_device(cliente, monkeypat
     r = cliente.get("/api/dispositivos")
     assert r.status_code == 200
     datos = r.get_json()
-    assert [d["device_id"] for d in datos] == ["carro-a", "carro-b"]
+    # Each car by its alias; the device_id never reaches the page
+    assert [d["vehiculo"] for d in datos] == ["A01", "A02"]
+    assert [d["nombre"] for d in datos] == ["Vehículo A01", "Vehículo A02"]
+    assert all("device_id" not in d for d in datos)
     assert datos[1]["timestamp_gps"] == "2026-09-25 09:05:00"
     sql, _ = con.cursor_falso.ejecutadas[0]
-    assert "DISTINCT ON (device_id)" in sql
+    assert "DISTINCT ON (u.device_id)" in sql
     assert con.cerrada
 
 
@@ -301,7 +304,7 @@ def test_dispositivos_sin_datos_da_lista_vacia(cliente, monkeypatch):
 
 def test_ultima_ubicacion_filtra_por_device_id(cliente, monkeypatch):
     con = ConexionFalsa([
-        {"device_id": "carro-b", "ip_origen": "5.6.7.8", "latitud": 11.0, "longitud": -74.9,
+        {"device_id": "carro-b", "numero": 2, "ip_origen": "5.6.7.8", "latitud": 11.0, "longitud": -74.9,
          "timestamp_gps": datetime(2026, 9, 25, 9, 5, 0),
          "timestamp_recepcion": datetime(2026, 9, 25, 9, 5, 2)},
     ])
@@ -309,7 +312,8 @@ def test_ultima_ubicacion_filtra_por_device_id(cliente, monkeypatch):
 
     r = cliente.get("/api/ultima-ubicacion?device_id=carro-b")
     assert r.status_code == 200
-    assert r.get_json()["device_id"] == "carro-b"
+    assert r.get_json()["vehiculo"] == "A02"
+    assert "device_id" not in r.get_json()
     sql, params = con.cursor_falso.ejecutadas[0]
-    assert "device_id = %s" in sql
+    assert "u.device_id = %s" in sql
     assert params == ("carro-b",)

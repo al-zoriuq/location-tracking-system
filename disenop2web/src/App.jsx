@@ -110,7 +110,7 @@ const VENTANA_LUGAR_H = 720; // 30 days
 const RADIO_PIN_M = 300;
 const METROS_POR_GRADO_LAT = 111320;
 const COLOR_PIN = "#ffd166"; // same yellow as the visits to a place
-// One colour per car (by device_id order), used on its card, route and marker.
+// One colour per car (by alias order: A01, A02...), used on its card, route and marker.
 // Blue and orange stay apart from the green start, coral end and yellow status.
 const COLORES_CARRO = ["#4dabf7", "#ff9f43"];
 // Cars shown at the same time (the ones that reported most recently)
@@ -131,6 +131,9 @@ const aTextoBogota = (ms) =>
 // In live mode the history is loaded once and then topped up with only the new
 // points. A full reload happens every RECARGA_COMPLETA_MS as a safety net.
 const RECARGA_COMPLETA_MS = 5 * 60 * 1000;
+// The devices may report every second; the server sends the map one point per
+// block of this many seconds (the database keeps every point)
+const INTERVALO_MUESTREO_S = 10;
 
 // Merges freshly fetched rows into the history already on screen, keyed by
 // timestamp_gps, and drops rows older than the cutoff. Returns the same array
@@ -247,23 +250,46 @@ function margenesLibres(map) {
   return { l, t, r, b };
 }
 
-// conservarZoom: only the cars' last points are shown. The user's zoom is kept:
-// a single point is centred, and several are fitted (only zooming out) just
-// when one of them is off screen or under a panel.
-function AjustarVista({ puntos, resetKey, conservarZoom = false }) {
+// conservarZoom: the user's zoom is kept: a single point is centred, and
+// several are fitted (only zooming out) just when one of them is off screen or
+// under a panel.
+//
+// It also applies by itself after a change of car or tab (claveCarros):
+// switching between "Ambos" and one car keeps the zoom the user chose. A new
+// route, list pick or filter (claveRuta) fits the route again with any zoom,
+// since it may be in another city. Refits caused only by data arriving
+// (resetKey) keep whichever of the two modes the last change set.
+function AjustarVista({ puntos, resetKey, claveCarros = "", claveRuta = "", conservarZoom = false }) {
   const map = useMap();
   const yaAjustado = useRef(false);
+  const huboAjuste = useRef(false); // the map was fitted at least once
+  const conservarPorCarros = useRef(false);
   const resetKeyAnterior = useRef(resetKey);
+  const claveCarrosAnterior = useRef(claveCarros);
+  const claveRutaAnterior = useRef(claveRuta);
 
   useEffect(() => {
+    if (claveRuta !== claveRutaAnterior.current) {
+      claveRutaAnterior.current = claveRuta;
+      conservarPorCarros.current = false;
+      yaAjustado.current = false;
+    }
+    // Checked after claveRuta: switching cars also resets the picked route,
+    // and then the car change decides (the zoom is kept)
+    if (claveCarros !== claveCarrosAnterior.current) {
+      claveCarrosAnterior.current = claveCarros;
+      conservarPorCarros.current = huboAjuste.current;
+      yaAjustado.current = false;
+    }
     if (resetKey !== resetKeyAnterior.current) {
       yaAjustado.current = false;
       resetKeyAnterior.current = resetKey;
     }
 
     if (yaAjustado.current) return;
+    const conservar = conservarZoom || conservarPorCarros.current;
 
-    if (conservarZoom && puntos.length > 0) {
+    if (conservar && puntos.length > 0) {
       const m = margenesLibres(map);
       if (puntos.length === 1) {
         map.setView(puntos[0], map.getZoom(), { animate: false });
@@ -283,6 +309,7 @@ function AjustarVista({ puntos, resetKey, conservarZoom = false }) {
         }
       }
       yaAjustado.current = true;
+      huboAjuste.current = true;
       return;
     }
 
@@ -290,13 +317,15 @@ function AjustarVista({ puntos, resetKey, conservarZoom = false }) {
       const m = margenesLibres(map);
       map.fitBounds(puntos, { paddingTopLeft: [m.l, m.t], paddingBottomRight: [m.r, m.b] });
       yaAjustado.current = true;
+      huboAjuste.current = true;
     } else if (puntos.length === 1) {
       const m = margenesLibres(map);
       map.setView(puntos[0], 13, { animate: false });
       map.panBy([-(m.l - m.r) / 2, -(m.t - m.b) / 2], { animate: false });
       yaAjustado.current = true;
+      huboAjuste.current = true;
     }
-  }, [puntos, map, resetKey, conservarZoom]);
+  }, [puntos, map, resetKey, claveCarros, claveRuta, conservarZoom]);
 
   return null;
 }
@@ -727,7 +756,7 @@ function consultarLugarVisitado(lugar, deviceId) {
     lon_min: lugar.lon_min,
     lon_max: lugar.lon_max,
   });
-  if (deviceId) parametros.set("device_id", deviceId);
+  if (deviceId) parametros.set("vehiculo", deviceId);
   return pedirJSON(import.meta.env.BASE_URL + `api/lugar-visitado?${parametros}`);
 }
 
@@ -749,6 +778,17 @@ async function consultarLugarVariosCarros(lugar, ids) {
     visitado: respuestas.some((r) => r.visitado),
     porPrimero: Boolean(respuestas[0] && respuestas[0].visitado),
   };
+}
+
+// Initial values of the date filter, computed at call time (not at page load):
+// "Desde" = today 00:00 and "Hasta" = now, both in Bogota time, as
+// "YYYY-MM-DDTHH:mm" strings
+function valoresInicialesFiltro() {
+  const ahora = new Date();
+  const dia = ahora.toLocaleDateString("en-CA", OPCIONES_ZONA);
+  const [h, m] = formatearHoraCorta(ahora).split(":").map(Number);
+  const dos = (n) => String(n).padStart(2, "0");
+  return { desde: `${dia}T00:00`, hasta: `${dia}T${dos(h)}:${dos(m)}` };
 }
 
 // A car is reporting when its last point is at most 2 minutes old
@@ -847,7 +887,8 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo, ultimoTsCa
     let horasCarga = MARGEN_VIVO_H; // hours of the last full live load
     const base =
       import.meta.env.BASE_URL +
-      `api/historial-ubicaciones?device_id=${encodeURIComponent(deviceId)}`;
+      `api/historial-ubicaciones?vehiculo=${encodeURIComponent(deviceId)}` +
+      `&intervalo_s=${INTERVALO_MUESTREO_S}`;
 
     const cargar = async () => {
       const completo =
@@ -909,7 +950,9 @@ function useHistorialOtro(deviceId, activo, rangoActivo, lugarActivo, ultimoTsCa
 
 function App() {
   // Every car with its last position (/api/dispositivos): at most MAX_CARROS,
-  // ordered by device_id so each one always keeps the same colour
+  // ordered by alias (A01, A02...) so each one always keeps the same colour.
+  // The API never sends the real device id: a car is identified by its alias
+  // (vehiculo, "A01") and shown by its name (nombre, "Vehículo A01").
   const [carros, setCarros] = useState([]);
   // The car the tools work on (routes, filters, player, signs, point history)
   const [dispositivoActivo, setDispositivoActivo] = useState(null);
@@ -920,9 +963,6 @@ function App() {
   // null = "follow the most recent trip live". A number = pinned to that
   // specific trip index, regardless of new data arriving later.
   const [indiceRuta, setIndiceRuta] = useState(null);
-  // Live mode shows only the cars' last points by default; a route is drawn
-  // once one is picked (arrows, route list, player or a sign)
-  const [soloPunto, setSoloPunto] = useState(true);
 
   // Map view toggles
   const [centradoActivo, setCentradoActivo] = useState(false);
@@ -963,8 +1003,6 @@ function App() {
 
   // Date/time range filter state
   const hoy = new Date().toLocaleDateString("en-CA", OPCIONES_ZONA);
-  // Default end of the range: right now (the server rejects future dates)
-  const [ahoraH, ahoraM] = formatearHoraCorta(new Date()).split(":").map(Number);
   const [filtroAbierto, setFiltroAbierto] = useState(false);
   // Re-render every 30 s while the date panel is open, so the "now" limit of the pickers stays current
   const [, setTickLimite] = useState(0);
@@ -974,10 +1012,10 @@ function App() {
     return () => clearInterval(id);
   }, [filtroAbierto]);
   // Range as "YYYY-MM-DDTHH:mm" strings (Bogota time), one per end
-  const [desdeFH, setDesdeFH] = useState(`${hoy}T00:00`);
-  const [hastaFH, setHastaFH] = useState(
-    `${hoy}T${String(ahoraH).padStart(2, "0")}:${String(ahoraM).padStart(2, "0")}`
-  );
+  // Default end of the range: right now (the server rejects future dates).
+  // Recomputed each time the panel is opened in live mode (see abrirFiltroFecha).
+  const [desdeFH, setDesdeFH] = useState(() => valoresInicialesFiltro().desde);
+  const [hastaFH, setHastaFH] = useState(() => valoresInicialesFiltro().hasta);
   const [fhAbierto, setFhAbierto] = useState(null); // "desde" | "hasta" | null
   // null = live mode (last 24h). {desde, hasta} = explicit range applied.
   const [rangoActivo, setRangoActivo] = useState(null);
@@ -991,14 +1029,12 @@ function App() {
   const [lugarActivo, setLugarActivo] = useState(null); // {nombre, lat_min, lat_max, lon_min, lon_max}
 
   // Last position of the active car, and the other car (if there are two)
-  const location = carros.find((c) => c.device_id === dispositivoActivo) || null;
+  const location = carros.find((c) => c.vehiculo === dispositivoActivo) || null;
   const colorActivo = location ? location.color : COLORES_CARRO[0];
-  const otroCarro = carros.find((c) => c.device_id !== dispositivoActivo) || null;
+  const otroCarro = carros.find((c) => c.vehiculo !== dispositivoActivo) || null;
   const mostrarOtro = verAmbos && Boolean(location) && Boolean(otroCarro);
   // Live mode: no date or place filter (the filters apply to both cars)
   const sinFiltros = !rangoActivo && !lugarActivo;
-  // Only the last point(s) on the map, no route (live mode, by default)
-  const modoSoloPunto = soloPunto && sinFiltros;
 
   const fechaGPS = location ? parsearFechaGPS(location.timestamp_gps) : null;
   const estado = calcularEstado(fechaGPS);
@@ -1092,7 +1128,7 @@ function App() {
   // one while both are on the map
   const idsParaLugar = (deviceId) => [
     deviceId,
-    ...(verAmbos ? carros.filter((c) => c.device_id !== deviceId).map((c) => c.device_id) : []),
+    ...(verAmbos ? carros.filter((c) => c.vehiculo !== deviceId).map((c) => c.vehiculo) : []),
   ];
 
   useEffect(() => {
@@ -1197,7 +1233,6 @@ function App() {
     setSugerenciasLugar([]);
     setSinResultadosLugar(false);
     setIndiceRuta(null);
-    setSoloPunto(true);
   };
 
   // ----- Pin filter: a point chosen on the map instead of a searched place -----
@@ -1302,30 +1337,17 @@ function App() {
     return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}${cortadaInicio || cortadaFin ? " · recortada" : ""}`;
   }, [puntosRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
 
-  // In live mode the "last point only" view sits after the newest route:
-  // Anterior from it shows the newest route, Siguiente from the newest route
-  // goes back to it.
   const verRutaAnterior = () => {
-    if (modoSoloPunto) {
-      setSoloPunto(false);
-      setIndiceRuta(null);
-      return;
-    }
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
 
   const verRutaSiguiente = () => {
-    if (sinFiltros && siguiendoActual) {
-      setSoloPunto(true);
-      return;
-    }
     const siguiente = indiceMostrado + 1;
     setIndiceRuta(siguiente >= rutas.length - 1 ? null : siguiente);
   };
 
   // The newest route is always "following the live position" (null)
   const irARuta = (indice) => {
-    setSoloPunto(false);
     setIndiceRuta(indice >= rutas.length - 1 ? null : indice);
   };
 
@@ -1351,7 +1373,6 @@ function App() {
   const senalElegida = senalesRuta.some((d) => d.id === senalSel) ? senalSel : null;
 
   const elegirSenal = (senal) => {
-    setSoloPunto(false);
     setSenalSel(senal.id);
     setSenalesVisibles(true);
     // On phones the history is a bottom sheet over the map: close it to see the sign
@@ -1410,10 +1431,9 @@ function App() {
     });
   }, [rutas]);
 
-  // "Actual": back to the newest route, or to the last point in live mode
+  // "Actual": back to the newest route
   const volverARutaActual = () => {
     setIndiceRuta(null);
-    if (sinFiltros) setSoloPunto(true);
   };
 
   const dosDigitos = (n) => String(n).padStart(2, "0");
@@ -1474,10 +1494,22 @@ function App() {
     if (!rangoInvalido) setFiltrosVisibles(false);
   };
 
+  // Opens the date panel. With no range applied, the fields start from the
+  // current moment (today 00:00 -> now), not from when the page was loaded;
+  // an applied range keeps the user's values so they can adjust them.
+  const abrirFiltroFecha = () => {
+    if (!rangoActivo) {
+      const { desde, hasta } = valoresInicialesFiltro();
+      setDesdeFH(desde);
+      setHastaFH(hasta);
+    }
+    setFhAbierto(null);
+    setFiltroAbierto(true);
+  };
+
   const quitarFiltro = () => {
     setRangoActivo(null);
     setIndiceRuta(null);
-    setSoloPunto(true);
     setFiltroAbierto(false);
   };
 
@@ -1498,19 +1530,19 @@ function App() {
           // the cars that reported most recently...
           .sort((a, b) => (a.timestamp_gps < b.timestamp_gps ? 1 : -1))
           .slice(0, MAX_CARROS)
-          // ...in device_id order, so the colours never swap
-          .sort((a, b) => String(a.device_id).localeCompare(String(b.device_id)))
+          // ...in alias order, so the colours never swap
+          .sort((a, b) => String(a.vehiculo).localeCompare(String(b.vehiculo)))
           .map((carro, i) => ({ ...carro, color: COLORES_CARRO[i] }));
         setCarros(lista);
         // Default active car: the one that reported last (what the page showed
         // with a single device). A car that is still listed stays active.
         setDispositivoActivo((actual) => {
-          if (lista.some((c) => c.device_id === actual)) return actual;
+          if (lista.some((c) => c.vehiculo === actual)) return actual;
           const reciente = lista.reduce(
             (m, c) => (!m || c.timestamp_gps > m.timestamp_gps ? c : m),
             null
           );
-          return reciente ? reciente.device_id : null;
+          return reciente ? reciente.vehiculo : null;
         });
         registrarExito("ubicacion", MENSAJE_RECUPERADA);
       } catch (error) {
@@ -1541,13 +1573,13 @@ function App() {
   // reporting long ago needs a longer window to bring its most recent route)
   const ultimosTs = useRef({});
   useEffect(() => {
-    ultimosTs.current = Object.fromEntries(carros.map((c) => [c.device_id, c.timestamp_gps]));
+    ultimosTs.current = Object.fromEntries(carros.map((c) => [c.vehiculo, c.timestamp_gps]));
   }, [carros]);
 
   useEffect(() => {
     // Nothing to ask for until /api/dispositivos says which car is active
     if (!dispositivoActivo) return undefined;
-    const paramDevice = `device_id=${encodeURIComponent(dispositivoActivo)}`;
+    const paramDevice = `vehiculo=${encodeURIComponent(dispositivoActivo)}`;
     let horasCarga = MARGEN_VIVO_H; // hours of the last full live load
 
     const modoVivo = !rangoActivo && !lugarActivo;
@@ -1573,7 +1605,7 @@ function App() {
           const horas = lugarActivo ? VENTANA_LUGAR_H : horasCarga;
           url += `?horas=${horas}`;
         }
-        url += `&${paramDevice}`;
+        url += `&${paramDevice}&intervalo_s=${INTERVALO_MUESTREO_S}`;
         const data = await pedirJSON(url);
         if (cancelado) return;
         const filas = Array.isArray(data) ? data : [];
@@ -1666,7 +1698,6 @@ function App() {
   const elegirDispositivo = (id) => {
     if (id === dispositivoActivo) return;
     setDispositivoActivo(id);
-    setSoloPunto(true);
     setHistorial([]);
     setDetecciones([]);
     setIndiceRuta(null);
@@ -1685,8 +1716,8 @@ function App() {
 
   // Tapping the active car's card flies to it; tapping the other one makes it active
   const alTocarTarjeta = (carro) => {
-    if (carro.device_id !== dispositivoActivo) {
-      elegirDispositivo(carro.device_id);
+    if (carro.vehiculo !== dispositivoActivo) {
+      elegirDispositivo(carro.vehiculo);
     } else {
       setVueloA({
         centro: [Number(carro.latitud), Number(carro.longitud)],
@@ -1699,7 +1730,7 @@ function App() {
   // The other car, as the page worked with a single device: its most recent
   // route within the active filters (live window, dates or place), drawn fainter
   const puntosOtro = useHistorialOtro(
-    otroCarro ? otroCarro.device_id : null,
+    otroCarro ? otroCarro.vehiculo : null,
     mostrarOtro,
     rangoActivo,
     lugarActivo,
@@ -1730,25 +1761,29 @@ function App() {
   // With a filter it also fits when only the other car has a matching route.
   const extraAjuste = !mostrarOtro
     ? []
-    : !sinFiltros && lineaOtro.length > 0
+    : lineaOtro.length > 0
       ? lineaOtro
       : marcadorOtro
         ? [marcadorOtro.pos]
         : [];
-  // Last point only: fit the cars' points (keeping the zoom); otherwise the routes
-  const puntosAjuste = modoSoloPunto
+  // Fit the routes on screen. Following the newest route, the other car's route
+  // (in "Ambos") is fitted too; in live mode a car with no route yet is fitted
+  // by its last position.
+  const puntosAjuste = siguiendoActual
     ? [
-        ...(location ? [[Number(location.latitud), Number(location.longitud)]] : []),
+        ...(ruta.length > 0
+          ? ruta
+          : sinFiltros && location
+            ? [[Number(location.latitud), Number(location.longitud)]]
+            : []),
         ...extraAjuste,
       ]
-    : siguiendoActual && (ruta.length > 0 || !sinFiltros)
-      ? [...ruta, ...extraAjuste]
-      : ruta;
+    : ruta;
 
   // Data for the cards over the map: both cars, or only the active one
   const tarjetas = (mostrarOtro ? carros : location ? [location] : []).map((carro) => {
     const f = parsearFechaGPS(carro.timestamp_gps);
-    const esActivo = carro.device_id === dispositivoActivo;
+    const esActivo = carro.vehiculo === dispositivoActivo;
     return {
       carro,
       estado: calcularEstado(f),
@@ -1822,9 +1857,9 @@ function App() {
             <div className={`panel panel-carros ${tarjetas.length > 1 ? "dos" : ""}`}>
               {tarjetas.map((t) => (
                 <TarjetaCarro
-                  key={t.carro.device_id}
+                  key={t.carro.vehiculo}
                   carro={t.carro}
-                  activa={tarjetas.length > 1 && t.carro.device_id === dispositivoActivo}
+                  activa={tarjetas.length > 1 && t.carro.vehiculo === dispositivoActivo}
                   estado={t.estado}
                   hora={t.hora}
                   fecha={t.fecha}
@@ -1857,7 +1892,7 @@ function App() {
                   <button
                     className="nav-btn nav-flecha"
                     onClick={verRutaAnterior}
-                    disabled={!modoSoloPunto && indiceMostrado === 0}
+                    disabled={indiceMostrado === 0}
                     aria-label="Ruta anterior"
                     title="Ruta anterior"
                   >
@@ -1867,19 +1902,15 @@ function App() {
                     </svg>
                   </button>
                   <SelectorRuta
-                    etiqueta={
-                      modoSoloPunto
-                        ? `\u00daltimo punto \u00b7 ${rutas.length} ${rutas.length === 1 ? "ruta reciente" : "rutas recientes"}`
-                        : etiquetaRuta
-                    }
+                    etiqueta={etiquetaRuta}
                     opciones={opcionesRutas}
-                    indice={modoSoloPunto ? -1 : indiceMostrado}
+                    indice={indiceMostrado}
                     onElegir={irARuta}
                   />
                   <button
                     className="nav-btn nav-flecha"
                     onClick={verRutaSiguiente}
-                    disabled={modoSoloPunto || (siguiendoActual && !sinFiltros)}
+                    disabled={siguiendoActual}
                     aria-label="Ruta siguiente"
                     title="Ruta siguiente"
                   >
@@ -1889,7 +1920,7 @@ function App() {
                     </svg>
                   </button>
                   {/* Shortcut to the newest route; only useful when "Siguiente" is not already it */}
-                  {!modoSoloPunto && indiceMostrado < rutas.length - (sinFiltros ? 1 : 2) && (
+                  {indiceMostrado < rutas.length - 2 && (
                     <button className="nav-btn primario" onClick={volverARutaActual} aria-label="Ruta actual">
                       <span className="nav-texto">Actual</span> &raquo;
                     </button>
@@ -1976,7 +2007,7 @@ function App() {
               </div>
               ) : (
                 <div className="filtros-chips">
-                  <button className={`filtro-toggle ${rangoActivo ? "activo" : ""}`} onClick={() => { setFhAbierto(null); setFiltroAbierto(true); }}>
+                  <button className={`filtro-toggle ${rangoActivo ? "activo" : ""}`} onClick={abrirFiltroFecha}>
                     <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <rect x="3" y="5" width="18" height="16" rx="3" />
@@ -2059,7 +2090,7 @@ function App() {
               {mensajeLugar && (
                 <p className="lugar-mensaje" role="status">
                   {/* With two cars, say which one the message is about (the active one) */}
-                  {carros.length > 1 ? `${dispositivoActivo}: ${mensajeLugar}` : mensajeLugar}
+                  {carros.length > 1 && location ? `${location.nombre}: ${mensajeLugar}` : mensajeLugar}
                 </p>
               )}
             </div>
@@ -2076,8 +2107,6 @@ function App() {
               reproductorAbierto={reproductorAbierto}
               puedeReproducir={puntosNorm.length >= 2}
               onReproducir={() => {
-                // The player shows its route on the map
-                if (!reproductorAbierto) setSoloPunto(false);
                 setReproductorAbierto(!reproductorAbierto);
               }}
               capasAbierto={capasAbierto}
@@ -2170,7 +2199,7 @@ function App() {
             </div>
 
             
-            {!modoSoloPunto && ruta.length > 1 && (
+            {ruta.length > 1 && (
               <div className="legend">
                 <div className="legend-item">
                   <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
@@ -2237,22 +2266,23 @@ function App() {
 
               <AjustarVista
                 puntos={puntosAjuste}
-                conservarZoom={modoSoloPunto}
-                resetKey={modoSoloPunto ? `punto|${mostrarOtro ? "ambos" : dispositivoActivo}` : `${dispositivoActivo}|${mostrarOtro ? "ambos" : ""}${lineaOtro.length > 0 ? "+" : ""}|${indiceMostrado}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}|${puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : ""}`}
+                claveCarros={`${dispositivoActivo}|${mostrarOtro ? "ambos" : "solo"}`}
+                claveRuta={`${indiceRuta ?? "actual"}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}`}
+                resetKey={`${dispositivoActivo}|${mostrarOtro ? "ambos" : ""}${lineaOtro.length > 0 ? "+" : ""}|${indiceMostrado}|${rangoActivo ? rangoActivo.desde + rangoActivo.hasta + (rangoActivo.completar ? "c" : "") : ""}|${lugarActivo ? lugarActivo.nombre : ""}|${puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : ""}`}
               />
 
               <SeguirPunto
-                lat={modoSoloPunto && location ? Number(location.latitud) : ultimoPunto ? ultimoPunto[0] : null}
-                lon={modoSoloPunto && location ? Number(location.longitud) : ultimoPunto ? ultimoPunto[1] : null}
+                lat={ultimoPunto ? ultimoPunto[0] : sinFiltros && location ? Number(location.latitud) : null}
+                lon={ultimoPunto ? ultimoPunto[1] : sinFiltros && location ? Number(location.longitud) : null}
                 activo={centradoActivo}
               />
 
               {/* The other car, in its colour and fainter; tapping it makes it the active one */}
-              {mostrarOtro && !sinFiltros && lineaOtro.length > 1 && (
+              {mostrarOtro && lineaOtro.length > 1 && (
                 <Polyline
                   positions={lineaOtro}
                   pathOptions={{ color: otroCarro.color, weight: 3, opacity: 0.6 }}
-                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.device_id) }}
+                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.vehiculo) }}
                 />
               )}
               {marcadorOtro && (
@@ -2261,10 +2291,10 @@ function App() {
                   icon={iconoCarro(otroCarro.color, marcadorOtro.inactivo)}
                   title={
                     sinFiltros
-                      ? `${otroCarro.device_id}: toca para ver sus rutas`
-                      : `${otroCarro.device_id}: fin de su ruta m\u00e1s reciente en el filtro. Toca para ver sus rutas`
+                      ? `${otroCarro.nombre}: toca para ver sus rutas`
+                      : `${otroCarro.nombre}: fin de su ruta m\u00e1s reciente en el filtro. Toca para ver sus rutas`
                   }
-                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.device_id) }}
+                  eventHandlers={{ click: () => elegirDispositivo(otroCarro.vehiculo) }}
                 />
               )}
 
@@ -2275,15 +2305,15 @@ function App() {
                 <Marker
                   position={[Number(location.latitud), Number(location.longitud)]}
                   icon={iconoCarro(colorActivo, !reportandoAhora(fechaGPS))}
-                  title={`${location.device_id}: \u00faltima posici\u00f3n`}
+                  title={`${location.nombre}: \u00faltima posici\u00f3n`}
                 />
               )}
 
-              {!modoSoloPunto && rutaDibujada.length > 1 && (
+              {rutaDibujada.length > 1 && (
                 <Polyline positions={rutaDibujada} pathOptions={{ color: colorActivo, weight: 3, opacity: 0.8 }} />
               )}
 
-              {!modoSoloPunto && ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
+              {ruta.length > 1 && <Marker position={ruta[0]} icon={cortadaInicio ? iconoInicioCortado : iconoInicio} />}
 
               {ruta.length > 0 && (
                 <Marker
@@ -2299,7 +2329,7 @@ function App() {
                             ? "Posici\u00f3n actual"
                             : "\u00daltima posici\u00f3n conocida"
                           : "Fin de la ruta") +
-                        (carros.length > 1 ? ` · ${dispositivoActivo}` : "")
+                        (carros.length > 1 && location ? ` · ${location.nombre}` : "")
                       }
                       punto={ultimaLectura}
                       velocidadKmh={velocidadActualKmh}
@@ -2347,8 +2377,8 @@ function App() {
                 etiquetaAbajo={Boolean(pinActivo)}
               />
               <VolarA destino={vueloA} margenSuperior={margenSuperior} />
-            {!modoSoloPunto && paradasVisibles && <MarcadoresParada paradas={paradas} />}
-            {!modoSoloPunto && senalesVisibles && (
+            {paradasVisibles && <MarcadoresParada paradas={paradas} />}
+            {senalesVisibles && (
               <MarcadoresSenal
                 senales={senalesRuta}
                 seleccionada={senalElegida}

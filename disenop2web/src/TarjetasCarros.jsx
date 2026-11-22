@@ -15,19 +15,19 @@ export function SelectorCarros({ carros, activo, verAmbos, onAmbos, onCarro }) {
         Ambos
       </button>
       {carros.map((carro) => {
-        const elegido = !verAmbos && carro.device_id === activo;
+        const elegido = !verAmbos && carro.vehiculo === activo;
         return (
           <button
-            key={carro.device_id}
+            key={carro.vehiculo}
             type="button"
             className={elegido ? "activo" : ""}
             aria-pressed={elegido}
-            onClick={() => onCarro(carro.device_id)}
-            title={`Ver solo ${carro.device_id}`}
+            onClick={() => onCarro(carro.vehiculo)}
+            title={`Ver solo ${carro.nombre}`}
             style={{ "--color-carro": carro.color }}
           >
             <span className="selector-carros-color" aria-hidden="true" />
-            <span className="selector-carros-texto">{carro.device_id}</span>
+            <span className="selector-carros-texto">{carro.nombre}</span>
           </button>
         );
       })}
@@ -35,7 +35,7 @@ export function SelectorCarros({ carros, activo, verAmbos, onAmbos, onCarro }) {
   );
 }
 
-// Card of one car over the top of the map: its colour, device_id, status,
+// Card of one car over the top of the map: its colour, name (alias), status,
 // approximate address, time of the last point and speed (while reporting).
 // The active car is highlighted; tapping another card makes it active, and
 // tapping the active one flies the map to it.
@@ -50,11 +50,11 @@ export function TarjetaCarro({ carro, activa, estado, hora, fecha, velocidadKmh,
       style={{ "--color-carro": carro.color }}
       onClick={() => onElegir(carro)}
       aria-pressed={activa}
-      title={activa ? `Centrar el mapa en ${carro.device_id}` : `Ver las rutas de ${carro.device_id}`}
+      title={activa ? `Centrar el mapa en ${carro.nombre}` : `Ver las rutas de ${carro.nombre}`}
     >
       <span className="tarjeta-carro-cabecera">
         <span className="tarjeta-carro-color" aria-hidden="true" />
-        <span className="tarjeta-carro-id">{carro.device_id}</span>
+        <span className="tarjeta-carro-id">{carro.nombre}</span>
         <span className="tarjeta-carro-estado">
           <span className={`dot dot-${estado.tier}`} aria-hidden="true" />
           <span className="tarjeta-carro-estado-texto">{estado.texto}</span>

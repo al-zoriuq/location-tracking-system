@@ -5,6 +5,7 @@ import psycopg2.errors  # UndefinedTable, see /api/detecciones-senal
 from psycopg2.extras import RealDictCursor
 import os
 import math
+import re
 import threading
 import time
 import requests
@@ -282,46 +283,188 @@ def error_bd(e):
     return jsonify({"error": "Error consultando la base de datos"}), 500
 
 
+# VEHICLE ALIASES
+#
+# The page never sees a device_id: each device gets an alias from the
+# alias_dispositivos table (created by hand in the database), whose identity
+# column numbers devices in order of appearance and never reuses a number.
+#   numero 1 -> "A01" ... 99 -> "A99", 100 -> "B01" ... 2574 -> "Z99", 2575 -> "AA01"
+# The API identifies cars by that alias ("vehiculo") and the page shows it as
+# "Vehículo A01". device_id is still accepted as a query param (test scripts),
+# but no response includes it.
+
+ALIAS_POR_LETRA = 99
+PATRON_ALIAS = re.compile(r"^([A-Z]+)(\d{2})$")
+
+
+class TablaAliasFaltante(Exception):
+    """The alias_dispositivos table does not exist in this database."""
+
+
+@app.errorhandler(TablaAliasFaltante)
+def error_tabla_alias(e):
+    # Never fall back to showing device_id: the page gets a clear error instead
+    app.logger.error("La tabla alias_dispositivos no existe en esta base de datos")
+    return jsonify({
+        "error": "Falta configurar los alias de los vehículos en la base de datos."
+    }), 503
+
+
+def _letras(indice):
+    # 0 -> A ... 25 -> Z, 26 -> AA, 27 -> AB ...
+    texto = ""
+    n = indice + 1
+    while n:
+        n, resto = divmod(n - 1, 26)
+        texto = chr(ord("A") + resto) + texto
+    return texto
+
+
+def alias_de_numero(numero):
+    indice_letra, resto = divmod(numero - 1, ALIAS_POR_LETRA)
+    return f"{_letras(indice_letra)}{resto + 1:02d}"
+
+
+def numero_de_alias(alias):
+    """"A01" -> 1, "B01" -> 100. None when the text is not a valid alias."""
+    m = PATRON_ALIAS.match((alias or "").strip().upper())
+    if not m or m.group(2) == "00":
+        return None
+    indice = 0
+    for letra in m.group(1):
+        indice = indice * 26 + (ord(letra) - ord("A") + 1)
+    return (indice - 1) * ALIAS_POR_LETRA + int(m.group(2))
+
+
+def nombre_vehiculo(alias):
+    return f"Vehículo {alias}"
+
+
+# Gives an alias to the listed devices that still have none, in order of first
+# appearance. Rows that already have one are skipped BEFORE drawing a number,
+# so no number of the sequence is wasted on them. The sniffer does the same for
+# each new device as it arrives; this is the safety net for devices that
+# reported before the table existed or while an older sniffer was running.
+SQL_ASIGNAR_ALIAS_FALTANTES = """
+    INSERT INTO alias_dispositivos (device_id)
+    SELECT u.device_id
+    FROM ubicaciones u
+    WHERE u.device_id = ANY(%s)
+      AND NOT EXISTS (
+          SELECT 1 FROM alias_dispositivos a WHERE a.device_id = u.device_id
+      )
+    GROUP BY u.device_id
+    ORDER BY MIN(u.id)
+    ON CONFLICT (device_id) DO NOTHING
+"""
+
+# alias -> device_id, filled on demand. An alias never changes owner, so a
+# resolved one can be kept for the life of the process.
+_cache_alias = {}
+_candado_alias = threading.Lock()
+
+
+def asignar_alias_faltantes(cursor, device_ids):
+    if not device_ids:
+        return
+    try:
+        cursor.execute(SQL_ASIGNAR_ALIAS_FALTANTES, (list(device_ids),))
+        cursor.connection.commit()
+    except psycopg2.errors.UndefinedTable as e:
+        raise TablaAliasFaltante() from e
+
+
+def device_de_alias(alias):
+    """device_id of an alias, or None if no device has it."""
+    numero = numero_de_alias(alias)
+    if numero is None:
+        return None
+    with _candado_alias:
+        if numero in _cache_alias:
+            return _cache_alias[numero]
+    with cursor_bd() as cursor:
+        try:
+            cursor.execute(
+                "SELECT device_id FROM alias_dispositivos WHERE numero = %s", (numero,)
+            )
+        except psycopg2.errors.UndefinedTable as e:
+            raise TablaAliasFaltante() from e
+        fila = cursor.fetchone()
+    if fila is None:
+        return None
+    with _candado_alias:
+        _cache_alias[numero] = fila["device_id"]
+    return fila["device_id"]
+
+
+def dispositivo_pedido():
+    """Device asked for in the query string, as (device_id, None), or
+    (None, error response). ?vehiculo=A01 is what the page sends; ?device_id=
+    is kept for the test scripts. Neither -> (None, None): the endpoint uses
+    its usual default (the device of the latest point)."""
+    vehiculo = request.args.get("vehiculo", default=None, type=str)
+    if vehiculo is not None:
+        if numero_de_alias(vehiculo) is None:
+            return None, (jsonify({"error": "El parámetro 'vehiculo' no es válido (ej.: A01)"}), 400)
+        device_id = device_de_alias(vehiculo)
+        if device_id is None:
+            return None, (jsonify({"error": f"No existe el vehículo {vehiculo.strip().upper()}"}), 404)
+        return device_id, None
+    return request.args.get("device_id", default=None, type=str), None
+
+
+# A location row as the API returns it: the alias instead of the device_id
+def fila_con_alias(fila):
+    numero = fila.pop("numero", None)
+    fila.pop("device_id", None)
+    alias = alias_de_numero(numero)
+    return {"vehiculo": alias, "nombre": nombre_vehiculo(alias), **fila}
+
+
 # API - LATEST LOCATION
 
-# Returns only the single most recent GPS point.
-#   ?device_id=xyz  -> the most recent point of that device
+# Returns only the single most recent GPS point, with the vehicle's alias.
+#   ?vehiculo=A01   -> the most recent point of that vehicle
+#   ?device_id=xyz  -> same, by device_id (test scripts)
+SQL_ULTIMA_UBICACION = """
+    SELECT
+        u.device_id,
+        a.numero,
+        u.ip_origen,
+        u.latitud,
+        u.longitud,
+        u.timestamp_gps,
+        u.timestamp_recepcion
+    FROM ubicaciones u
+    LEFT JOIN alias_dispositivos a ON a.device_id = u.device_id
+    {filtro}
+    ORDER BY u.id DESC
+    LIMIT 1
+"""
+
+
 @app.route("/api/ultima-ubicacion")
 def ultima_ubicacion():
 
-    device_id = request.args.get("device_id", default=None, type=str)
+    device_id, error = dispositivo_pedido()
+    if error:
+        return error
+
+    filtro = "WHERE u.device_id = %s" if device_id else ""
+    params = (device_id,) if device_id else ()
 
     with cursor_bd() as cursor:
+        try:
+            cursor.execute(SQL_ULTIMA_UBICACION.format(filtro=filtro), params)
+            ubicacion = cursor.fetchone()
 
-        if device_id:
-            cursor.execute("""
-                SELECT
-                    device_id,
-                    ip_origen,
-                    latitud,
-                    longitud,
-                    timestamp_gps,
-                    timestamp_recepcion
-                FROM ubicaciones
-                WHERE device_id = %s
-                ORDER BY id DESC
-                LIMIT 1
-            """, (device_id,))
-        else:
-            cursor.execute("""
-                SELECT
-                    device_id,
-                    ip_origen,
-                    latitud,
-                    longitud,
-                    timestamp_gps,
-                    timestamp_recepcion
-                FROM ubicaciones
-                ORDER BY id DESC
-                LIMIT 1
-            """)
-
-        ubicacion = cursor.fetchone()
+            # A device without an alias yet gets one now
+            if ubicacion is not None and ubicacion["numero"] is None:
+                asignar_alias_faltantes(cursor, [ubicacion["device_id"]])
+                cursor.execute(SQL_ULTIMA_UBICACION.format(filtro=filtro), params)
+                ubicacion = cursor.fetchone()
+        except psycopg2.errors.UndefinedTable as e:
+            raise TablaAliasFaltante() from e
 
 
     if ubicacion is None:
@@ -330,49 +473,71 @@ def ultima_ubicacion():
             "error": "No hay ubicaciones registradas"
         }), 404
 
+    if ubicacion["numero"] is None:
+        # Never answer with the bare device_id
+        raise TablaAliasFaltante()
 
     # Convert datetime objects to plain strings so they can be JSON-serialized
-    ubicacion["timestamp_gps"] = str(
-        ubicacion["timestamp_gps"]
-    )
+    ubicacion["timestamp_gps"] = str(ubicacion["timestamp_gps"])
+    ubicacion["timestamp_recepcion"] = str(ubicacion["timestamp_recepcion"])
 
-    ubicacion["timestamp_recepcion"] = str(
-        ubicacion["timestamp_recepcion"]
-    )
-
-
-    return jsonify(ubicacion)
+    return jsonify(fila_con_alias(ubicacion))
 
 
 # API - DEVICES
 
 # Every device that has ever reported, each with its most recent GPS point
-# (newest by GPS time). The frontend uses it for the device cards and the
-# current-position markers, so one request covers all the cars.
+# (newest by GPS time) and its alias. The frontend uses it for the device
+# cards and the current-position markers, so one request covers all the cars.
+# Devices without an alias get one here (see SQL_ASIGNAR_ALIAS_FALTANTES).
+SQL_DISPOSITIVOS = """
+    SELECT DISTINCT ON (u.device_id)
+        u.device_id,
+        a.numero,
+        u.ip_origen,
+        u.latitud,
+        u.longitud,
+        u.timestamp_gps,
+        u.timestamp_recepcion
+    FROM ubicaciones u
+    LEFT JOIN alias_dispositivos a ON a.device_id = u.device_id
+    ORDER BY u.device_id, u.timestamp_gps DESC, u.id DESC
+"""
+
+
 @app.route("/api/dispositivos")
 def dispositivos():
 
     with cursor_bd() as cursor:
+        try:
+            cursor.execute(SQL_DISPOSITIVOS)
+            filas = cursor.fetchall()
 
-        cursor.execute("""
-            SELECT DISTINCT ON (device_id)
-                device_id,
-                ip_origen,
-                latitud,
-                longitud,
-                timestamp_gps,
-                timestamp_recepcion
-            FROM ubicaciones
-            ORDER BY device_id, timestamp_gps DESC, id DESC
-        """)
+            # Rows with an empty device_id (old data) can never get an alias:
+            # skipping them avoids a pointless write on every request
+            sin_alias = [
+                f["device_id"] for f in filas
+                if f["numero"] is None and f["device_id"] is not None
+            ]
+            if sin_alias:
+                asignar_alias_faltantes(cursor, sin_alias)
+                cursor.execute(SQL_DISPOSITIVOS)
+                filas = cursor.fetchall()
+        except psycopg2.errors.UndefinedTable as e:
+            raise TablaAliasFaltante() from e
 
-        filas = cursor.fetchall()
-
+    resultado = []
     for fila in filas:
+        # A device still without an alias is left out rather than shown by its device_id
+        if fila["numero"] is None:
+            continue
         fila["timestamp_gps"] = str(fila["timestamp_gps"])
         fila["timestamp_recepcion"] = str(fila["timestamp_recepcion"])
+        resultado.append(fila_con_alias(fila))
 
-    return jsonify(filas)
+    # Ordered by alias ("A01" < "A99" < "B01" for the same number of letters)
+    resultado.sort(key=lambda f: numero_de_alias(f["vehiculo"]))
+    return jsonify(resultado)
 
 
 # DATE FILTER PARSING
@@ -436,6 +601,42 @@ def validar_rango(desde_texto, hasta_texto):
     return desde, hasta, None
 
 
+# Limits of the intervalo_s sampling param of /api/historial-ubicaciones
+INTERVALO_MIN_S = 1
+INTERVALO_MAX_S = 300
+
+
+# Start of the intervalo_s block that contains a (naive) timestamp. Same
+# alignment as muestrear_sql: PostgreSQL's EXTRACT(EPOCH FROM timestamp) reads
+# a timestamp without zone as if it were UTC, so this does the same.
+def inicio_bloque(fecha, intervalo_s):
+    segundos = (fecha - datetime(1970, 1, 1)).total_seconds()
+    return datetime(1970, 1, 1) + timedelta(seconds=math.floor(segundos / intervalo_s) * intervalo_s)
+
+
+# Wraps a history query (one device, ordered by timestamp_gps) so it returns
+# only the FIRST point of each fixed block of intervalo_s seconds. Blocks are
+# aligned to the clock (epoch // N), so the same block always yields the same
+# point: repeated or overlapping requests (despues_de) never produce two
+# different points for one complete block, and the client's merge by
+# timestamp_gps drops the repeats. Without intervalo_s the query is unchanged.
+# intervalo_s is an int already validated against the limits above.
+def muestrear_sql(sql, intervalo_s):
+    if not intervalo_s:
+        return sql
+    n = int(intervalo_s)
+    return f"""
+        SELECT ip_origen, latitud, longitud, timestamp_gps
+        FROM (
+            SELECT DISTINCT ON (FLOOR(EXTRACT(EPOCH FROM t.timestamp_gps) / {n}))
+                t.ip_origen, t.latitud, t.longitud, t.timestamp_gps
+            FROM ({sql}) AS t
+            ORDER BY FLOOR(EXTRACT(EPOCH FROM t.timestamp_gps) / {n}), t.timestamp_gps ASC
+        ) AS muestreo
+        ORDER BY timestamp_gps ASC
+    """
+
+
 # API - LOCATION HISTORY (used to draw the route line and list every point)
 
 # Returns all points within the last N hours (defaults to 24), ordered oldest
@@ -448,13 +649,28 @@ def historial_ubicaciones():
     # Optional query params:
     #   ?horas=48                        -> last N hours (default)
     #   ?desde=...&hasta=...             -> explicit range (ISO format)
-    #   ?device_id=xyz                   -> filter by device
+    #   ?vehiculo=A01                    -> filter by vehicle alias
+    #   ?device_id=xyz                   -> filter by device (test scripts)
     horas = request.args.get("horas", default=24, type=int)
-    device_id = request.args.get("device_id", default=None, type=str)
     desde = request.args.get("desde", default=None, type=str)
     hasta = request.args.get("hasta", default=None, type=str)
     despues_de = request.args.get("despues_de", default=None, type=str)
     margen_horas = request.args.get("margen_horas", default=0, type=int)
+
+    # Optional sampling: one point per block of N seconds (see muestrear_sql).
+    # Devices may report every second; the web map only needs one point every
+    # few seconds, and the full detail stays in the database.
+    intervalo_texto = request.args.get("intervalo_s", default=None, type=str)
+    intervalo_s = None
+    if intervalo_texto is not None:
+        try:
+            intervalo_s = int(intervalo_texto)
+        except ValueError:
+            intervalo_s = None
+        if intervalo_s is None or not (INTERVALO_MIN_S <= intervalo_s <= INTERVALO_MAX_S):
+            return jsonify({
+                "error": f"'intervalo_s' debe ser un entero entre {INTERVALO_MIN_S} y {INTERVALO_MAX_S}"
+            }), 400
 
     # Validate before touching the database: a bad range answers 400 with JSON
     rango_explicito = bool(desde or hasta)
@@ -474,6 +690,12 @@ def historial_ubicaciones():
                 "error": "Formato de fecha inválido en 'despues_de' (usa AAAA-MM-DD HH:MM:SS)"
             }), 400
 
+    # With sampling, move the incremental lower bound back to the start of its
+    # block: a bound in the middle of a block would pick a different "first
+    # point" for it than the full load did, adding an extra point each poll.
+    if despues_de_fecha is not None and intervalo_s:
+        despues_de_fecha = inicio_bloque(despues_de_fecha, intervalo_s) - timedelta(microseconds=1)
+
     # Widen a validated range on both sides so the client can complete routes
     # that cross its edges. The far end is clamped to the server's own "now":
     # a widened range is never a future date.
@@ -482,12 +704,21 @@ def historial_ubicaciones():
         desde = desde - margen
         hasta = min(hasta + margen, ahora_local())
 
+    # Resolved after validating the other params: a bad request never opens the database
+    device_id, error = dispositivo_pedido()
+    if error:
+        return error
+
     with cursor_bd() as cursor:
+
+        # Every query below goes through here, so sampling applies to all of them
+        def ejecutar(sql, params):
+            cursor.execute(muestrear_sql(sql, intervalo_s), params)
 
         # Incremental polling takes priority over the rest
         if despues_de_fecha is not None:
             if device_id:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -499,7 +730,7 @@ def historial_ubicaciones():
                     ORDER BY timestamp_gps ASC
                 """, (despues_de_fecha, device_id))
             else:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -516,7 +747,7 @@ def historial_ubicaciones():
         # Explicit date range takes priority over the "last N hours" default
         elif rango_explicito:
             if device_id:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -528,7 +759,7 @@ def historial_ubicaciones():
                     ORDER BY timestamp_gps ASC
                 """, (desde, hasta, device_id))
             else:
-                cursor.execute("""
+                ejecutar("""
                     SELECT
                         ip_origen,
                         latitud,
@@ -543,7 +774,7 @@ def historial_ubicaciones():
                 """, (desde, hasta))
 
         elif device_id:
-            cursor.execute("""
+            ejecutar("""
                 SELECT
                     ip_origen,
                     latitud,
@@ -556,7 +787,7 @@ def historial_ubicaciones():
             """, (horas, device_id))
 
         else:
-            cursor.execute("""
+            ejecutar("""
                 SELECT
                     ip_origen,
                     latitud,
@@ -586,13 +817,12 @@ def historial_ubicaciones():
 # to its route by time:
 #   ?horas=72 (default 24)              -> last N hours
 #   ?desde=...&hasta=...[&margen_horas=N] -> explicit range, optionally widened
-#   ?device_id=xyz                      -> defaults to the device of the latest point
+#   ?vehiculo=A01 (or ?device_id=xyz)   -> defaults to the device of the latest point
 # Filtered by timestamp_gps, the time of the location sent with the sign.
 @app.route("/api/detecciones-senal")
 def detecciones_senal():
 
     horas = request.args.get("horas", default=24, type=int)
-    device_id = request.args.get("device_id", default=None, type=str)
     desde = request.args.get("desde", default=None, type=str)
     hasta = request.args.get("hasta", default=None, type=str)
     margen_horas = request.args.get("margen_horas", default=0, type=int)
@@ -613,6 +843,11 @@ def detecciones_senal():
             " - (%s || ' hours')::interval"
         )
         params = [horas]
+
+    # Resolved after validating the other params: a bad request never opens the database
+    device_id, error = dispositivo_pedido()
+    if error:
+        return error
 
     if device_id:
         filtro_device = "device_id = %s"
@@ -673,7 +908,7 @@ def consultar_detecciones(filtro_fecha, filtro_device, params):
 # history (not limited by the date filter), so the frontend can tell "never
 # visited" apart from "not visited in the selected dates".
 #   ?lat_min=&lat_max=&lon_min=&lon_max=   -> the box (same as /api/buscar-lugar)
-#   ?device_id=xyz                         -> defaults to the device of the
+#   ?vehiculo=A01 (or ?device_id=xyz)      -> defaults to the device of the
 #                                             latest point, like the history
 @app.route("/api/lugar-visitado")
 def lugar_visitado():
@@ -706,7 +941,11 @@ def lugar_visitado():
     if caja["lat_min"] > caja["lat_max"] or caja["lon_min"] > caja["lon_max"]:
         return jsonify({"error": "Los valores mínimos no pueden ser mayores que los máximos"}), 400
 
-    device_id = request.args.get("device_id", default=None, type=str)
+
+    # Resolved after validating the other params: a bad request never opens the database
+    device_id, error = dispositivo_pedido()
+    if error:
+        return error
 
     with cursor_bd() as cursor:
 
