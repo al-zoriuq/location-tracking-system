@@ -23,6 +23,7 @@ jobs:
             aws_secret_secret: AWS_SECRET_ACCESS_KEY
             sg_id: sg-040f40fef53b4b9f5
             service: gunicorn-location
+            groq_secret: GROQ_API_KEY_STHEFANY
 
           # --- Taufic's server ---
           - persona: taufic
@@ -33,6 +34,7 @@ jobs:
             aws_secret_secret: AWS_SECRET_ACCESS_KEY_TAUFIC
             sg_id: sg-0c4e91a324e3145e0
             service: gunicorn-location
+            groq_secret: GROQ_API_KEY_TAUFIC
 
           # --- Alba's server ---
           - persona: alba
@@ -43,6 +45,7 @@ jobs:
             aws_secret_secret: AWS_SECRET_ACCESS_KEY_ALBA
             sg_id: sg-000664e76aea40f3e
             service: gunicorn
+            groq_secret: GROQ_API_KEY_ALBA
 
           # --- Marcela's server ---
           - persona: marcela
@@ -53,10 +56,11 @@ jobs:
             aws_secret_secret: AWS_SECRET_ACCESS_KEY_MARCELA
             sg_id: sg-0e524eabd8e6036a2
             service: gunicorn
+            groq_secret: GROQ_API_KEY_MARCELA
 
           # To add a new person later, just add another block here
           # following the same pattern (persona, host_secret, user_secret,
-          # key_secret, aws_key_secret, aws_secret_secret, sg_id, service)
+          # key_secret, aws_key_secret, aws_secret_secret, sg_id, service, groq_secret)
 
     steps:
       # Step 1: Authenticate to AWS using this person's IAM credentials
@@ -90,11 +94,14 @@ jobs:
       # Step 5: Connect via SSH and deploy the latest code from main
       - name: Deploy to ${{ matrix.persona }}'s EC2
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          GROQ_API_KEY: ${{ secrets[matrix.groq_secret] }}
         with:
           host: ${{ secrets[matrix.host_secret] }}
           username: ${{ secrets[matrix.user_secret] }}
           key: ${{ secrets[matrix.key_secret] }}
           timeout: 60s
+          envs: GROQ_API_KEY
           script: |
             cd /home/ubuntu/location-tracking-system
             git fetch origin
@@ -102,6 +109,11 @@ jobs:
             git pull origin main
             source venv/bin/activate
             pip install -r requirements.txt
+            # Write Pipo's Groq key from this person's repo secret into .env (kept as is if the secret is empty)
+            if [ -n "$GROQ_API_KEY" ]; then
+              sed -i -e '/^GROQ_API_KEY=/d' -e '$a\' .env
+              echo "GROQ_API_KEY=\"$GROQ_API_KEY\"" >> .env
+            fi
             cd disenop2web
             npm install
             npm run build
