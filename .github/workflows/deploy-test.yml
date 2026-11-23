@@ -67,6 +67,30 @@ jobs:
             git reset --hard origin/sthefany-test
             source venv/bin/activate
             pip install -r requirements.txt
+            # Create the vehicle alias table the API requires (no-op once it exists)
+            python - <<'PYEOF'
+            import os, psycopg2
+            from dotenv import load_dotenv
+            load_dotenv()
+            con = psycopg2.connect(host=os.getenv("rdshost"), dbname=os.getenv("rdsdbname"),
+                                   user=os.getenv("rdsuser"), password=os.getenv("rdspass"))
+            with con, con.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS alias_dispositivos (
+                        numero     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                        device_id  TEXT NOT NULL UNIQUE,
+                        creado_en  TIMESTAMP NOT NULL DEFAULT NOW()
+                    )""")
+                cur.execute("""
+                    INSERT INTO alias_dispositivos (device_id)
+                    SELECT device_id FROM ubicaciones
+                    WHERE device_id IS NOT NULL
+                      AND device_id NOT IN (SELECT device_id FROM alias_dispositivos)
+                    GROUP BY device_id
+                    ORDER BY MIN(id)""")
+                print("alias_dispositivos: nuevos alias", cur.rowcount)
+            con.close()
+            PYEOF
             cd disenop2web
             npm install
             BASE_PATH=/test/ npm run build
