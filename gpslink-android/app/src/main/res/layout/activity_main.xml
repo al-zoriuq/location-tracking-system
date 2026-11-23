@@ -1,105 +1,535 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- "J1" look: big title, glass card with the speed ring and the last limit,
+     two small widgets (Raspberry, location), recent signs, and a floating bar
+     with the Pi commands. The background glows are drawn by FondoBrillos. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/raiz"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:background="@color/fondo">
 
-    <!-- Top-right corner: the hidden 3-dot menu (only way to reach manual send). -->
-    <LinearLayout
+    <ScrollView
+        android:id="@+id/scroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="end">
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:fillViewport="true">
 
-        <Button
-            android:id="@+id/btnMenuOculto"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:id="@+id/contenido"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:text="&#8942;"
-            android:textSize="20sp" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="24dp">
 
-    <TextView
-        android:id="@+id/tvServidorActual"
+            <!-- ===== Title + settings ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="2dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/app_name"
+                    android:textAppearance="@style/Texto.Marca" />
+
+                <!-- Tap: settings. Long press: hidden menu (manual send). -->
+                <ImageButton
+                    android:id="@+id/btnAjustes"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/vidrio_circulo"
+                    android:contentDescription="@string/ajustes"
+                    android:foreground="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_ajustes" />
+            </LinearLayout>
+
+            <!-- Problems that need the user (permission, GPS off). Hidden otherwise. -->
+            <TextView
+                android:id="@+id/tvAviso"
+                style="@style/Vidrio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:fontFamily="@font/inter_semibold"
+                android:textColor="@color/excede_texto"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+            <!-- ===== Speed ring + last limit ===== -->
+            <LinearLayout
+                style="@style/Vidrio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="18dp">
+
+                <FrameLayout
+                    android:layout_width="150dp"
+                    android:layout_height="150dp">
+
+                    <com.example.gpslink.AnilloVelocidad
+                        android:id="@+id/anillo"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:gravity="center_horizontal"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvVelocidad"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="—"
+                            android:textAppearance="@style/Texto.Velocidad" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="@string/km_h"
+                            android:textAppearance="@style/Texto.Etiqueta" />
+                    </LinearLayout>
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="18dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvLimite"
+                        android:layout_width="62dp"
+                        android:layout_height="62dp"
+                        android:layout_marginBottom="10dp"
+                        android:fontFamily="@font/inter_bold"
+                        android:gravity="center"
+                        android:textColor="#111111"
+                        android:textSize="23sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/tvExceso"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/Texto.Destacado" />
+
+                    <TextView
+                        android:id="@+id/tvExcesoDetalle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textAppearance="@style/Texto.Etiqueta" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ===== Pipo (voice assistant). Tap: ask. Switch: on/off ===== -->
+            <LinearLayout
+                android:id="@+id/tarjetaPipo"
+                style="@style/Vidrio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:clickable="true"
+                android:contentDescription="@string/pipo_tocar"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingTop="12dp"
+                android:paddingEnd="14dp"
+                android:paddingBottom="12dp">
+
+                <com.example.gpslink.OrbePipo
+                    android:id="@+id/orbePipo"
+                    android:layout_width="72dp"
+                    android:layout_height="72dp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/pipo"
+                        android:textAppearance="@style/Texto.Valor" />
+
+                    <TextView
+                        android:id="@+id/tvPipoEstado"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:maxLines="2"
+                        android:textAppearance="@style/Texto.Etiqueta" />
+
+                    <TextView
+                        android:id="@+id/tvPipoDialogo"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:ellipsize="end"
+                        android:maxLines="4"
+                        android:textAppearance="@style/Texto.Pequeno"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swPipo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@string/pipo_activar" />
+            </LinearLayout>
+
+            <!-- ===== Two widgets ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    style="@style/Vidrio"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/widget_pi"
+                        android:textAppearance="@style/Texto.Etiqueta" />
+
+                    <TextView
+                        android:id="@+id/tvPiEstado"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:maxLines="1"
+                        android:textAppearance="@style/Texto.Valor"
+                        app:autoSizeMaxTextSize="20sp"
+                        app:autoSizeMinTextSize="14sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <TextView
+                        android:id="@+id/tvPiDetalle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/Texto.Etiqueta" />
+                </LinearLayout>
+
+                <LinearLayout
+                    style="@style/Vidrio"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/widget_ubicacion"
+                        android:textAppearance="@style/Texto.Etiqueta" />
+
+                    <TextView
+                        android:id="@+id/tvUbicEstado"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:maxLines="1"
+                        android:textAppearance="@style/Texto.Valor"
+                        app:autoSizeMaxTextSize="20sp"
+                        app:autoSizeMinTextSize="14sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <TextView
+                        android:id="@+id/tvUbicDetalle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/Texto.Etiqueta" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ===== Recent signs (rows added from code) ===== -->
+            <LinearLayout
+                android:id="@+id/tarjetaRecientes"
+                style="@style/Vidrio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical"
+                android:paddingTop="14dp"
+                android:paddingBottom="10dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="4dp"
+                    android:text="@string/titulo_recientes"
+                    android:textAppearance="@style/Texto.Etiqueta" />
+
+                <LinearLayout
+                    android:id="@+id/listaRecientes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:id="@+id/tvSinRecientes"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="4dp"
+                    android:text="@string/sin_senales"
+                    android:textAppearance="@style/Texto" />
+            </LinearLayout>
+
+            <!-- ===== Settings (opened with the gear) ===== -->
+            <LinearLayout
+                android:id="@+id/panelAjustes"
+                style="@style/Vidrio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical"
+                android:padding="18dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ajustes"
+                    android:textAppearance="@style/Texto.Titulo" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Campo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:hint="@string/hint_servidor"
+                    app:helperText="@string/ayuda_servidor">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etServidor"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="text"
+                        android:maxLines="1"
+                        android:textColor="@color/texto" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Campo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/hint_pi"
+                    app:helperText="@string/ayuda_pi">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etPi"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="text"
+                        android:maxLines="1"
+                        android:textColor="@color/texto" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Campo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/hint_url_pipo"
+                    app:helperText="@string/ayuda_url_pipo">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etUrlPipo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textUri"
+                        android:maxLines="1"
+                        android:textColor="@color/texto" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <Button
+                    android:id="@+id/btnGuardarServidor"
+                    style="@style/BotonPrincipal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="@string/guardar_servidor" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="16dp"
+                    android:background="@drawable/separador" />
+
+                <!-- Details for testing: last send result, queue, Pi IP, Device id -->
+                <TextView
+                    android:id="@+id/tvDiagnostico"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:lineSpacingMultiplier="1.2"
+                    android:textAppearance="@style/Texto.Pequeno"
+                    android:textIsSelectable="true" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ===== Floating bar with the Pi commands (only when there is a Pi) ===== -->
+    <LinearLayout
+        android:id="@+id/barraPi"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textSize="16sp"
+        android:layout_height="64dp"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
         android:layout_marginBottom="16dp"
-        android:text="@string/servidor_no_definido" />
+        android:background="@drawable/vidrio_barra"
+        android:elevation="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:visibility="gone">
 
-    <EditText
-        android:id="@+id/etServidor"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:inputType="text"
-        android:hint="@string/hint_servidor" />
-
-    <Button
-        android:id="@+id/btnGuardarServidor"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/guardar_servidor" />
-
-    <!-- Raspberry Pi control: sends CMD,... by UDP to the FIRST saved IP (port 5000). -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:textStyle="bold"
-        android:text="Raspberry Pi (primera IP guardada)" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <Button
+        <TextView
             android:id="@+id/btnPiEstado"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Estado" />
+            style="@style/BotonBarra"
+            android:background="@drawable/pastilla"
+            android:text="@string/btn_estado" />
 
-        <Button
+        <TextView
             android:id="@+id/btnPiPausa"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Pausa" />
+            style="@style/BotonBarra"
+            android:text="@string/btn_pausa" />
 
-        <Button
+        <TextView
             android:id="@+id/btnPiReanuda"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Reanudar" />
+            style="@style/BotonBarra"
+            android:text="@string/btn_reanudar" />
 
-        <Button
+        <TextView
             android:id="@+id/btnPiApagar"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Apagar" />
+            style="@style/BotonBarra"
+            android:text="@string/btn_apagar"
+            android:textColor="@color/excede_texto" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tvEstadoPi"
+    <!-- ===== Pipo's sheet: comes up when you say "Pipo" or tap his card, and goes
+         away once he has answered. The dim layer blocks touches behind it. ===== -->
+    <FrameLayout
+        android:id="@+id/capaPipo"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textSize="14sp"
-        android:text="Pi: sin datos" />
+        android:layout_height="match_parent"
+        android:background="#8C0A0616"
+        android:elevation="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
 
-    <TextView
-        android:id="@+id/tvEstado"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:textSize="14sp" />
+        <LinearLayout
+            android:id="@+id/hojaPipo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:background="@drawable/hoja_pipo"
+            android:clickable="true"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingStart="22dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="22dp"
+            android:paddingBottom="28dp">
 
-</LinearLayout>
+            <View
+                android:layout_width="40dp"
+                android:layout_height="4dp"
+                android:background="@drawable/agarradera" />
+
+            <com.example.gpslink.OrbePipo
+                android:id="@+id/orbeHoja"
+                android:layout_width="128dp"
+                android:layout_height="128dp"
+                android:layout_marginTop="10dp" />
+
+            <TextView
+                android:id="@+id/tvHojaEstado"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:fontFamily="@font/inter_semibold"
+                android:textSize="14sp" />
+
+            <com.example.gpslink.OndasVoz
+                android:id="@+id/ondasPipo"
+                android:layout_width="120dp"
+                android:layout_height="36dp"
+                android:layout_marginTop="12dp" />
+
+            <TextView
+                android:id="@+id/tvHojaTexto"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:fontFamily="@font/inter_semibold"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.15"
+                android:maxLines="6"
+                android:textColor="@color/texto"
+                android:textSize="20sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnPipoCancelar"
+                    style="@style/BotonSecundario"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/pipo_cancelar" />
+
+                <Button
+                    android:id="@+id/btnPipoListo"
+                    style="@style/BotonPrincipal"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:text="@string/pipo_listo" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>
