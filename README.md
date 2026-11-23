@@ -86,6 +86,8 @@ rdspass="PASSWORD"
 rdsdbname="DATABASE_NAME"
 rdshost="RDS_ENDPOINT"
 rdsuser="USER"
+GROQ_API_KEY="gsk_..."   # Pipo (/api/pipo). Free key at console.groq.com
+GROQ_MODEL=""            # optional, defaults to openai/gpt-oss-120b
 ```
 
 The `.env` file holds secrets: **never** commit it (it is already in `.gitignore`).
