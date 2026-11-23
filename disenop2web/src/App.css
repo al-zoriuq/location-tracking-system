@@ -3350,6 +3350,9 @@ html, body {
 
 /* Full name of the car by default; only the alias in the side-by-side cards */
 .tarjeta-carro-corto { display: none; }
+/* Same for the time of the last point: full "21/11/2026 · 10:07 a. m." by default,
+   "10:07 a. m." (today) or "21/11" (another day) in the side-by-side cards */
+.tarjeta-carro-cuando-corto { display: none; }
 
 /* compacto-dos-tarjetas: in "Ambos" the two cards share one row, half each, two lines:
    alias · time · status dot / address */
@@ -3370,13 +3373,21 @@ html, body {
 .mapa-zona.compacto .panel-carros.dos .tarjeta-carro-id { grid-area: id; max-width: none; }
 .mapa-zona.compacto .panel-carros.dos .tarjeta-carro-largo { display: none; }
 .mapa-zona.compacto .panel-carros.dos .tarjeta-carro-corto { display: inline; }
+/* The time stays inside its own cell: stretched to the cell and clipped with "…" when it
+   does not fit. (justify-self: end sized it to its text, so a long text spilled to the
+   left over the alias.) */
 .mapa-zona.compacto .panel-carros.dos .tarjeta-carro-meta {
   grid-area: meta;
-  justify-self: end;
+  justify-self: stretch;
+  display: block;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
 }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-cuando { display: none; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-cuando-corto { display: inline; }
 .mapa-zona.compacto .panel-carros.dos .tarjeta-carro-estado { grid-area: estado; }
 .mapa-zona.compacto .panel-carros.dos .tarjeta-carro-direccion {
   grid-area: dir;

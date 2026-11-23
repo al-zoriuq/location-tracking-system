@@ -44,7 +44,7 @@ export function SelectorCarros({ carros, activo, verAmbos, onAmbos, onCarro }) {
 // approximate address, time of the last point and speed (while reporting).
 // The active car is highlighted; tapping another card makes it active, and
 // tapping the active one flies the map to it.
-export function TarjetaCarro({ carro, activa, estado, hora, fecha, velocidadKmh, onElegir }) {
+export function TarjetaCarro({ carro, activa, estado, hora, fecha, fechaCorta, velocidadKmh, onElegir }) {
   const direccion = useDireccion(Number(carro.latitud), Number(carro.longitud));
   const texto = textoDireccion(direccion);
 
@@ -76,7 +76,9 @@ export function TarjetaCarro({ carro, activa, estado, hora, fecha, velocidadKmh,
         {texto}
       </span>
       <span className="tarjeta-carro-meta">
-        <span>{fecha ? `${fecha} · ${hora}` : hora}</span>
+        <span className="tarjeta-carro-cuando">{fecha ? `${fecha} · ${hora}` : hora}</span>
+        {/* Side-by-side cards (phones): the time if it is from today, otherwise only the day */}
+        <span className="tarjeta-carro-cuando-corto">{fecha ? fechaCorta : hora}</span>
         {velocidadKmh !== null && (
           <span className="tarjeta-carro-vel">
             <b>{Math.round(velocidadKmh)}</b> km/h

@@ -1808,6 +1808,8 @@ function App() {
         f.toLocaleDateString("en-CA", OPCIONES_ZONA) === hoy
           ? null
           : f.toLocaleDateString("es-CO", OPCIONES_ZONA),
+      // "21/11", for the side-by-side cards on phones
+      fechaCorta: f.toLocaleDateString("es-CO", { ...OPCIONES_ZONA, day: "2-digit", month: "2-digit" }),
       velocidadKmh: esActivo ? velocidadActualKmh : velocidadOtro,
     };
   });
@@ -1882,6 +1884,7 @@ function App() {
                   estado={t.estado}
                   hora={t.hora}
                   fecha={t.fecha}
+                  fechaCorta={t.fechaCorta}
                   velocidadKmh={t.velocidadKmh}
                   onElegir={alTocarTarjeta}
                 />
