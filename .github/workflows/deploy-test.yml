@@ -55,11 +55,14 @@ jobs:
         # Step 5: SSH and run the test deployment commands
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_STHEFANY }}
         with:
           host: ${{ secrets.EC2_HOST_STHEFANY }}
           username: ${{ secrets.EC2_USER_STHEFANY }}
           key: ${{ secrets.EC2_SSH_KEY_STHEFANY }}
           timeout: 60s
+          envs: GROQ_API_KEY
           script: |
             cd /home/ubuntu/location-tracking-system-test
             git fetch origin
@@ -67,6 +70,11 @@ jobs:
             git reset --hard origin/sthefany-test
             source venv/bin/activate
             pip install -r requirements.txt
+            # Write Pipo's Groq key from the repo secret into .env (kept as is if the secret is empty)
+            if [ -n "$GROQ_API_KEY" ]; then
+              sed -i -e '/^GROQ_API_KEY=/d' -e '$a\' .env
+              echo "GROQ_API_KEY=\"$GROQ_API_KEY\"" >> .env
+            fi
             # Create the vehicle alias table the API requires (no-op once it exists)
             python - <<'PYEOF' || exit 1
             import os, psycopg2
