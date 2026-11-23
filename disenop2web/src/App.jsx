@@ -1337,6 +1337,20 @@ function App() {
     return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}${cortadaInicio || cortadaFin ? " · recortada" : ""}`;
   }, [puntosRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
 
+  // Short version for phones, in two lines: "Ruta 2/5" and "23/11 · 3:19 p. m."
+  // (start of the route). The full date and times stay in the list of routes.
+  const inicioRutaMostrada = puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : null;
+  const etiquetaRutaCorta = useMemo(() => {
+    if (!inicioRutaMostrada) return null;
+    const primero = parsearFechaGPS(inicioRutaMostrada);
+    const dia = primero.toLocaleDateString("es-CO", { ...OPCIONES_ZONA, day: "2-digit", month: "2-digit" });
+    const hora = primero.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "numeric", minute: "2-digit" });
+    return [
+      `Ruta ${indiceMostrado + 1}/${rutas.length}${cortadaInicio || cortadaFin ? " · recortada" : ""}`,
+      `${dia} · ${hora}`,
+    ];
+  }, [inicioRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
+
   const verRutaAnterior = () => {
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
@@ -1690,7 +1704,8 @@ function App() {
     };
   }, [rangoActivo, lugarActivo, dispositivoActivo]);
 
-  const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+  // Person's name for the header, only when configured (VITE_NOMBRE_PERSONA)
+  const nombrePersona = import.meta.env.VITE_NOMBRE_PERSONA || "";
 
   // ----- Two cars -----
   // Makes another car the active one: what was on screen belonged to the
@@ -1807,7 +1822,11 @@ function App() {
             <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
             <circle cx="12" cy="9.5" r="2.5" />
           </svg>
-          GPSLink <span>· {nombre}</span>
+          {/* The "· name" part only when a person's name is configured (no "GPSLink · GPSLink").
+              On phones the text is hidden and only the icon stays (App.css). */}
+          <strong className="brand-texto">
+            GPSLink{nombrePersona && <span> · {nombrePersona}</span>}
+          </strong>
         </div>
         {carros.length > 1 && (
           <SelectorCarros
@@ -1878,6 +1897,9 @@ function App() {
                   setFiltroAbierto(false);
                 }}
                 aria-expanded={filtrosVisibles}
+                // On phones only the icon shows, so the summary goes in the accessible name
+                aria-label={`Filtros${resumenFiltros ? `: ${resumenFiltros.replace(/^ · /, "")}` : ""}`}
+                title={`Filtros${resumenFiltros}`}
               >
                 <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1903,6 +1925,7 @@ function App() {
                   </button>
                   <SelectorRuta
                     etiqueta={etiquetaRuta}
+                    etiquetaCorta={etiquetaRutaCorta}
                     opciones={opcionesRutas}
                     indice={indiceMostrado}
                     onElegir={irARuta}

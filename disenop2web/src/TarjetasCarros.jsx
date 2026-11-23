@@ -24,10 +24,15 @@ export function SelectorCarros({ carros, activo, verAmbos, onAmbos, onCarro }) {
             aria-pressed={elegido}
             onClick={() => onCarro(carro.vehiculo)}
             title={`Ver solo ${carro.nombre}`}
+            aria-label={`Ver solo ${carro.nombre}`}
             style={{ "--color-carro": carro.color }}
           >
             <span className="selector-carros-color" aria-hidden="true" />
-            <span className="selector-carros-texto">{carro.nombre}</span>
+            {/* Full name ("Vehículo A01") on wide screens, only the alias ("A01") on phones */}
+            <span className="selector-carros-texto">
+              <span className="selector-carros-largo">{carro.nombre}</span>
+              <span className="selector-carros-corto">{carro.vehiculo}</span>
+            </span>
           </button>
         );
       })}
@@ -54,7 +59,11 @@ export function TarjetaCarro({ carro, activa, estado, hora, fecha, velocidadKmh,
     >
       <span className="tarjeta-carro-cabecera">
         <span className="tarjeta-carro-color" aria-hidden="true" />
-        <span className="tarjeta-carro-id">{carro.nombre}</span>
+        {/* Full name; only the alias when the two cards sit side by side on a phone */}
+        <span className="tarjeta-carro-id">
+          <span className="tarjeta-carro-largo">{carro.nombre}</span>
+          <span className="tarjeta-carro-corto">{carro.vehiculo}</span>
+        </span>
         <span className="tarjeta-carro-estado">
           <span className={`dot dot-${estado.tier}`} aria-hidden="true" />
           <span className="tarjeta-carro-estado-texto">{estado.texto}</span>

@@ -3172,11 +3172,19 @@ html, body {
   font-family: var(--font-mono);
 }
 
-/* Phones: the selector takes its own full-width row under the brand */
+.selector-carros-corto { display: none; }
+
+/* Phones: one row (brand icon, selector, help). The selector fills the space
+   between them and each car shows only its alias ("A01"); the full name stays
+   in the button's title and accessible label. Buttons are 44px tall, the
+   minimum touch target on iPhone (Android asks for 48dp: phase D). */
 @media (max-width: 640px) {
-  .topbar { flex-wrap: wrap; row-gap: 10px; }
-  .topbar > .selector-carros { order: 3; flex: 1 1 100%; }
-  .selector-carros button { flex: 1 1 0; padding: 0 8px; min-height: 36px; }
+  .topbar { padding: 8px 12px; gap: 8px; }
+  .topbar .brand-texto { display: none; }
+  .topbar > .selector-carros { flex: 1 1 auto; }
+  .selector-carros button { flex: 1 1 0; padding: 0 6px; min-height: 44px; gap: 5px; }
+  .selector-carros-largo { display: none; }
+  .selector-carros-corto { display: inline; }
 }
 
 /* Panel with one card per car (replaces the single "last position" card) */
@@ -3337,3 +3345,85 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .marker-current { animation: none; }
 }
+
+/* ============ Phase B (phones): two cards side by side, route bar + filter icon ============ */
+
+/* Full name of the car by default; only the alias in the side-by-side cards */
+.tarjeta-carro-corto { display: none; }
+
+/* compacto-dos-tarjetas: in "Ambos" the two cards share one row, half each, two lines:
+   alias · time · status dot / address */
+.mapa-zona.compacto .panel.panel-carros.dos { flex-direction: row; gap: 3px; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "id meta estado" "dir dir dir";
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 2px;
+  min-height: 44px;
+  padding: 6px 8px 6px 12px;
+}
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro::before { top: 7px; bottom: 7px; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-id { grid-area: id; max-width: none; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-largo { display: none; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-corto { display: inline; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-meta {
+  grid-area: meta;
+  justify-self: end;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-estado { grid-area: estado; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-direccion {
+  grid-area: dir;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+/* barra-rutas-con-filtro: the route bar and the filter button share one row; the button is
+   a 44 px icon (the summary stays in its accessible name and title) and the filter fields,
+   the cut notice and the date sheet still open below, on their own full-width row */
+.mapa-zona.compacto .capa-superior > .superior {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 6px;
+}
+.mapa-zona.compacto .capa-superior > .superior > * { flex: 1 1 100%; min-width: 0; }
+.mapa-zona.compacto .capa-superior > .superior > .nav-rutas { flex: 1 1 0; order: 1; }
+.mapa-zona.compacto .capa-superior > .superior > .aviso-corte { order: 3; }
+.mapa-zona.compacto .capa-superior > .superior > .filtros-fila { order: 4; }
+.mapa-zona.compacto .capa-superior > .superior:has(> .nav-rutas) > .filtros-toggle-compacto {
+  flex: 0 0 44px;
+  order: 2;
+  width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 999px;
+  position: relative;
+}
+.mapa-zona.compacto .superior:has(> .nav-rutas) .filtros-toggle-texto,
+.mapa-zona.compacto .superior:has(> .nav-rutas) .filtros-toggle-flecha { display: none; }
+.mapa-zona.compacto .superior:has(> .nav-rutas) .filtros-toggle-compacto .punto-filtro {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+/* etiqueta-corta: short route label in the compact map zone */
+.nav-etiqueta-corta { display: none; }
+.mapa-zona.compacto .nav-etiqueta-larga { display: none; }
+.mapa-zona.compacto .nav-etiqueta-corta { display: flex; flex-direction: column; line-height: 1.2; }
+.mapa-zona.compacto .nav-etiqueta-linea {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mapa-zona.compacto .nav-etiqueta-linea:first-child { color: var(--text-dim); font-size: 11px; }
+.mapa-zona.compacto .isla-rutas .nav-selector { padding: 4px 8px; }
