@@ -18,6 +18,7 @@ import Reproductor from "./Reproductor.jsx";
 import SelectorFechaHora from "./SelectorFechaHora.jsx";
 import AyudaModal from "./AyudaModal.jsx";
 import Toasts from "./Toasts.jsx";
+import PipoWeb from "./PipoWeb.jsx";
 import { useToasts } from "./useToasts.js";
 import { pedirJSON, describirFallo, ErrorApi, MENSAJE_RECUPERADA } from "./api.js";
 import { SelectorCarros, TarjetaCarro } from "./TarjetasCarros.jsx";
@@ -1800,6 +1801,12 @@ function App() {
   return (
     <div className="app">
       <Toasts toasts={toasts} onCerrar={cerrar} />
+      <PipoWeb
+        vehiculo={dispositivoActivo}
+        nombre={location ? location.nombre : null}
+        velocidadKmh={velocidadActualKmh}
+        posicion={location ? [Number(location.latitud), Number(location.longitud)] : null}
+      />
       <div className="topbar">
         <div className="brand">
           <svg className="brand-icono" width="20" height="20" viewBox="0 0 24 24" fill="none"
