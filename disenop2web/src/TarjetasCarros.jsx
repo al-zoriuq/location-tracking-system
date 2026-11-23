@@ -69,11 +69,19 @@ export function TarjetaCarro({ carro, activa, estado, hora, fecha, fechaCorta, v
           <span className="tarjeta-carro-estado-texto">{estado.texto}</span>
         </span>
       </span>
-      <span
-        className={`tarjeta-carro-direccion ${direccion.texto ? "" : "sin-texto"}`}
-        title={`${texto} (dirección aproximada)`}
-      >
-        {texto}
+      {/* Second line of the side-by-side cards (speed + address); in every other layout
+          this wrapper is display: contents, so its children behave as before */}
+      <span className="tarjeta-carro-linea2">
+        {/* Speed for the compact map zone (phones), where the floating speed chip is hidden */}
+        {velocidadKmh !== null && (
+          <span className="tarjeta-carro-vel-corta">{Math.round(velocidadKmh)} km/h</span>
+        )}
+        <span
+          className={`tarjeta-carro-direccion ${direccion.texto ? "" : "sin-texto"}`}
+          title={`${texto} (dirección aproximada)`}
+        >
+          {texto}
+        </span>
       </span>
       <span className="tarjeta-carro-meta">
         <span className="tarjeta-carro-cuando">{fecha ? `${fecha} · ${hora}` : hora}</span>

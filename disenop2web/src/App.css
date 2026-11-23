@@ -3438,3 +3438,91 @@ html, body {
 }
 .mapa-zona.compacto .nav-etiqueta-linea:first-child { color: var(--text-dim); font-size: 11px; }
 .mapa-zona.compacto .isla-rutas .nav-selector { padding: 4px 8px; }
+
+/* ============ Phase C (phones): clear bottom, speed in the cards, compact history ============ */
+
+/* Legend: floating over the map on wide screens; at the end of the "Capas" menu in the
+   compact map zone */
+.capas-leyenda { display: none; }
+.mapa-zona.compacto .legend { display: none; }
+.mapa-zona.compacto .capas-leyenda {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.mapa-zona.compacto .capas-leyenda .capas-titulo { margin: 0; }
+
+/* Zoom buttons: on touch screens the map is zoomed with two fingers or a double tap */
+@media (pointer: coarse) {
+  .mapa-zona.compacto .leaflet-control-zoom { display: none; }
+}
+
+/* Speed: in the car card instead of the floating chip */
+.tarjeta-carro-vel-corta { display: none; }
+.mapa-zona.compacto .velocidad-chip { display: none; }
+.mapa-zona.compacto .tarjeta-carro-vel-corta {
+  display: inline;
+  order: 4;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+/* Side-by-side cards: the second line (speed, then the address) is its own row, so the
+   speed never widens the first column and squeezes the time above it */
+.tarjeta-carro-linea2 { display: contents; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-linea2 {
+  grid-area: dir;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-linea2 > * { order: 0; }
+.mapa-zona.compacto .panel-carros.dos .tarjeta-carro-linea2 .tarjeta-carro-direccion {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Compact history rows (phones, where the history is a bottom sheet): the day once as a
+   separator, then one line per point (time, coordinates) and the IP below, small */
+.sidebar-dia,
+.sidebar-item-compacto { display: none; }
+@media (max-width: 900px) and (orientation: portrait) {
+  .sidebar-item { padding: 5px 16px; line-height: 1.2; }
+  .sidebar-item-header,
+  .sidebar-item .coord-row { display: none; }
+  .sidebar-dia {
+    display: block;
+    margin: 4px -16px 6px;
+    padding: 4px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .sidebar-item-compacto {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .sidebar-item-hora { color: var(--text-dim); flex-shrink: 0; }
+  .sidebar-item-coords {
+    margin-left: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--accent);
+  }
+  .sidebar-item-ip { margin: 2px 0 0 17px; }
+}

@@ -1814,6 +1814,62 @@ function App() {
     };
   });
 
+  // Map legend: floating over the map on wide screens; in the compact map zone
+  // (phones) it is shown at the end of the "Capas" menu instead (App.css)
+  const itemsLeyenda = ruta.length > 1 ? (
+    <>
+      <div className="legend-item">
+        <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+          <polygon points="2,1 11,6 2,11" fill="var(--marker-start)" />
+        </svg>
+        Inicio
+      </div>
+      <div className="legend-item">
+        {finEsActual ? (
+          <span className="legend-dot current" style={{ background: colorActivo }}></span>
+        ) : (
+          <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+            <line x1="2.5" y1="1" x2="2.5" y2="11" stroke="var(--marker-end)"
+              strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M3 1.5h7l-2 2.5 2 2.5H3z" fill="var(--marker-end)" />
+          </svg>
+        )}
+        {finEsActual ? " Actual" : " Fin de ruta"}
+      </div>
+      {(cortadaInicio || cortadaFin) && (
+        <div className="legend-item">
+          <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+            <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+          Recortada por el filtro
+        </div>
+      )}
+      {paradasVisibles && paradas.length > 0 && (
+        <div className="legend-item">
+          <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+            <rect x="2" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+            <rect x="7" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+          </svg>
+          Parada
+        </div>
+      )}
+      {visitas.length > 0 && (
+        <div className="legend-item">
+          <span className="legend-dot visita"></span> Pas&oacute; por el lugar
+        </div>
+      )}
+      {pinActivo && (
+        <div className="legend-item">
+          <svg className="legend-icono" viewBox="0 0 24 32" aria-hidden="true">
+            <path d="M12 1C6 1 1.5 5.6 1.5 11.4 1.5 19 12 31 12 31s10.5-12 10.5-19.6C22.5 5.6 18 1 12 1z"
+              fill={COLOR_PIN} />
+          </svg>
+          Pin
+        </div>
+      )}
+    </>
+  ) : null;
+
   return (
     <div className="app">
       <Toasts toasts={toasts} onCerrar={cerrar} />
@@ -2177,6 +2233,12 @@ function App() {
                   />
                   <span className="interruptor" />
                 </label>
+                {itemsLeyenda && (
+                  <div className="capas-leyenda">
+                    <p className="capas-titulo">Leyenda</p>
+                    {itemsLeyenda}
+                  </div>
+                )}
               </div>
               }
             />
@@ -2225,59 +2287,7 @@ function App() {
             </div>
 
             
-            {ruta.length > 1 && (
-              <div className="legend">
-                <div className="legend-item">
-                  <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                    <polygon points="2,1 11,6 2,11" fill="var(--marker-start)" />
-                  </svg>
-                  Inicio
-                </div>
-                <div className="legend-item">
-                  {finEsActual ? (
-                    <span className="legend-dot current" style={{ background: colorActivo }}></span>
-                  ) : (
-                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                      <line x1="2.5" y1="1" x2="2.5" y2="11" stroke="var(--marker-end)"
-                        strokeWidth="1.5" strokeLinecap="round" />
-                      <path d="M3 1.5h7l-2 2.5 2 2.5H3z" fill="var(--marker-end)" />
-                    </svg>
-                  )}
-                  {finEsActual ? " Actual" : " Fin de ruta"}
-                </div>
-                {(cortadaInicio || cortadaFin) && (
-                  <div className="legend-item">
-                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                      <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                    </svg>
-                    Recortada por el filtro
-                  </div>
-                )}
-                {paradasVisibles && paradas.length > 0 && (
-                  <div className="legend-item">
-                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                      <rect x="2" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
-                      <rect x="7" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
-                    </svg>
-                    Parada
-                  </div>
-                )}
-                {visitas.length > 0 && (
-                  <div className="legend-item">
-                    <span className="legend-dot visita"></span> Pas&oacute; por el lugar
-                  </div>
-                )}
-                {pinActivo && (
-                  <div className="legend-item">
-                    <svg className="legend-icono" viewBox="0 0 24 32" aria-hidden="true">
-                      <path d="M12 1C6 1 1.5 5.6 1.5 11.4 1.5 19 12 31 12 31s10.5-12 10.5-19.6C22.5 5.6 18 1 12 1z"
-                        fill={COLOR_PIN} />
-                    </svg>
-                    Pin
-                  </div>
-                )}
-              </div>
-            )}
+            {itemsLeyenda && <div className="legend">{itemsLeyenda}</div>}
 
             <MapContainer
               center={[Number(location.latitud), Number(location.longitud)]}
@@ -2470,8 +2480,27 @@ function App() {
                   const esInicio = index === historialReciente.length - 1;
                   const esActual = index === 0;
                   const claseFinal = finEsActual ? "current" : "end";
+                  // Phones show the day once, as a separator, instead of on every point
+                  const dia = fecha.toLocaleDateString("es-CO", OPCIONES_ZONA);
+                  const diaAnterior =
+                    index > 0
+                      ? parsearFechaGPS(historialReciente[index - 1].timestamp_gps).toLocaleDateString("es-CO", OPCIONES_ZONA)
+                      : null;
                   return (
                     <div className="sidebar-item" key={index}>
+                      {dia !== diaAnterior && <div className="sidebar-dia">{dia}</div>}
+                      {/* Compact row for phones: time and both coordinates on one line */}
+                      <div className="sidebar-item-compacto">
+                        <span
+                          className={`legend-dot ${esInicio ? "start" : esActual ? claseFinal : ""}`}
+                        ></span>
+                        <span className="sidebar-item-hora">
+                          {fecha.toLocaleTimeString("es-CO", OPCIONES_ZONA)}
+                        </span>
+                        <span className="sidebar-item-coords">
+                          {Number(punto.latitud).toFixed(4)}, {Number(punto.longitud).toFixed(4)}
+                        </span>
+                      </div>
                       <div className="sidebar-item-header">
                         <span
                           className={`legend-dot ${esInicio ? "start" : esActual ? claseFinal : ""}`}
