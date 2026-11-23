@@ -1,7 +1,7 @@
 """Tests for /api/pipo (voice assistant). No real database and no real Groq."""
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -48,6 +48,14 @@ class CursorFalso:
         return {"numero": 1} if "alias_dispositivos" in self.ultimo else None
 
     def fetchall(self):
+        if "WINDOW w" in self.ultimo:
+            return [{"dia": date(2026, 11, 24), "desde": datetime(2026, 11, 24, 7, 5),
+                     "hasta": datetime(2026, 11, 24, 18, 40), "km": 23.46, "vel_max": 61.2}]
+        if "GROUP BY 1, 2" in self.ultimo:
+            return [{"dia": date(2026, 11, 24), "senal_tipo": "PARE", "total": 3, "excesos": 0}]
+        if "FROM alias_dispositivos a" in self.ultimo:
+            return [{"numero": 1, "ultimo": datetime(2026, 11, 24, 18, 40)},
+                    {"numero": 2, "ultimo": None}]
         if "GROUP BY senal_tipo" in self.ultimo:
             return [{"senal_tipo": "LIMITE", "total": 5, "excesos": 2, "vel_max": 55.0}]
         if "FROM detecciones_senal" in self.ultimo:
@@ -147,6 +155,16 @@ def test_desde_la_web_por_alias(cliente):
     assert "página web" in sistema
     assert "Vehículo: A01" in datos and "PARE" in datos
     assert "último dato del carro" in datos
+    assert "24/11: de 07:05 a 18:40, 23.5 km, velocidad máxima unos 61 km/h" in datos
+    assert "Señales: PARE 3" in datos
+    assert "A01 (último dato 24/11 18:40); A02 (último dato nunca)" in datos
+
+
+def test_desde_el_celular_no_manda_lo_de_la_web(cliente):
+    assert pedir(cliente).status_code == 200
+    datos = cliente.llamadas[0]["messages"][1]["content"]
+    assert "Recorridos de los últimos" not in datos
+    assert "página web" not in cliente.llamadas[0]["messages"][0]["content"]
 
 
 def test_desde_la_web_alias_malo_o_inexistente(cliente):
