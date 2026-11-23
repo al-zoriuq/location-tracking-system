@@ -42,6 +42,9 @@ class CursorFalso:
         self.ultimo = sql
 
     def fetchone(self):
+        if "SELECT device_id FROM alias_dispositivos" in self.ultimo:
+            # Only car A01 (numero 1) exists
+            return {"device_id": "abc-123"} if self.ejecutadas[-1][1] == (1,) else None
         return {"numero": 1} if "alias_dispositivos" in self.ultimo else None
 
     def fetchall(self):
@@ -133,6 +136,26 @@ def test_gpt_oss_piensa_poco(cliente):
 ])
 def test_rechaza_peticiones_malas(cliente, cuerpo):
     assert cliente.post("/api/pipo", json=cuerpo).status_code == 400
+
+
+def test_desde_la_web_por_alias(cliente):
+    r = cliente.post("/api/pipo", json={"vehiculo": "A01", "origen": "web",
+                                        "pregunta": "¿cumplió el pare?", "contexto": {}})
+    assert r.status_code == 200
+    sistema = cliente.llamadas[0]["messages"][0]["content"]
+    datos = cliente.llamadas[0]["messages"][1]["content"]
+    assert "página web" in sistema
+    assert "Vehículo: A01" in datos and "PARE" in datos
+    assert "último dato del carro" in datos
+
+
+def test_desde_la_web_alias_malo_o_inexistente(cliente):
+    malo = cliente.post("/api/pipo", json={"vehiculo": "zz!", "pregunta": "hola"})
+    assert malo.status_code == 400
+    otro = cliente.post("/api/pipo", json={"vehiculo": "A02", "pregunta": "hola"})
+    assert otro.status_code == 404
+    assert otro.get_json()["respuesta"]
+    assert cliente.llamadas == []
 
 
 def test_sin_clave_de_groq(cliente, monkeypatch):

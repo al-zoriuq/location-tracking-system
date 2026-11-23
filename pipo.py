@@ -70,9 +70,17 @@ PARE si el carro se detuvo (bajó de 5 km/h) poco después de verlo.
 onda."""
 
 
-def registrar(app, cursor_bd, alias_de_numero):
+WEB = """Quien pregunta NO va manejando: está mirando el recorrido en la página web. \
+"Ahora mismo" es lo último que reportó el carro; háblale de ese carro en tercera persona \
+y no le des avisos de manejo."""
+
+
+def registrar(app, cursor_bd, alias_de_numero, numero_de_alias):
     """Agrega /api/pipo a la app Flask. Se pasan las funciones de
-    servidorweb.py para no importar ese módulo desde aquí (import circular)."""
+    servidorweb.py para no importar ese módulo desde aquí (import circular).
+
+    El celular manda su device_id; la página web manda el alias del carro
+    ("vehiculo": "A01") porque nunca ve los device_id."""
 
     @app.route("/api/pipo", methods=["POST"])
     def pipo():
@@ -84,8 +92,14 @@ def registrar(app, cursor_bd, alias_de_numero):
         pregunta = pregunta[:MAX_PREGUNTA]
 
         device_id = str(datos.get("device_id") or "").strip()
-        if not PATRON_DEVICE.match(device_id):
+        numero = None
+        if not device_id and datos.get("vehiculo"):
+            numero = numero_de_alias(str(datos.get("vehiculo")))
+            if numero is None:
+                return jsonify({"error": "El vehículo no es válido"}), 400
+        elif not PATRON_DEVICE.match(device_id):
             return jsonify({"error": "El device_id no es válido"}), 400
+        desde_web = datos.get("origen") == "web"
 
         contexto = datos.get("contexto")
         if not isinstance(contexto, dict):
@@ -100,15 +114,29 @@ def registrar(app, cursor_bd, alias_de_numero):
             }), 503
 
         try:
+            if numero is not None:
+                device_id = device_del_alias(cursor_bd, numero)
+                if device_id is None:
+                    return jsonify({
+                        "error": "No existe ese vehículo",
+                        "respuesta": "No encuentro ese carro en la base de datos.",
+                    }), 404
             resumen = resumen_vehiculo(cursor_bd, alias_de_numero, device_id)
         except psycopg2.Error:
+            if not device_id:  # the alias could not even be looked up
+                app.logger.exception("Pipo: no se pudo leer la base de datos")
+                return jsonify({
+                    "error": "No se pudo leer la base de datos",
+                    "respuesta": "Perdón, no pude revisar los datos del carro. Inténtalo otra vez.",
+                }), 503
             app.logger.exception("Pipo: no se pudo leer la base de datos")
             resumen = "(No se pudo leer la base de datos en este momento.)"
 
         mensajes = [
-            {"role": "system", "content": PERSONALIDAD},
+            {"role": "system", "content": PERSONALIDAD + ("\n\n" + WEB if desde_web else "")},
             {"role": "system", "content": "DATOS DEL VEHÍCULO\n" + resumen
-                + "\n\nAHORA MISMO (según el celular)\n" + texto_contexto(contexto)},
+                + "\n\nAHORA MISMO (" + ("último dato del carro" if desde_web else "según el celular")
+                + ")\n" + texto_contexto(contexto)},
             {"role": "user", "content": pregunta},
         ]
 
@@ -164,6 +192,13 @@ def resumen_vehiculo(cursor_bd, alias_de_numero, device_id):
         lineas.append("Últimos 7 días: " + "; ".join(partes) + ".")
 
     return "\n".join(lineas)
+
+
+def device_del_alias(cursor_bd, numero):
+    with cursor_bd() as cursor:
+        cursor.execute("SELECT device_id FROM alias_dispositivos WHERE numero = %s", (numero,))
+        fila = cursor.fetchone()
+    return fila["device_id"] if fila else None
 
 
 def alias_del_device(cursor, alias_de_numero, device_id):
