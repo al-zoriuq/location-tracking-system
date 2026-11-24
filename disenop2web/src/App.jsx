@@ -1338,6 +1338,20 @@ function App() {
     return `Ruta ${indiceMostrado + 1} de ${rutas.length} · ${rango}${cortadaInicio || cortadaFin ? " · recortada" : ""}`;
   }, [puntosRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
 
+  // Short version for phones, in two lines: "Ruta 2/5" and "23/11 · 3:19 p. m."
+  // (start of the route). The full date and times stay in the list of routes.
+  const inicioRutaMostrada = puntosRutaMostrada.length ? puntosRutaMostrada[0].timestamp_gps : null;
+  const etiquetaRutaCorta = useMemo(() => {
+    if (!inicioRutaMostrada) return null;
+    const primero = parsearFechaGPS(inicioRutaMostrada);
+    const dia = primero.toLocaleDateString("es-CO", { ...OPCIONES_ZONA, day: "2-digit", month: "2-digit" });
+    const hora = primero.toLocaleTimeString("es-CO", { ...OPCIONES_ZONA, hour: "numeric", minute: "2-digit" });
+    return [
+      `Ruta ${indiceMostrado + 1}/${rutas.length}${cortadaInicio || cortadaFin ? " · recortada" : ""}`,
+      `${dia} · ${hora}`,
+    ];
+  }, [inicioRutaMostrada, indiceMostrado, rutas.length, cortadaInicio, cortadaFin]);
+
   const verRutaAnterior = () => {
     setIndiceRuta(Math.max(0, indiceMostrado - 1));
   };
@@ -1691,7 +1705,8 @@ function App() {
     };
   }, [rangoActivo, lugarActivo, dispositivoActivo]);
 
-  const nombre = import.meta.env.VITE_NOMBRE_PERSONA || "GPSLink";
+  // Person's name for the header, only when configured (VITE_NOMBRE_PERSONA)
+  const nombrePersona = import.meta.env.VITE_NOMBRE_PERSONA || "";
 
   // ----- Two cars -----
   // Makes another car the active one: what was on screen belonged to the
@@ -1794,9 +1809,67 @@ function App() {
         f.toLocaleDateString("en-CA", OPCIONES_ZONA) === hoy
           ? null
           : f.toLocaleDateString("es-CO", OPCIONES_ZONA),
+      // "21/11", for the side-by-side cards on phones
+      fechaCorta: f.toLocaleDateString("es-CO", { ...OPCIONES_ZONA, day: "2-digit", month: "2-digit" }),
       velocidadKmh: esActivo ? velocidadActualKmh : velocidadOtro,
     };
   });
+
+  // Map legend: floating over the map on wide screens; in the compact map zone
+  // (phones) it is shown at the end of the "Capas" menu instead (App.css)
+  const itemsLeyenda = ruta.length > 1 ? (
+    <>
+      <div className="legend-item">
+        <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+          <polygon points="2,1 11,6 2,11" fill="var(--marker-start)" />
+        </svg>
+        Inicio
+      </div>
+      <div className="legend-item">
+        {finEsActual ? (
+          <span className="legend-dot current" style={{ background: colorActivo }}></span>
+        ) : (
+          <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+            <line x1="2.5" y1="1" x2="2.5" y2="11" stroke="var(--marker-end)"
+              strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M3 1.5h7l-2 2.5 2 2.5H3z" fill="var(--marker-end)" />
+          </svg>
+        )}
+        {finEsActual ? " Actual" : " Fin de ruta"}
+      </div>
+      {(cortadaInicio || cortadaFin) && (
+        <div className="legend-item">
+          <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+            <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+          Recortada por el filtro
+        </div>
+      )}
+      {paradasVisibles && paradas.length > 0 && (
+        <div className="legend-item">
+          <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
+            <rect x="2" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+            <rect x="7" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
+          </svg>
+          Parada
+        </div>
+      )}
+      {visitas.length > 0 && (
+        <div className="legend-item">
+          <span className="legend-dot visita"></span> Pas&oacute; por el lugar
+        </div>
+      )}
+      {pinActivo && (
+        <div className="legend-item">
+          <svg className="legend-icono" viewBox="0 0 24 32" aria-hidden="true">
+            <path d="M12 1C6 1 1.5 5.6 1.5 11.4 1.5 19 12 31 12 31s10.5-12 10.5-19.6C22.5 5.6 18 1 12 1z"
+              fill={COLOR_PIN} />
+          </svg>
+          Pin
+        </div>
+      )}
+    </>
+  ) : null;
 
   return (
     <div className="app">
@@ -1814,7 +1887,11 @@ function App() {
             <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
             <circle cx="12" cy="9.5" r="2.5" />
           </svg>
-          GPSLink <span>· {nombre}</span>
+          {/* The "· name" part only when a person's name is configured (no "GPSLink · GPSLink").
+              On phones the text is hidden and only the icon stays (App.css). */}
+          <strong className="brand-texto">
+            GPSLink{nombrePersona && <span> · {nombrePersona}</span>}
+          </strong>
         </div>
         {carros.length > 1 && (
           <SelectorCarros
@@ -1870,6 +1947,7 @@ function App() {
                   estado={t.estado}
                   hora={t.hora}
                   fecha={t.fecha}
+                  fechaCorta={t.fechaCorta}
                   velocidadKmh={t.velocidadKmh}
                   onElegir={alTocarTarjeta}
                 />
@@ -1885,6 +1963,9 @@ function App() {
                   setFiltroAbierto(false);
                 }}
                 aria-expanded={filtrosVisibles}
+                // On phones only the icon shows, so the summary goes in the accessible name
+                aria-label={`Filtros${resumenFiltros ? `: ${resumenFiltros.replace(/^ · /, "")}` : ""}`}
+                title={`Filtros${resumenFiltros}`}
               >
                 <svg className="campo-icono" width="16" height="16" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1910,6 +1991,7 @@ function App() {
                   </button>
                   <SelectorRuta
                     etiqueta={etiquetaRuta}
+                    etiquetaCorta={etiquetaRutaCorta}
                     opciones={opcionesRutas}
                     indice={indiceMostrado}
                     onElegir={irARuta}
@@ -2158,6 +2240,12 @@ function App() {
                   />
                   <span className="interruptor" />
                 </label>
+                {itemsLeyenda && (
+                  <div className="capas-leyenda">
+                    <p className="capas-titulo">Leyenda</p>
+                    {itemsLeyenda}
+                  </div>
+                )}
               </div>
               }
             />
@@ -2206,59 +2294,7 @@ function App() {
             </div>
 
             
-            {ruta.length > 1 && (
-              <div className="legend">
-                <div className="legend-item">
-                  <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                    <polygon points="2,1 11,6 2,11" fill="var(--marker-start)" />
-                  </svg>
-                  Inicio
-                </div>
-                <div className="legend-item">
-                  {finEsActual ? (
-                    <span className="legend-dot current" style={{ background: colorActivo }}></span>
-                  ) : (
-                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                      <line x1="2.5" y1="1" x2="2.5" y2="11" stroke="var(--marker-end)"
-                        strokeWidth="1.5" strokeLinecap="round" />
-                      <path d="M3 1.5h7l-2 2.5 2 2.5H3z" fill="var(--marker-end)" />
-                    </svg>
-                  )}
-                  {finEsActual ? " Actual" : " Fin de ruta"}
-                </div>
-                {(cortadaInicio || cortadaFin) && (
-                  <div className="legend-item">
-                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                      <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                    </svg>
-                    Recortada por el filtro
-                  </div>
-                )}
-                {paradasVisibles && paradas.length > 0 && (
-                  <div className="legend-item">
-                    <svg className="legend-icono" viewBox="0 0 12 12" aria-hidden="true">
-                      <rect x="2" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
-                      <rect x="7" y="1.5" width="3" height="9" rx="0.8" fill="currentColor" />
-                    </svg>
-                    Parada
-                  </div>
-                )}
-                {visitas.length > 0 && (
-                  <div className="legend-item">
-                    <span className="legend-dot visita"></span> Pas&oacute; por el lugar
-                  </div>
-                )}
-                {pinActivo && (
-                  <div className="legend-item">
-                    <svg className="legend-icono" viewBox="0 0 24 32" aria-hidden="true">
-                      <path d="M12 1C6 1 1.5 5.6 1.5 11.4 1.5 19 12 31 12 31s10.5-12 10.5-19.6C22.5 5.6 18 1 12 1z"
-                        fill={COLOR_PIN} />
-                    </svg>
-                    Pin
-                  </div>
-                )}
-              </div>
-            )}
+            {itemsLeyenda && <div className="legend">{itemsLeyenda}</div>}
 
             <MapContainer
               center={[Number(location.latitud), Number(location.longitud)]}

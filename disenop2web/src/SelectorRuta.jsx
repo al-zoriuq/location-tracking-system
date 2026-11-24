@@ -6,7 +6,9 @@ import { useState, useEffect, useRef } from "react";
 //   opciones: [{ fecha, horario, puntos }], one per route, oldest first
 //   indice:   the route being shown
 //   onElegir: called with the index of the picked route
-export default function SelectorRuta({ etiqueta, opciones, indice, onElegir }) {
+//   etiquetaCorta: optional shorter label as lines (["Ruta 2/5", "23/11 · 3:19 p. m."]),
+//                  shown instead in the compact map zone (phones)
+export default function SelectorRuta({ etiqueta, etiquetaCorta, opciones, indice, onElegir }) {
   const [abierto, setAbierto] = useState(false);
   const raiz = useRef(null);
   const boton = useRef(null);
@@ -74,7 +76,16 @@ export default function SelectorRuta({ etiqueta, opciones, indice, onElegir }) {
         aria-label={`${etiqueta}. Elegir otra ruta`}
         title="Elegir otra ruta"
       >
-        <span className="nav-selector-texto">{etiqueta}</span>
+        <span className="nav-selector-texto">
+          <span className="nav-etiqueta-larga">{etiqueta}</span>
+          {etiquetaCorta && (
+            <span className="nav-etiqueta-corta">
+              {etiquetaCorta.map((linea, i) => (
+                <span key={i} className="nav-etiqueta-linea">{linea}</span>
+              ))}
+            </span>
+          )}
+        </span>
         <span className="nav-selector-flecha" aria-hidden="true">{abierto ? "▴" : "▾"}</span>
       </button>
 

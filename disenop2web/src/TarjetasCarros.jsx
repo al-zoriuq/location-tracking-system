@@ -24,10 +24,15 @@ export function SelectorCarros({ carros, activo, verAmbos, onAmbos, onCarro }) {
             aria-pressed={elegido}
             onClick={() => onCarro(carro.vehiculo)}
             title={`Ver solo ${carro.nombre}`}
+            aria-label={`Ver solo ${carro.nombre}`}
             style={{ "--color-carro": carro.color }}
           >
             <span className="selector-carros-color" aria-hidden="true" />
-            <span className="selector-carros-texto">{carro.nombre}</span>
+            {/* Full name ("Vehículo A01") on wide screens, only the alias ("A01") on phones */}
+            <span className="selector-carros-texto">
+              <span className="selector-carros-largo">{carro.nombre}</span>
+              <span className="selector-carros-corto">{carro.vehiculo}</span>
+            </span>
           </button>
         );
       })}
@@ -39,7 +44,7 @@ export function SelectorCarros({ carros, activo, verAmbos, onAmbos, onCarro }) {
 // approximate address, time of the last point and speed (while reporting).
 // The active car is highlighted; tapping another card makes it active, and
 // tapping the active one flies the map to it.
-export function TarjetaCarro({ carro, activa, estado, hora, fecha, velocidadKmh, onElegir }) {
+export function TarjetaCarro({ carro, activa, estado, hora, fecha, fechaCorta, velocidadKmh, onElegir }) {
   const direccion = useDireccion(Number(carro.latitud), Number(carro.longitud));
   const texto = textoDireccion(direccion);
 
@@ -54,20 +59,34 @@ export function TarjetaCarro({ carro, activa, estado, hora, fecha, velocidadKmh,
     >
       <span className="tarjeta-carro-cabecera">
         <span className="tarjeta-carro-color" aria-hidden="true" />
-        <span className="tarjeta-carro-id">{carro.nombre}</span>
+        {/* Full name; only the alias when the two cards sit side by side on a phone */}
+        <span className="tarjeta-carro-id">
+          <span className="tarjeta-carro-largo">{carro.nombre}</span>
+          <span className="tarjeta-carro-corto">{carro.vehiculo}</span>
+        </span>
         <span className="tarjeta-carro-estado">
           <span className={`dot dot-${estado.tier}`} aria-hidden="true" />
           <span className="tarjeta-carro-estado-texto">{estado.texto}</span>
         </span>
       </span>
-      <span
-        className={`tarjeta-carro-direccion ${direccion.texto ? "" : "sin-texto"}`}
-        title={`${texto} (dirección aproximada)`}
-      >
-        {texto}
+      {/* Second line of the side-by-side cards (speed + address); in every other layout
+          this wrapper is display: contents, so its children behave as before */}
+      <span className="tarjeta-carro-linea2">
+        {/* Speed for the compact map zone (phones), where the floating speed chip is hidden */}
+        {velocidadKmh !== null && (
+          <span className="tarjeta-carro-vel-corta">{Math.round(velocidadKmh)} km/h</span>
+        )}
+        <span
+          className={`tarjeta-carro-direccion ${direccion.texto ? "" : "sin-texto"}`}
+          title={`${texto} (dirección aproximada)`}
+        >
+          {texto}
+        </span>
       </span>
       <span className="tarjeta-carro-meta">
-        <span>{fecha ? `${fecha} · ${hora}` : hora}</span>
+        <span className="tarjeta-carro-cuando">{fecha ? `${fecha} · ${hora}` : hora}</span>
+        {/* Side-by-side cards (phones): the time if it is from today, otherwise only the day */}
+        <span className="tarjeta-carro-cuando-corto">{fecha ? fechaCorta : hora}</span>
         {velocidadKmh !== null && (
           <span className="tarjeta-carro-vel">
             <b>{Math.round(velocidadKmh)}</b> km/h
