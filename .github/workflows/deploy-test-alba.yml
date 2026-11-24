@@ -1,0 +1,126 @@
+name: Deploy alba-test to /test/ (Alba's server)
+
+# Alba's own test deployment. It lives in its own file (like deploy-marcela-test.yml)
+# so that merging main, or merging this branch into main, never replaces it with
+# another person's settings. It triggers only on pushes to alba-test and never
+# touches main, the root site "/" or the other team members' servers.
+on:
+  push:
+    branches: [alba-test]
+
+# Never run two deployments of this branch at the same time
+concurrency:
+  group: deploy-alba-test
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Authenticate to AWS using Alba's IAM credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_ALBA }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_ALBA }}
+          aws-region: us-east-1
+
+      # Step 2: Get the runner's public IP
+      - name: Get runner public IP
+        id: ip
+        run: echo "ip=$(curl -s https://checkip.amazonaws.com)/32" >> "$GITHUB_OUTPUT"
+
+      # Step 3: Temporarily open port 22 on Alba's Security Group
+      - name: Open SSH port for this runner
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id sg-000664e76aea40f3e \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
+
+      # Step 4: Wait for firewall rule propagation
+      - name: Wait for security group propagation
+        run: sleep 5
+
+      # Step 5: SSH and run the test deployment commands
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          # Pipo's Groq key (empty if the secret does not exist: .env is then left as is)
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY_ALBA }}
+        with:
+          host: ${{ secrets.EC2_HOST_ALBA }}
+          username: ${{ secrets.EC2_USER_ALBA }}
+          key: ${{ secrets.EC2_SSH_KEY_ALBA }}
+          timeout: 60s
+          envs: GROQ_API_KEY
+          script: |
+            set -e
+            cd /home/ubuntu/location-tracking-system-test
+            git fetch origin
+            git checkout alba-test
+            git pull origin alba-test
+            source venv/bin/activate
+            pip install -r requirements.txt
+            # Write Pipo's Groq key from the repo secret into .env (kept as is if the secret is empty)
+            if [ -n "$GROQ_API_KEY" ]; then
+              sed -i -e '/^GROQ_API_KEY=/d' -e '$a\' .env
+              echo "GROQ_API_KEY=\"$GROQ_API_KEY\"" >> .env
+            fi
+            # Create the vehicle alias table the API requires (no-op once it exists)
+            python - <<'PYEOF'
+            import os, psycopg2
+            from dotenv import load_dotenv
+            load_dotenv(".env")  # find_dotenv() fails on a script read from stdin
+            con = psycopg2.connect(host=os.getenv("rdshost"), dbname=os.getenv("rdsdbname"),
+                                   user=os.getenv("rdsuser"), password=os.getenv("rdspass"),
+                                   sslmode="verify-full", sslrootcert="global-bundle.pem")
+            with con, con.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS alias_dispositivos (
+                        numero     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                        device_id  TEXT NOT NULL UNIQUE,
+                        creado_en  TIMESTAMP NOT NULL DEFAULT NOW()
+                    )""")
+                cur.execute("""
+                    INSERT INTO alias_dispositivos (device_id)
+                    SELECT device_id FROM ubicaciones
+                    WHERE device_id IS NOT NULL
+                      AND device_id NOT IN (SELECT device_id FROM alias_dispositivos)
+                    GROUP BY device_id
+                    ORDER BY MIN(id)""")
+                print("alias_dispositivos: nuevos alias", cur.rowcount)
+            con.close()
+            PYEOF
+            cd disenop2web
+            npm install
+            BASE_PATH=/test/ npm run build
+            cd ..
+            sudo systemctl restart gunicorn-test
+
+      # Step 6: Always close port 22 after attempt completes
+      - name: Close SSH port for this runner
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id sg-000664e76aea40f3e \
+            --protocol tcp --port 22 \
+            --cidr ${{ steps.ip.outputs.ip }}
