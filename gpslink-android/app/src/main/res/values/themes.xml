@@ -1,9 +1,119 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.LocationSMS" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+    <!-- Always dark ("J1" look). Font: Inter. -->
+    <style name="Base.Theme.LocationSMS" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/acento</item>
+        <item name="colorOnPrimary">@color/fondo</item>
+        <item name="colorPrimaryContainer">@color/pastilla</item>
+        <item name="colorOnPrimaryContainer">@color/texto</item>
+        <item name="colorSecondary">@color/acento</item>
+        <item name="colorError">@color/excede_texto</item>
+        <item name="android:colorBackground">@color/fondo</item>
+        <item name="colorSurface">@color/fondo</item>
+        <item name="colorOnSurface">@color/texto</item>
+        <item name="colorOnSurfaceVariant">@color/texto_suave</item>
+        <item name="colorOutline">@color/vidrio_borde</item>
+        <item name="android:fontFamily">@font/inter_regular</item>
+        <item name="fontFamily">@font/inter_regular</item>
+        <item name="android:windowBackground">@color/fondo</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
     <style name="Theme.LocationSMS" parent="Base.Theme.LocationSMS" />
+
+    <style name="Texto">
+        <item name="android:fontFamily">@font/inter_regular</item>
+        <item name="android:textColor">@color/texto</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+    <!-- Big title, like iOS large titles -->
+    <style name="Texto.Marca">
+        <item name="android:fontFamily">@font/inter_bold</item>
+        <item name="android:textSize">34sp</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+    <style name="Texto.Velocidad">
+        <item name="android:fontFamily">@font/inter_bold</item>
+        <item name="android:textSize">54sp</item>
+        <item name="android:letterSpacing">-0.04</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="Texto.Valor">
+        <item name="android:fontFamily">@font/inter_bold</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+    <style name="Texto.Titulo">
+        <item name="android:fontFamily">@font/inter_semibold</item>
+        <item name="android:textSize">17sp</item>
+    </style>
+    <style name="Texto.Destacado">
+        <item name="android:fontFamily">@font/inter_semibold</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+    <style name="Texto.Etiqueta">
+        <item name="android:textColor">@color/texto_suave</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+    <style name="Texto.Pequeno">
+        <item name="android:textColor">@color/texto_suave</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <!-- Glass card -->
+    <style name="Vidrio">
+        <item name="android:background">@drawable/vidrio</item>
+        <item name="android:padding">16dp</item>
+    </style>
+
+    <!-- Item of the floating bottom bar -->
+    <style name="BotonBarra">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:fontFamily">@font/inter_semibold</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/texto</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:foreground">@drawable/toque_pastilla</item>
+    </style>
+
+    <style name="BotonPrincipal" parent="Widget.Material3.Button">
+        <item name="cornerRadius">24dp</item>
+        <item name="backgroundTint">@color/texto</item>
+        <item name="android:textColor">@color/fondo</item>
+        <item name="android:fontFamily">@font/inter_semibold</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">50dp</item>
+    </style>
+
+    <!-- Second button next to BotonPrincipal (Pipo's sheet: "Cancelar"). -->
+    <style name="BotonSecundario" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="cornerRadius">24dp</item>
+        <item name="strokeColor">@color/vidrio_borde</item>
+        <item name="android:textColor">@color/texto</item>
+        <item name="android:fontFamily">@font/inter_semibold</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">50dp</item>
+    </style>
+
+    <style name="Campo" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxStrokeColor">@color/acento</item>
+        <item name="boxBackgroundColor">@color/pastilla</item>
+        <item name="boxStrokeWidth">0dp</item>
+        <item name="hintTextColor">@color/acento</item>
+        <item name="android:textColorHint">@color/texto_suave</item>
+        <item name="helperTextTextColor">@color/texto_suave</item>
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
+    </style>
 </resources>

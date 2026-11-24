@@ -1,5 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- "J1" look: dark purple background with soft glows, translucent glass cards,
+     white text, a red ring when over the limit. The app is always dark. -->
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <color name="fondo">#170E2B</color>
+    <color name="brillo_morado">#7A4DE0</color>
+    <color name="brillo_rosa">#C2417A</color>
+    <color name="brillo_indigo">#3B2A8A</color>
+
+    <color name="vidrio_arriba">#7A35295A</color>  <!-- glass card, a bit lighter at the top -->
+    <color name="vidrio_abajo">#5C1E1636</color>
+    <color name="vidrio_borde">#26FFFFFF</color>
+    <color name="pastilla">#2EFFFFFF</color>       <!-- selected item in the bottom bar -->
+    <color name="separador">#1AFFFFFF</color>
+
+    <color name="texto">#FFFFFF</color>
+    <color name="texto_suave">#ADFFFFFF</color>
+    <color name="acento">#B79CFF</color>           <!-- speed ring while within the limit -->
+    <color name="acento_fuerte">#8B5CF6</color>
+
+    <color name="cumple">#4ADE80</color>
+    <color name="atencion">#FBBF24</color>
+    <color name="apagado">#8A82A0</color>
+    <color name="excede">#FF5A6E</color>           <!-- ring over the limit -->
+    <color name="excede_texto">#FF8A95</color>
+    <color name="senal_rojo">#D7263D</color>
+
+    <color name="pipo_escucha">#67E8F9</color>     <!-- Pipo listening (turquoise) -->
+    <color name="pipo_habla">#FF9AD5</color>       <!-- Pipo speaking (pink) -->
 </resources>

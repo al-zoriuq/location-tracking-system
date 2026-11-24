@@ -1,19 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
--->
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+. Settings (server, Pi IP, Device id) are backed up; Pipo's voice model
+     (~40 MB, downloaded again by itself) and the send queues are not: the model alone
+     would go over Android's 25 MB backup limit and no backup would be made at all. -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="file" path="vosk/" />
+        <exclude domain="file" path="cola_ruta.txt" />
+        <exclude domain="file" path="cola_detecciones.txt" />
+        <exclude domain="file" path="detecciones_vistas.txt" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="vosk/" />
+        <exclude domain="file" path="cola_ruta.txt" />
+        <exclude domain="file" path="cola_detecciones.txt" />
+        <exclude domain="file" path="detecciones_vistas.txt" />
     </device-transfer>
-    -->
 </data-extraction-rules>

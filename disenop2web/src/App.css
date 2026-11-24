@@ -3490,3 +3490,207 @@ html, body {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* ============ Pipo (voice assistant, same look as the app) ============ */
+/* Floating orb that opens a glass sheet: deep purple gradient, rounded top,
+   thin light border. State colors match the app: listening turquoise,
+   thinking amber, speaking pink. */
+.pipo-boton {
+  position: fixed;
+  left: 14px;
+  bottom: 92px; /* free spot between the zoom buttons and the legend */
+  z-index: 2000;
+  width: 72px;
+  height: 72px;
+  padding: 4px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.pipo-boton:active { transform: scale(0.94); }
+.pipo-boton:focus-visible { outline: 2px solid #b79cff; outline-offset: 2px; }
+.pipo-orbe { display: block; }
+
+.pipo-capa {
+  position: fixed;
+  inset: 0;
+  z-index: 2400; /* above the map and panels, below modals and toasts */
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 0 20px;
+  background: rgba(10, 6, 22, 0.35);
+}
+
+.pipo-hoja {
+  position: relative;
+  width: min(400px, 100%);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 22px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-bottom: none;
+  border-radius: 32px 32px 0 0;
+  background: linear-gradient(180deg, #2a1d52, #1a1236);
+  box-shadow: 0 -12px 48px rgba(122, 77, 224, 0.35);
+  color: #fff;
+  font-family: "Inter", var(--font-display);
+  animation: pipo-subir 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes pipo-subir {
+  from { transform: translateY(24px); opacity: 0; }
+}
+
+.pipo-agarradera {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.pipo-cerrar {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pipo-nombre {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.pipo-estado {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.pipo-estado-escuchando { color: #67e8f9; }
+.pipo-estado-pensando { color: #fcd34d; }
+.pipo-estado-hablando { color: #ff9ad5; }
+
+.pipo-carro {
+  margin: 0;
+  font-size: 12px;
+  color: #b79cff;
+}
+
+.pipo-dialogo {
+  width: 100%;
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(53, 41, 90, 0.48), rgba(30, 22, 54, 0.36));
+}
+
+.pipo-pregunta {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.pipo-respuesta {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.pipo-formulario {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pipo-campo {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+}
+
+.pipo-campo::placeholder { color: rgba(255, 255, 255, 0.45); }
+.pipo-campo:focus { outline: none; border-color: #b79cff; }
+
+.pipo-mic,
+.pipo-enviar {
+  height: 44px;
+  border: none;
+  border-radius: 22px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pipo-mic {
+  width: 44px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.pipo-mic.activo {
+  background: #67e8f9;
+  color: #0e3a44;
+  box-shadow: 0 0 0 6px rgba(103, 232, 249, 0.2);
+}
+
+.pipo-enviar {
+  padding: 0 18px;
+  background: #8b5cf6;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.pipo-mic:disabled,
+.pipo-enviar:disabled { opacity: 0.45; cursor: default; }
+
+.pipo-voz {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+  cursor: pointer;
+}
+
+.pipo-voz input { accent-color: #8b5cf6; }
+
+@media (max-width: 640px) {
+  .pipo-boton { left: 6px; bottom: 156px; } /* above the zoom buttons */
+  .pipo-capa { padding: 0; }
+  .pipo-hoja { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pipo-hoja { animation: none; }
+}

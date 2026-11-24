@@ -980,6 +980,13 @@ def lugar_visitado():
     return jsonify({"visitado": bool(fila["visitado"])})
 
 
+# API - PIPO (voice assistant, P3-S5): POST /api/pipo, see pipo.py
+
+import pipo  # noqa: E402  (needs cursor_bd and the alias helpers defined above)
+
+pipo.registrar(app, cursor_bd, alias_de_numero, numero_de_alias)
+
+
 # START SERVER (only used for local development; production runs via Gunicorn)
 
 if __name__ == "__main__":

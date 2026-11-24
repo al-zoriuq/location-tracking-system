@@ -1,7 +1,31 @@
 <resources>
     <string name="app_name">GPSLink</string>
-    <string name="servidor_no_definido">IP(s) predeterminada(s): no definida(s)</string>
-    <string name="hint_servidor">Ej: 181.52.34.10;190.60.10.20</string>
-    <string name="guardar_servidor">Guardar como predeterminado</string>
+    <string name="ajustes">Ajustes</string>
+    <string name="km_h">km/h</string>
+
+    <string name="widget_pi">Raspberry</string>
+    <string name="widget_ubicacion">Ubicación</string>
+    <string name="titulo_recientes">Señales recientes</string>
+    <string name="sin_senales">Aún no hay señales</string>
+
+    <string name="btn_estado">Estado</string>
+    <string name="btn_pausa">Pausar</string>
+    <string name="btn_reanudar">Reanudar</string>
+    <string name="btn_apagar">Apagar</string>
+
+    <string name="hint_servidor">IP del servidor</string>
+    <string name="ayuda_servidor">Varias separadas por ; · puerto 5000</string>
+    <string name="hint_pi">IP de la Raspberry (opcional)</string>
+    <string name="hint_url_pipo">URL de Pipo</string>
+    <string name="ayuda_url_pipo">Dominio del servidor con https · vacío: el de Sthefany</string>
+    <string name="ayuda_pi">Vacío: la app la busca sola en el wifi. Escríbela solo si no la encuentra.</string>
+    <string name="guardar_servidor">Guardar</string>
     <string name="enviar_ubicacion">Enviar ubicación ahora</string>
+
+    <string name="pipo">Pipo</string>
+    <string name="pipo_tocar">Tocar para preguntarle a Pipo</string>
+    <string name="pipo_activar">Activar a Pipo</string>
+    <string name="pipo_permiso_mic">Sin el micrófono, Pipo solo puede dar avisos: no te escucha.</string>
+    <string name="pipo_cancelar">Cancelar</string>
+    <string name="pipo_listo">Listo</string>
 </resources>

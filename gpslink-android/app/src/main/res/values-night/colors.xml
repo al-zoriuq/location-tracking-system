@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Night tones: used when the phone is in dark mode. Same "J1" look as
+     values/colors.xml, with a deeper background, dimmer glows and a softer
+     white so the screen glares less while driving at night. Status colors
+     (cumple, atencion, excede) and Pipo's colors stay as they are. -->
+<resources>
+    <color name="fondo">#0B0716</color>
+    <color name="brillo_morado">#5536A8</color>
+    <color name="brillo_rosa">#8A2C58</color>
+    <color name="brillo_indigo">#251A5E</color>
+
+    <color name="vidrio_arriba">#6624193F</color>
+    <color name="vidrio_abajo">#4D120C24</color>
+
+    <color name="texto">#EEEAF7</color>
+    <color name="texto_suave">#94EEEAF7</color>
+    <color name="acento">#A58AF2</color>
+</resources>
