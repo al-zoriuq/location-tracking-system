@@ -3490,39 +3490,3 @@ html, body {
   flex: 1 1 auto;
   min-width: 0;
 }
-
-/* Compact history rows (phones, where the history is a bottom sheet): the day once as a
-   separator, then one line per point (time, coordinates) and the IP below, small */
-.sidebar-dia,
-.sidebar-item-compacto { display: none; }
-@media (max-width: 900px) and (orientation: portrait) {
-  .sidebar-item { padding: 5px 16px; line-height: 1.2; }
-  .sidebar-item-header,
-  .sidebar-item .coord-row { display: none; }
-  .sidebar-dia {
-    display: block;
-    margin: 4px -16px 6px;
-    padding: 4px 16px;
-    background: rgba(255, 255, 255, 0.04);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-  .sidebar-item-compacto {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  .sidebar-item-hora { color: var(--text-dim); flex-shrink: 0; }
-  .sidebar-item-coords {
-    margin-left: auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--accent);
-  }
-  .sidebar-item-ip { margin: 2px 0 0 17px; }
-}

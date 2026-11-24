@@ -2480,27 +2480,8 @@ function App() {
                   const esInicio = index === historialReciente.length - 1;
                   const esActual = index === 0;
                   const claseFinal = finEsActual ? "current" : "end";
-                  // Phones show the day once, as a separator, instead of on every point
-                  const dia = fecha.toLocaleDateString("es-CO", OPCIONES_ZONA);
-                  const diaAnterior =
-                    index > 0
-                      ? parsearFechaGPS(historialReciente[index - 1].timestamp_gps).toLocaleDateString("es-CO", OPCIONES_ZONA)
-                      : null;
                   return (
                     <div className="sidebar-item" key={index}>
-                      {dia !== diaAnterior && <div className="sidebar-dia">{dia}</div>}
-                      {/* Compact row for phones: time and both coordinates on one line */}
-                      <div className="sidebar-item-compacto">
-                        <span
-                          className={`legend-dot ${esInicio ? "start" : esActual ? claseFinal : ""}`}
-                        ></span>
-                        <span className="sidebar-item-hora">
-                          {fecha.toLocaleTimeString("es-CO", OPCIONES_ZONA)}
-                        </span>
-                        <span className="sidebar-item-coords">
-                          {Number(punto.latitud).toFixed(4)}, {Number(punto.longitud).toFixed(4)}
-                        </span>
-                      </div>
                       <div className="sidebar-item-header">
                         <span
                           className={`legend-dot ${esInicio ? "start" : esActual ? claseFinal : ""}`}
