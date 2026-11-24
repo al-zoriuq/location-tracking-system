@@ -70,9 +70,20 @@ PARE si el carro se detuvo (bajó de 5 km/h) poco después de verlo.
 onda."""
 
 
-def registrar(app, cursor_bd, alias_de_numero):
+WEB = """Quien pregunta NO va manejando: está mirando la página web del sistema. \
+"Ahora mismo" es lo último que reportó el carro; habla del carro en tercera persona y \
+no des avisos de manejo. Aquí puedes responder de lo que sea: el carro elegido, sus \
+recorridos de los últimos días, los otros carros, las señales, o cualquier otro tema con \
+tu propio conocimiento. Puedes usar hasta 5 frases. Si te preguntan por un dato del \
+sistema que no está abajo (por ejemplo, de hace más de 7 días), dilo con sinceridad."""
+
+
+def registrar(app, cursor_bd, alias_de_numero, numero_de_alias):
     """Agrega /api/pipo a la app Flask. Se pasan las funciones de
-    servidorweb.py para no importar ese módulo desde aquí (import circular)."""
+    servidorweb.py para no importar ese módulo desde aquí (import circular).
+
+    El celular manda su device_id; la página web manda el alias del carro
+    ("vehiculo": "A01") porque nunca ve los device_id."""
 
     @app.route("/api/pipo", methods=["POST"])
     def pipo():
@@ -84,8 +95,14 @@ def registrar(app, cursor_bd, alias_de_numero):
         pregunta = pregunta[:MAX_PREGUNTA]
 
         device_id = str(datos.get("device_id") or "").strip()
-        if not PATRON_DEVICE.match(device_id):
+        numero = None
+        if not device_id and datos.get("vehiculo"):
+            numero = numero_de_alias(str(datos.get("vehiculo")))
+            if numero is None:
+                return jsonify({"error": "El vehículo no es válido"}), 400
+        elif not PATRON_DEVICE.match(device_id):
             return jsonify({"error": "El device_id no es válido"}), 400
+        desde_web = datos.get("origen") == "web"
 
         contexto = datos.get("contexto")
         if not isinstance(contexto, dict):
@@ -100,15 +117,31 @@ def registrar(app, cursor_bd, alias_de_numero):
             }), 503
 
         try:
+            if numero is not None:
+                device_id = device_del_alias(cursor_bd, numero)
+                if device_id is None:
+                    return jsonify({
+                        "error": "No existe ese vehículo",
+                        "respuesta": "No encuentro ese carro en la base de datos.",
+                    }), 404
             resumen = resumen_vehiculo(cursor_bd, alias_de_numero, device_id)
+            if desde_web:
+                resumen += "\n\n" + resumen_web(cursor_bd, alias_de_numero, device_id)
         except psycopg2.Error:
+            if not device_id:  # the alias could not even be looked up
+                app.logger.exception("Pipo: no se pudo leer la base de datos")
+                return jsonify({
+                    "error": "No se pudo leer la base de datos",
+                    "respuesta": "Perdón, no pude revisar los datos del carro. Inténtalo otra vez.",
+                }), 503
             app.logger.exception("Pipo: no se pudo leer la base de datos")
             resumen = "(No se pudo leer la base de datos en este momento.)"
 
         mensajes = [
-            {"role": "system", "content": PERSONALIDAD},
+            {"role": "system", "content": PERSONALIDAD + ("\n\n" + WEB if desde_web else "")},
             {"role": "system", "content": "DATOS DEL VEHÍCULO\n" + resumen
-                + "\n\nAHORA MISMO (según el celular)\n" + texto_contexto(contexto)},
+                + "\n\nAHORA MISMO (" + ("último dato del carro" if desde_web else "según el celular")
+                + ")\n" + texto_contexto(contexto)},
             {"role": "user", "content": pregunta},
         ]
 
@@ -164,6 +197,129 @@ def resumen_vehiculo(cursor_bd, alias_de_numero, device_id):
         lineas.append("Últimos 7 días: " + "; ".join(partes) + ".")
 
     return "\n".join(lineas)
+
+
+# --- Más datos para la página web (ahí se puede preguntar de lo que sea) ---
+
+DIAS_WEB = 7
+
+# Recorrido por día: horas, kilómetros (puntos seguidos con menos de 5 min entre
+# ellos) y velocidad máxima entre puntos (2 a 60 s de separación, descartando
+# saltos del GPS de más de 200 km/h). timestamp_gps ya está en hora de Bogotá.
+SQL_DIAS = """
+    WITH p AS (
+        SELECT
+            timestamp_gps AS t, latitud AS la, longitud AS lo,
+            LAG(timestamp_gps) OVER w AS t0, LAG(latitud) OVER w AS la0,
+            LAG(longitud) OVER w AS lo0
+        FROM ubicaciones
+        WHERE device_id = %s
+          AND timestamp_gps >= (NOW() AT TIME ZONE 'America/Bogota') - INTERVAL '7 days'
+        WINDOW w AS (ORDER BY timestamp_gps)
+    ), s AS (
+        SELECT
+            t,
+            EXTRACT(EPOCH FROM t - t0) AS dt,
+            2 * 6371 * ASIN(SQRT(
+                POWER(SIN(RADIANS(la - la0) / 2), 2)
+                + COS(RADIANS(la0)) * COS(RADIANS(la)) * POWER(SIN(RADIANS(lo - lo0) / 2), 2)
+            )) AS km
+        FROM p
+    )
+    SELECT
+        t::date AS dia,
+        MIN(t) AS desde,
+        MAX(t) AS hasta,
+        COALESCE(SUM(km) FILTER (WHERE dt > 0 AND dt <= 300), 0) AS km,
+        MAX(km / dt * 3600) FILTER (WHERE dt BETWEEN 2 AND 60 AND km / dt * 3600 < 200) AS vel_max
+    FROM s
+    GROUP BY 1
+    ORDER BY 1 DESC
+"""
+
+SQL_SENALES_DIAS = """
+    SELECT
+        timestamp_gps::date AS dia,
+        senal_tipo,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE cumplimiento = 'EXCEDE') AS excesos
+    FROM detecciones_senal
+    WHERE device_id = %s
+      AND timestamp_gps >= (NOW() AT TIME ZONE 'America/Bogota') - INTERVAL '7 days'
+    GROUP BY 1, 2
+    ORDER BY 1 DESC, 3 DESC
+"""
+
+SQL_FLOTA = """
+    SELECT
+        a.numero,
+        (SELECT u.timestamp_gps FROM ubicaciones u
+         WHERE u.device_id = a.device_id
+         ORDER BY u.timestamp_gps DESC LIMIT 1) AS ultimo
+    FROM alias_dispositivos a
+    ORDER BY a.numero
+    LIMIT 20
+"""
+
+
+def resumen_web(cursor_bd, alias_de_numero, device_id):
+    """Recorridos y señales por día de este carro, y los demás carros."""
+    lineas = []
+    with cursor_bd() as cursor:
+        try:
+            cursor.execute(SQL_DIAS, (device_id,))
+            dias = cursor.fetchall()
+        except psycopg2.Error:
+            cursor.connection.rollback()
+            dias = []
+        try:
+            cursor.execute(SQL_SENALES_DIAS, (device_id,))
+            senales = cursor.fetchall()
+        except psycopg2.Error:
+            cursor.connection.rollback()
+            senales = []
+        try:
+            cursor.execute(SQL_FLOTA)
+            flota = cursor.fetchall()
+        except psycopg2.Error:
+            cursor.connection.rollback()
+            flota = []
+
+    por_dia = {}
+    for s in senales:
+        texto = f"{s['senal_tipo']} {s['total']}"
+        if s["excesos"]:
+            texto += f" ({s['excesos']} con exceso)"
+        por_dia.setdefault(s["dia"], []).append(texto)
+
+    if dias:
+        lineas.append(f"Recorridos de los últimos {DIAS_WEB} días (el más reciente primero):")
+        for d in dias:
+            texto = (f"- {d['dia']:%d/%m}: de {d['desde']:%H:%M} a {d['hasta']:%H:%M}, "
+                     f"{float(d['km']):.1f} km")
+            if d["vel_max"] is not None:
+                texto += f", velocidad máxima unos {float(d['vel_max']):.0f} km/h"
+            if d["dia"] in por_dia:
+                texto += ". Señales: " + ", ".join(por_dia[d["dia"]])
+            lineas.append(texto)
+    else:
+        lineas.append(f"No hay recorridos de este carro en los últimos {DIAS_WEB} días.")
+
+    if flota:
+        partes = []
+        for f in flota:
+            cuando = f"{f['ultimo']:%d/%m %H:%M}" if f["ultimo"] else "nunca"
+            partes.append(f"{alias_de_numero(f['numero'])} (último dato {cuando})")
+        lineas.append("Carros del sistema: " + "; ".join(partes) + ".")
+
+    return "\n".join(lineas)
+
+
+def device_del_alias(cursor_bd, numero):
+    with cursor_bd() as cursor:
+        cursor.execute("SELECT device_id FROM alias_dispositivos WHERE numero = %s", (numero,))
+        fila = cursor.fetchone()
+    return fila["device_id"] if fila else None
 
 
 def alias_del_device(cursor, alias_de_numero, device_id):

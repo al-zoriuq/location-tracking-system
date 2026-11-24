@@ -2,12 +2,30 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" /> <!-- Android 12+ only shows the dialog if both are asked together -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" /> <!-- GPS access -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" /> <!-- GPS while app isn't visible -->
     <uses-permission android:name="android.permission.INTERNET" /> <!-- UDP packets to your PCs -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /> <!-- required to run a foreground service at all -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" /> <!-- required specifically because this service uses location -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" /> <!-- required on Android 13+ to show the persistent notification -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" /> <!-- Android 16+: Live Update (speed chip on the status bar) -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" /> <!-- WifiManager -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> <!-- know if there is internet (queue otherwise) -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" /> <!-- receive the Pi's broadcast (auto-discovery) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" /> <!-- Pipo: wake word "Pipo" and the question -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" /> <!-- Pipo keeps listening with the screen off -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" /> <!-- Pipo's floating bubble over other apps -->
+
+    <!-- Android 11+: to find the phone's speech recognizer and text-to-speech engine -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <uses-feature
         android:name="android.hardware.location.gps"
@@ -21,7 +39,8 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.LocationSMS" >
+        android:theme="@style/Theme.LocationSMS"
+        android:usesCleartextTraffic="true" > <!-- Pipo talks to the server's Nginx over plain HTTP (port 80) -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -34,10 +53,11 @@
         </activity>
 
         <!-- foregroundServiceType="location" is mandatory since Android 10 for
-             any foreground service that accesses the device's location. -->
+             any foreground service that accesses the device's location;
+             "microphone" lets Pipo hear his name with the app closed. -->
         <service
             android:name=".UbicacionService"
-            android:foregroundServiceType="location"
+            android:foregroundServiceType="location|microphone"
             android:exported="false" />
     </application>
 
